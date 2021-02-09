@@ -131,7 +131,7 @@ void transaction::Abort() {
 
     Object *obj = w.get_object();
   fat_ptr entry = *w.entry;
-  oidmgr->PrimaryTupleUnlink(w.entry);
+  oidmgr->UnlinkTuple(w.entry);
   obj->SetClsn(NULL_PTR);
   ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
   MM::deallocate(entry);
@@ -1139,7 +1139,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
   // first *updater* wins
   fat_ptr new_obj_ptr = NULL_PTR;
   fat_ptr prev_obj_ptr =
-      oidmgr->PrimaryTupleUpdate(tuple_array, oid, v, xc, &new_obj_ptr);
+      oidmgr->UpdateTuple(tuple_array, oid, v, xc, &new_obj_ptr);
   Object *prev_obj = (Object *)prev_obj_ptr.offset();
 
   if (prev_obj) {  // succeeded
@@ -1188,12 +1188,12 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
             // ct3
             if (reader_xc->xct->write_set.size() > 0 and
                 reader_begin <= xc->ct3) {
-              oidmgr->PrimaryTupleUnlink(tuple_array, oid);
+              oidmgr->UpdateTuple(tuple_array, oid);
               return {RC_ABORT_SERIAL};
             }
           }
         } else {
-          oidmgr->PrimaryTupleUnlink(tuple_array, oid);
+          oidmgr->UnlinkTuple(tuple_array, oid);
           return {RC_ABORT_SERIAL};
         }
       }
@@ -1213,7 +1213,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
     if (not ssn_check_exclusion(xc)) {
       // unlink the version here (note abort_impl won't be able to catch
       // it because it's not yet in the write set)
-      oidmgr->PrimaryTupleUnlink(tuple_array, oid);
+      oidmgr->UnlinkTuple(tuple_array, oid);
       return rc_t{RC_ABORT_SERIAL};
     }
 #endif

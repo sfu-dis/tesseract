@@ -402,7 +402,7 @@ void sm_oid_mgr::create() {
   oidmgr->dfd = dirent_iterator(config::log_dir.c_str()).dup();
 }
 
-void sm_oid_mgr::PrimaryTakeChkpt() {
+void sm_oid_mgr::Checkpoint() {
 #if 0
   ASSERT(!config::is_backup_srv());
   // Now the real work. The format of a chkpt file is:
@@ -614,41 +614,9 @@ fat_ptr sm_oid_mgr::free_oid(FID f, OID o) {
   return rval;
 }
 
-fat_ptr sm_oid_mgr::oid_get(FID f, OID o) {
-  return *oid_access(f, o);
-}
-
-fat_ptr *sm_oid_mgr::oid_get_ptr(FID f, OID o) {
-  return oid_access(f, o);
-}
-
-void sm_oid_mgr::oid_put(FID f, OID o, fat_ptr p) {
-  *oid_access(f, o) = p;
-}
-
-void sm_oid_mgr::oid_put_new(FID f, OID o, fat_ptr p) {
-  auto *entry = get_impl(this)->oid_access(f, o);
-  ALWAYS_ASSERT(*entry == NULL_PTR);
-  *entry = p;
-}
-
-void sm_oid_mgr::oid_put_new_if_absent(FID f, OID o, fat_ptr p) {
-  auto *entry = get_impl(this)->oid_access(f, o);
-  if (*entry == NULL_PTR) {
-    *entry = p;
-  }
-}
-
-fat_ptr sm_oid_mgr::PrimaryTupleUpdate(FID f, OID o, const varstr *value,
-                                       TXN::xid_context *updater_xc,
-                                       fat_ptr *new_obj_ptr) {
-  return PrimaryTupleUpdate(get_impl(this)->get_array(f), o, value, updater_xc,
-                            new_obj_ptr);
-}
-
 // For primary server only - guaranteed to have no gaps between versions,
 // i.e., pdest_next_ matches volatile_next_.
-fat_ptr sm_oid_mgr::PrimaryTupleUpdate(oid_array *oa, OID o,
+fat_ptr sm_oid_mgr::UpdateTuple(oid_array *oa, OID o,
                                        const varstr *value,
                                        TXN::xid_context *updater_xc,
                                        fat_ptr *new_obj_ptr) {
@@ -770,177 +738,6 @@ install:
     }
   }
   return NULL_PTR;
-}
-
-dbtuple *sm_oid_mgr::oid_get_latest_version(FID f, OID o) {
-  return oid_get_latest_version(get_impl(this)->get_array(f), o);
-}
-
-PROMISE(dbtuple *) sm_oid_mgr::oid_get_version(FID f, OID o, TXN::xid_context *visitor_xc) {
-  ASSERT(f);
-  return oid_get_version(get_impl(this)->get_array(f), o, visitor_xc);
-}
-
-dbtuple *sm_oid_mgr::BackupGetVersion(oid_array *ta, oid_array *pa, OID o,
-                                      TXN::xid_context *xc) {
-  if (config::full_replay || config::command_log) {
-    return sync_wait_coro(oid_get_version(ta, o, xc));
-  }
-  fat_ptr pdest_head_ptr = NULL_PTR;
-retry:
-  // See if we can find a fresh enough version in the tuple array
-  fat_ptr active_head_ptr = volatile_read(*ta->get(o));
-  ASSERT(active_head_ptr.asi_type() == 0);
-  Object *active_head_obj = (Object *)active_head_ptr.offset();
-  uint64_t active_head_lsn =
-      active_head_obj == nullptr ? 0 : active_head_obj->GetClsn().offset();
-  ASSERT(!active_head_obj ||
-         active_head_obj->GetClsn().offset() ==
-             active_head_obj->GetPersistentAddress().offset());
-  if (active_head_lsn >= xc->begin) {
-    // First version not visible to me, so no need to look at the pdest
-    // array, versions indexed by the tuple array are enough.
-    return sync_wait_coro(oid_get_version(ta, o, xc));
-  } else {
-    // First version visible to me, but not sure if there will be newer
-    // versions available for me to read, must look at the pdest array
-    // and dig out them from the log.
-    // Note: ptrs point to the log directly, making the lsns comparable
-    if (pdest_head_ptr == NULL_PTR) {
-      // Don't refresh pdest ptr, to save some resource
-      pdest_head_ptr = volatile_read(*pa->get(o));
-    }
-    fat_ptr ptr = pdest_head_ptr;
-    ASSERT(ptr.offset() == 0 || ptr.offset() >= active_head_lsn);
-    if (ptr.offset() == 0 || ptr.offset() == active_head_lsn) {
-      // Nothing new in the pdest array
-      return active_head_obj ? active_head_obj->GetPinnedTuple() : nullptr;
-    }
-
-    ALWAYS_ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
-    ALWAYS_ASSERT(ptr.offset() > active_head_lsn);
-
-    // Dig out the first version until the latest one visible to me
-    Object *prev_obj = nullptr;
-    fat_ptr install_ptr = NULL_PTR;
-    Object *ret_obj = active_head_obj;
-    while (ptr.offset() > active_head_lsn) {
-      ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);  // Digging things out
-      size_t sz = sizeof(Object) + sizeof(dbtuple) +
-                  decode_size_aligned(ptr.size_code());
-      sz = align_up(sz);
-      Object *obj = (Object *)MM::allocate(sz);
-      // FIXME(tzwang): figure out how GC/epoch works with this
-      new (obj) Object(ptr, NULL_PTR, 0, false);  // Update next_ later
-      // TODO(tzawng): allow pinning the header part only (ie the varstr
-      // embedded in the payload) as the only purpose of Pin() here is to
-      // get to know the pdest of the overwritten version. (perhaps doesn't
-      // matter especially if using disk/SSD).
-      ASSERT(obj->GetNextPersistent() == NULL_PTR);
-      obj->Pin();  // obj.next_pdest becomes available after Pin()
-      ASSERT(obj->GetClsn().offset());
-      ASSERT(obj->GetClsn().offset() == obj->GetPersistentAddress().offset());
-      ASSERT(obj->GetNextPersistent() == NULL_PTR ||
-             obj->GetNextPersistent().asi_type() == fat_ptr::ASI_LOG);
-
-      // Setup volatile backward pointers
-      obj->SetNextVolatile(active_head_ptr);  // Default, might change later
-      if (prev_obj) {
-        prev_obj->SetNextVolatile(
-            fat_ptr::make(obj, encode_size_aligned(sz), 0));
-      } else {
-        install_ptr = fat_ptr::make(obj, encode_size_aligned(sz), 0);
-      }
-      uint64_t clsn = obj->GetClsn().offset();
-      ASSERT(clsn > active_head_lsn);
-      if (xc->begin > clsn) {
-        // Done, no need to dig further
-        ASSERT(ret_obj == active_head_obj);
-        ret_obj = obj;
-        break;
-      }
-      prev_obj = obj;
-      ptr = obj->GetNextPersistent();
-      ASSERT((active_head_obj && ptr.offset()) || !active_head_obj);
-    }
-    ASSERT(ptr.offset() == active_head_lsn ||
-           ptr.offset() > active_head_lsn && ret_obj != active_head_obj);
-
-    // Install the chain on the tuple array slot (plain write as we locked it)
-    ALWAYS_ASSERT(install_ptr != NULL_PTR);
-    ALWAYS_ASSERT(install_ptr.asi_type() == 0);
-
-    bool success = __sync_bool_compare_and_swap(
-        &ta->get(o)->_ptr, active_head_ptr._ptr, install_ptr._ptr);
-    if (!success) {
-      fat_ptr to_free = install_ptr;
-      while (to_free != active_head_ptr) {
-        Object *to_free_obj = (Object *)to_free.offset();
-        fat_ptr next = to_free_obj->GetNextVolatile();
-        MM::deallocate(to_free);
-        to_free = next;
-      }
-      goto retry;
-    }
-    return ret_obj ? ret_obj->GetPinnedTuple() : nullptr;
-  }
-}
-
-void sm_oid_mgr::oid_get_version_backup(fat_ptr &ptr,
-                                        fat_ptr &tentative_next,
-                                        Object *prev_obj,
-                                        Object *&cur_obj,
-                                        TXN::xid_context *visitor_xc) {
-  fat_ptr prev_next_ptr = NULL_PTR;
-  Object *prev_next_obj = NULL_PTR;
-  if (prev_obj) {
-    ASSERT(prev_obj->GetClsn().offset());
-    // See if we can just follow the volatile pointer without touching the
-    // log
-    prev_next_ptr = prev_obj->GetNextVolatile();
-    prev_next_obj = (Object *)prev_next_ptr.offset();
-    ASSERT(prev_next_obj->GetClsn().offset() ==
-           prev_next_obj->GetPersistentAddress().offset());
-    if (prev_next_obj->GetClsn().offset() == prev_obj->GetNextPersistent().offset() ||
-        prev_next_obj->GetClsn().offset() >= visitor_xc->begin) {
-      // No gap or not visible
-      ptr = prev_next_ptr;
-    }
-  }
-  if (ptr.asi_type() == fat_ptr::ASI_LOG) {
-    ASSERT(ptr.size_code() != INVALID_SIZE_CODE);
-    size_t alloc_sz = align_up(decode_size_aligned(ptr.size_code()) + sizeof(Object));
-    cur_obj = (Object *)MM::allocate(alloc_sz);
-    new (cur_obj) Object(ptr, NULL_PTR, visitor_xc->begin_epoch, false);
-    cur_obj->Pin();  // After this next_pdest_ is valid
-    ASSERT(cur_obj->GetClsn().offset());
-    ASSERT(prev_obj);
-    ASSERT(prev_obj->GetClsn().offset());
-    ASSERT(prev_obj->GetClsn().offset() != cur_obj->GetClsn().offset());
-    fat_ptr vnext = prev_obj->GetNextVolatile();
-    cur_obj->SetNextVolatile(vnext);
-    fat_ptr newptr = fat_ptr::make(cur_obj, ptr.size_code(), 0);
-    if (!__sync_bool_compare_and_swap(&prev_obj->GetNextVolatilePtr()->_ptr,
-                                      vnext._ptr, newptr._ptr)) {
-      // If this CAS failed, then it must be somebody else who installed
-      // this immediate version
-      cur_obj = (Object *)prev_obj->GetNextVolatile().offset();
-      ASSERT(cur_obj);
-      ASSERT(cur_obj->GetClsn().offset() == ptr.offset());
-      ASSERT(cur_obj->GetPersistentAddress().offset() == ptr.offset());
-      MM::deallocate(newptr);
-    }
-  } else {
-    ASSERT(ptr.asi_type() == 0);
-    cur_obj = (Object *)ptr.offset();
-  }
-  ASSERT(cur_obj->GetClsn().offset());
-  ASSERT(!prev_obj || prev_obj->GetClsn().offset());
-  ASSERT(!prev_obj ||
-         prev_obj->GetClsn().offset() > cur_obj->GetClsn().offset());
-  tentative_next = cur_obj->GetNextPersistent();
-  ASSERT(tentative_next == NULL_PTR ||
-         tentative_next.asi_type() == fat_ptr::ASI_LOG);
 }
 
 void sm_oid_mgr::oid_get_version_amac(oid_array *oa,
@@ -1144,5 +941,50 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
 #endif
   }
   return false;
+}
+
+void sm_oid_mgr::oid_check_phantom(TXN::xid_context *visitor_xc, uint64_t vcstamp) {
+#if !defined(SSI) && !defined(SSN)
+  MARK_REFERENCED(visitor_xc);
+  MARK_REFERENCED(vcstamp);
+#endif
+  if (!config::phantom_prot) {
+    return;
+  }
+/*
+* tzwang (May 05, 2016): Preventing phantom:
+* Consider an example:
+*
+* Assume the database has tuples B (key=1) and C (key=2).
+*
+* Time      T1             T2
+* 1        ...           Read B
+* 2        ...           Insert A
+* 3        ...           Commit
+* 4       Scan key > 1
+* 5       Update B
+* 6       Commit (?)
+*
+* At time 6 T1 should abort, but checking index version changes
+* wouldn't make T1 abort, since its scan happened after T2's
+* commit and yet its begin timestamp is before T2 - T1 wouldn't
+* see A (oid_get_version will skip it even it saw it from the tree)
+* but the scanning wouldn't record a version change in tree structure
+* either (T2 already finished all SMOs).
+*
+* Under SSN/SSI, this essentially requires we update the corresponding
+* stamps upon hitting an invisible version, treating it like some
+* successor updated our read set. For SSI, this translates to updating
+* ct3; for SSN, update the visitor's sstamp.
+*/
+#ifdef SSI
+  auto vct3 = volatile_read(visitor_xc->ct3);
+  if (not vct3 or vct3 > vcstamp) {
+    volatile_write(visitor_xc->ct3, vcstamp);
+  }
+#elif defined SSN
+  visitor_xc->set_sstamp(std::min(visitor_xc->sstamp.load(), vcstamp));
+// TODO(tzwang): do early SSN check here
+#endif  // SSI/SSN
 }
 }  // namespace ermia

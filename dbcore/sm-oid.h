@@ -101,14 +101,29 @@ struct OIDAMACState {
   {}
 };
 
-struct sm_oid_mgr {
+class sm_oid_mgr {
+public:
+  friend class sm_chkpt_mgr;
   using log_tx_scan = sm_log_scan_mgr::record_scan;
+
+  /* The object array for each file resides in the OID array for
+     file 0; allocators go in file 1 (including the file allocator,
+     which predictably resides at OID 0). We don't attempt to store
+     the file level object array at entry 0 of itself, though.
+   */
+  static FID const OBJARRAY_FID = 0;
+  static FID const ALLOCATOR_FID = 1;
 
   /* Metadata for any allocated file can be stored in this file at
      the OID that matches its FID.
    */
   static FID const METADATA_FID = 2;
 
+private:
+  static FID const FIRST_FREE_FID = 3;
+  static size_t const MUTEX_COUNT = 256;
+
+public:
   /* Create a new OID manager.
 
      NOTE: the scan must be positioned at the first record of the
@@ -139,7 +154,7 @@ struct sm_oid_mgr {
      returns, but will only be reachable if the checkpoint
      transaction commits and its location is properly recorded.
    */
-  void PrimaryTakeChkpt();
+  void Checkpoint();
 
   /* Create a new file and return its FID. If [needs_alloc]=true,
      the new file will be managed by an allocator and its FID can be
@@ -184,44 +199,55 @@ struct sm_oid_mgr {
   /* Retrieve the raw contents of the specified OID. The returned
      fat_ptr may reference memory or disk.
    */
-  fat_ptr oid_get(FID f, OID o);
-  fat_ptr *oid_get_ptr(FID f, OID o);
+  fat_ptr oid_get(FID f, OID o) { return *oid_access(f, o); }
+  fat_ptr *oid_get_ptr(FID f, OID o) { return oid_access(f, o); }
+  inline fat_ptr oid_get(oid_array *oa, OID o) { return *oa->get(o); }
+  inline fat_ptr *oid_get_ptr(oid_array *oa, OID o) { return oa->get(o); }
 
   /* Update the contents of the specified OID. The fat_ptr may
      reference memory or disk (or be NULL).
    */
-  void oid_put(FID f, OID o, fat_ptr p);
-  void oid_put_new(FID f, OID o, fat_ptr p);
-  void oid_put_new_if_absent(FID f, OID o, fat_ptr p);
+  void oid_put(FID f, OID o, fat_ptr p) { *oid_access(f, o) = p; }
+  inline void oid_put(oid_array *oa, OID o, fat_ptr p) {
+    auto *ptr = oa->get(o);
+    *ptr = p;
+  }
+  void oid_put_new(FID f, OID o, fat_ptr p) {
+    auto *entry = oid_access(f, o);
+    ALWAYS_ASSERT(*entry == NULL_PTR);
+    *entry = p;
+  }
+  inline void oid_put_new(oid_array *oa, OID o, fat_ptr p) {
+    auto *entry = oa->get(o);
+    ASSERT(*entry == NULL_PTR);
+    *entry = p;
+  }
+  void oid_put_new_if_absent(FID f, OID o, fat_ptr p) {
+    auto *entry = oid_access(f, o);
+    if (*entry == NULL_PTR) {
+      *entry = p;
+    }
+  }
 
   /* Return a fat_ptr to the overwritten object (could be an in-flight version!)
    */
-  fat_ptr PrimaryTupleUpdate(FID f, OID o, const varstr *value,
-                             TXN::xid_context *updater_xc, fat_ptr *new_obj_ptr);
-  fat_ptr PrimaryTupleUpdate(oid_array *oa, OID o, const varstr *value,
-                             TXN::xid_context *updater_xc, fat_ptr *new_obj_ptr);
+  fat_ptr UpdateTuple(oid_array *oa, OID o, const varstr *value,
+                      TXN::xid_context *updater_xc, fat_ptr *new_obj_ptr);
+  inline fat_ptr UpdateTuple(FID f, OID o, const varstr *value,
+                             TXN::xid_context *updater_xc, fat_ptr *new_obj_ptr) {
+    return UpdateTuple(get_array(f), o, value, updater_xc, new_obj_ptr);
+  }
 
-  dbtuple *oid_get_latest_version(FID f, OID o);
-
-  PROMISE(dbtuple *) oid_get_version(FID f, OID o, TXN::xid_context *visitor_xc);
+  PROMISE(dbtuple *) oid_get_version(FID f, OID o, TXN::xid_context *visitor_xc) {
+    ASSERT(f);
+    return oid_get_version(get_array(f), o, visitor_xc);
+  }
   PROMISE(dbtuple *) oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc);
   dbtuple *oid_get_s2pl(oid_array *oa, OID o, TXN::xid_context *visitor_xc, bool for_write, rc_t &out_rc);
-
-  void oid_get_version_backup(fat_ptr &ptr,
-                              fat_ptr &tentative_next,
-                              Object *prev_obj,
-                              Object *&cur_obj,
-                              TXN::xid_context *visitor_xc);
 
   void oid_get_version_amac(oid_array *oa,
                             std::vector<OIDAMACState> &requests,
                             TXN::xid_context *visitor_xc);
-
-  /* Return the latest visible version, for backups only. Check first the pedest
-   * array and install new Objects on the tuple array if needed.
-   */
-  dbtuple *BackupGetVersion(oid_array *ta, oid_array *pa, OID o,
-                            TXN::xid_context *xc);
 
   /* Helper function for oid_get_version to test visibility. Returns true if the
    * version ([object]) is visible to the given transaction ([xc]). Sets [retry]
@@ -229,50 +255,7 @@ struct sm_oid_mgr {
    */
   bool TestVisibility(Object *object, TXN::xid_context *xc, bool &retry);
 
-  inline void oid_check_phantom(TXN::xid_context *visitor_xc, uint64_t vcstamp) {
-#if !defined(SSI) && !defined(SSN)
-    MARK_REFERENCED(visitor_xc);
-    MARK_REFERENCED(vcstamp);
-#endif
-    if (!config::phantom_prot) {
-      return;
-    }
-/*
- * tzwang (May 05, 2016): Preventing phantom:
- * Consider an example:
- *
- * Assume the database has tuples B (key=1) and C (key=2).
- *
- * Time      T1             T2
- * 1        ...           Read B
- * 2        ...           Insert A
- * 3        ...           Commit
- * 4       Scan key > 1
- * 5       Update B
- * 6       Commit (?)
- *
- * At time 6 T1 should abort, but checking index version changes
- * wouldn't make T1 abort, since its scan happened after T2's
- * commit and yet its begin timestamp is before T2 - T1 wouldn't
- * see A (oid_get_version will skip it even it saw it from the tree)
- * but the scanning wouldn't record a version change in tree structure
- * either (T2 already finished all SMOs).
- *
- * Under SSN/SSI, this essentially requires we update the corresponding
- * stamps upon hitting an invisible version, treating it like some
- * successor updated our read set. For SSI, this translates to updating
- * ct3; for SSN, update the visitor's sstamp.
- */
-#ifdef SSI
-    auto vct3 = volatile_read(visitor_xc->ct3);
-    if (not vct3 or vct3 > vcstamp) {
-      volatile_write(visitor_xc->ct3, vcstamp);
-    }
-#elif defined SSN
-    visitor_xc->set_sstamp(std::min(visitor_xc->sstamp.load(), vcstamp));
-// TODO(tzwang): do early SSN check here
-#endif  // SSI/SSN
-  }
+  void oid_check_phantom(TXN::xid_context *visitor_xc, uint64_t vcstamp);
 
   inline Object *oid_get_latest_object(oid_array *oa, OID o) {
     auto head_offset = oa->get(o)->offset();
@@ -288,14 +271,18 @@ struct sm_oid_mgr {
     return NULL;
   }
 
-  inline void PrimaryTupleUnlink(oid_array *oa, OID o) {
+  inline dbtuple *oid_get_latest_version(FID f, OID o) {
+    return oid_get_latest_version(get_array(f), o);
+  }
+
+  inline void UnlinkTuple(oid_array *oa, OID o) {
     // Now the head is guaranteed to be the only dirty version
     // because we unlink the overwritten dirty version in put,
     // essentially this function ditches the head directly.
     // Otherwise use the commented out old code.
-    PrimaryTupleUnlink(oa->get(o));
+    UnlinkTuple(oa->get(o));
   }
-  inline void PrimaryTupleUnlink(fat_ptr *ptr) {
+  inline void UnlinkTuple(fat_ptr *ptr) {
     Object *head_obj = (Object *)ptr->offset();
     // using a CAS is overkill: head is guaranteed to be the (only) dirty
     // version
@@ -304,43 +291,16 @@ struct sm_oid_mgr {
     // tzwang: The caller is responsible for deallocate() the head version
     // got unlinked - a update of own write will record the unlinked version
     // in the transaction's write-set, during abortor commit the version's
-    // pvalue needs to be examined. So PrimaryTupleUnlink() shouldn't
+    // pvalue needs to be examined. So UnlinkTuple() shouldn't
     // deallocate()
     // here. Instead, the transaction does it in during commit or abort.
   }
-
-  inline void oid_put_new(oid_array *oa, OID o, fat_ptr p) {
-    auto *entry = oa->get(o);
-    ASSERT(*entry == NULL_PTR);
-    *entry = p;
-  }
-
-  inline void oid_put(oid_array *oa, OID o, fat_ptr p) {
-    auto *ptr = oa->get(o);
-    *ptr = p;
-  }
-
-  inline fat_ptr oid_get(oid_array *oa, OID o) { return *oa->get(o); }
-  inline fat_ptr *oid_get_ptr(oid_array *oa, OID o) { return oa->get(o); }
 
   void recreate_file(FID f);              // for recovery only
   void recreate_allocator(FID f, OID m);  // for recovery only
 
   static void warm_up();
   void start_warm_up();
-
-  int dfd;  // dir for storing OID chkpt data file
-
-  /* The object array for each file resides in the OID array for
-     file 0; allocators go in file 1 (including the file allocator,
-     which predictably resides at OID 0). We don't attempt to store
-     the file level object array at entry 0 of itself, though.
-   */
-  static FID const OBJARRAY_FID = 0;
-  static FID const ALLOCATOR_FID = 1;
-  static FID const FIRST_FREE_FID = 3;
-
-  static size_t const MUTEX_COUNT = 256;
 
   sm_allocator *get_allocator(FID f) {
     // TODO: allow allocators to be paged out
@@ -359,6 +319,9 @@ struct sm_oid_mgr {
   inline fat_ptr *oid_access(FID f, OID o) { return get_array(f)->get(o); }
   inline bool file_exists(FID f) { return files->get(f)->offset(); }
 
+private:
+  int dfd;  // dir for storing OID chkpt data file
+
   /* And here they all are! */
   oid_array *files;
 
@@ -368,6 +331,7 @@ struct sm_oid_mgr {
    */
   os_mutex mutexen[MUTEX_COUNT];
 
+public:
   sm_oid_mgr();
   ~sm_oid_mgr();
 };
