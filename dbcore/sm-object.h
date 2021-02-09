@@ -93,8 +93,7 @@ class Object {
     return (dbtuple*)GetPayload();
   }
   fat_ptr GenerateClsnPtr(uint64_t clsn);
-  void Pin(
-      bool load_from_logbuf = false);  // Make sure the payload is in memory
+  void Pin();  // Make sure the payload is in memory
 
   static inline void PrefetchHeader(Object *p) {
     uint32_t i = 0;

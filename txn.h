@@ -71,9 +71,6 @@ public:
 
     TXN_FLAG_READ_MOSTLY = 0x3,
 
-    // A redo transaction running on a backup server using command logging.
-    TXN_FLAG_CMD_REDO = 0x4,
-
     // A context-switch transaction doesn't enter/exit thread during construct/destruct.
     TXN_FLAG_CSWITCH = 0x8,
   };

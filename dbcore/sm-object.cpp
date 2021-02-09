@@ -11,7 +11,7 @@ namespace ermia {
 // ptr should point to some position in the log and its size_code should refer
 // to only data size (i.e., the size of the payload of dbtuple rounded up).
 // Returns a fat_ptr to the object created
-void Object::Pin(bool load_from_logbuf) {
+void Object::Pin() {
   uint32_t status = volatile_read(status_);
   if (status != kStatusStorage) {
     if (status == kStatusLoading) {
@@ -52,17 +52,8 @@ void Object::Pin(bool load_from_logbuf) {
   size_t data_sz = decode_size_aligned(pdest_.size_code());
   if (where == fat_ptr::ASI_LOG) {
     ASSERT(logmgr);
-    // Not safe to dig out from the log buffer as it might be receiving a
-    // new batch from the primary, unless we have NVRAM as log buffer.
-    // XXX(tzwang): for now we can't flush - need coordinate with backup daemon
+    logmgr->load_object((char *)tuple->get_value_start(), data_sz, pdest_);
 
-    // Load tuple varstr from the log
-    if (load_from_logbuf) {
-      logmgr->load_object_from_logbuf((char *)tuple->get_value_start(), data_sz,
-                                      pdest_);
-    } else {
-      logmgr->load_object((char *)tuple->get_value_start(), data_sz, pdest_);
-    }
     // Strip out the varstr stuff
     tuple->size = ((varstr *)tuple->get_value_start())->size();
     // Fill in the overwritten version's pdest if needed

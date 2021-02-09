@@ -12,9 +12,7 @@ namespace ermia {
 sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
     : sm_log_offset_mgr(),
       scanner(new sm_log_scan_mgr_impl{this}),
-      backup_replayer(nullptr),
       recover_functor(rf),
-      backup_replay_functor(nullptr),
       recover_functor_arg(rf_arg) {
   LSN dlsn = get_durable_mark();
   bool changed = false;
@@ -51,14 +49,6 @@ void sm_log_recover_mgr::recover() {
 
 void sm_log_recover_mgr::redo_log(LSN start_lsn, LSN end_lsn) {
   (*recover_functor)(recover_functor_arg, scanner, start_lsn, end_lsn);
-}
-
-LSN sm_log_recover_mgr::backup_redo_log_by_oid(LSN start_lsn, LSN end_lsn) {
-  return (*backup_replay_functor)(recover_functor_arg, backup_replayer, start_lsn, end_lsn);
-}
-
-void sm_log_recover_mgr::start_logbuf_redoers() {
-  (*backup_replay_functor)(recover_functor_arg, backup_replayer, INVALID_LSN, INVALID_LSN);
 }
 
 sm_log_recover_mgr::~sm_log_recover_mgr() { delete scanner; }
@@ -110,31 +100,12 @@ void sm_log_recover_mgr::block_scanner::_load_block(LSN x,
     if (sid->segnum % NUM_LOG_SEGMENTS != segnum % NUM_LOG_SEGMENTS) return;
   }
 
-  bool read_from_logbuf = false;
-  read_from_logbuf = logmgr && x.offset() > logmgr->durable_flushed_lsn_offset();
-
   // helper function... pread may not read everything in one call
   auto pread = [&](size_t nbytes, uint64_t i) -> size_t {
     uint64_t offset = sid->offset(x);
-    // See if it's stepping into the log buffer
-    if (read_from_logbuf) {
-      // we should be scanning and replaying the log at a backup node
-      auto *logbuf = logmgr->get_logbuf();
-      // the caller should have called advance_writer(end_lsn) already
-      if (logbuf->read_end() <= sid->buf_offset(x)) {
-        return 0;
-      }
-      nbytes = std::min(nbytes, logbuf->read_end() - sid->buf_offset(x));
-      ALWAYS_ASSERT(nbytes);
-      _cur_block = (log_block *)logbuf->read_buf(sid->buf_offset(x), nbytes);
-      return nbytes;
-    } else {
-      // otherwise we're recovering from disk, assuming the possibly NVRAM
-      // backed logbuf is already flushed, ie durable_flushed_lsn ==
-      // durable_lsn.
-      _cur_block = _buf;
-      return i + os_pread(sid->fd, ((char *)_buf) + i, nbytes - i, offset + i);
-    }
+    // Recovering from disk, durable_flushed_lsn == durable_lsn.
+    _cur_block = _buf;
+    return i + os_pread(sid->fd, ((char *)_buf) + i, nbytes - i, offset + i);
   };
 
   /* Fetch log header */
@@ -174,7 +145,7 @@ void sm_log_recover_mgr::block_scanner::_load_block(LSN x,
     }
   }
 
-  if (!read_from_logbuf && _fetch_payloads) {
+  if (_fetch_payloads) {
     uint64_t bsize = (char *)_cur_block->payload_end() - (char *)_cur_block;
     if (bsize > MAX_BLOCK_SIZE) return;  // corrupt ==> truncate
 
@@ -215,40 +186,6 @@ void sm_log_recover_mgr::log_scanner::_find_record() {
       break;
     }
   }
-}
-
-void sm_log_recover_mgr::load_object_from_logbuf(char *buf, size_t bufsz,
-                                                 fat_ptr ptr, int align_bits) {
-  THROW_IF(ptr.asi_type() != fat_ptr::ASI_LOG, illegal_argument,
-           "Source object not stored in the log");
-  size_t nbytes = decode_size_aligned(ptr.size_code(), align_bits);
-  THROW_IF(bufsz < nbytes, illegal_argument,
-           "Source object too large for buffer (%zd needed, %zd available)",
-           nbytes, bufsz);
-
-  auto segnum = ptr.log_segment();
-  ASSERT(segnum >= 0);
-
-  auto *sid = get_segment(segnum);
-  ASSERT(sid);
-  ASSERT(ptr.offset() >= sid->start_offset);
-
-  auto *logbuf = logmgr->get_logbuf();
-  size_t read_end = logbuf->read_end();
-  size_t read_begin = logbuf->read_begin();
-  uint64_t offset = sid->buf_offset(LSN::from_ptr(ptr));
-  if (read_begin <= offset && read_end > offset + nbytes) {
-    memcpy(buf, logbuf->_get_ptr(offset), nbytes);
-    // Verify to make sure we didn't read garbage
-    read_end = logbuf->read_end();
-    read_begin = logbuf->read_begin();
-    if (read_begin <= offset && read_end > offset + nbytes) {
-      return;
-    }
-  }
-  while (ptr.offset() + nbytes > logmgr->durable_flushed_lsn().offset()) {
-  }
-  load_object(buf, bufsz, ptr, align_bits);
 }
 
 void sm_log_recover_mgr::load_object(char *buf, size_t bufsz, fat_ptr ptr,

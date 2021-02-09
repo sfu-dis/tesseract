@@ -60,7 +60,6 @@ extern uint32_t group_commit_queue_length;  // how much to reserve
 extern uint64_t group_commit_size_kb;
 extern uint64_t group_commit_bytes;
 
-// Backup-specific settings
 extern uint32_t benchmark_seconds;
 
 // CoroBase-specific settings

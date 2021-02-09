@@ -154,8 +154,6 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
    */
   void load_object(char *buf, size_t bufsz, fat_ptr ptr,
                    int align_bits = DEFAULT_ALIGNMENT_BITS);
-  void load_object_from_logbuf(char *buf, size_t bufsz, fat_ptr ptr,
-                               int align_bits = DEFAULT_ALIGNMENT_BITS);
 
   /* A convenience method that can be used instead of load_object
      when the object to be loaded is an ext_ptr payload.
@@ -167,19 +165,11 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
   ~sm_log_recover_mgr();
 
   sm_log_scan_mgr *scanner;
-  sm_log_scan_mgr *backup_replayer;  // Dedicated for backup to redo
   sm_log_recover_impl *recover_functor;
-  sm_log_recover_impl *backup_replay_functor;
   void *recover_functor_arg;
 
   void redo_log(LSN start_lsn, LSN end_lsn);
-  LSN backup_redo_log_by_oid(LSN start_lsn, LSN end_lsn);
-  // For log shipping only
-  void start_logbuf_redoers();
   void recover();
-  sm_log_recover_impl *get_backup_replay_functor() {
-    return backup_replay_functor;
-  }
 };
 
 }  // namespace ermia

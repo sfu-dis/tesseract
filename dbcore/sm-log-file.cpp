@@ -441,8 +441,6 @@ void sm_log_file_mgr::_create_nxt_seg_file(bool force) {
       ASSERT(segnum == sid->segnum + 1);
       segments[sid->segnum] = sid;
 
-      // The backup will create the real file after it got the
-      // correct begin_offset value.
       nxt_seg_file_name oldname(sid->segnum);
       segment_file_name newname(sid);
       os_renameat(dfd, oldname, dfd, newname);
@@ -569,8 +567,6 @@ bool sm_log_file_mgr::create_segment(segment_id *sid) {
     if (nsid == psid) {
       success = true;
       ALWAYS_ASSERT(!segments[sid->segnum % NUM_LOG_SEGMENTS]);
-      // Put the segment in the array - basically just for backup to continously
-      // redo logs received which could generate new segments.
       volatile_write(segments[sid->segnum % NUM_LOG_SEGMENTS], sid);
       DLOG(INFO) << "Created segment " << sid->segnum << " fd=" << sid->fd
                  << " " << sid->start_offset;

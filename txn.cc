@@ -1259,8 +1259,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
 
     // The varstr also encodes the pdest of the overwritten version.
     // FIXME(tzwang): the pdest of the overwritten version doesn't belong to
-    // varstr. Embedding it in varstr makes it part of the payload and is
-    // helpful for digging out versions on backups. Not used by the primary.
+    // varstr.
     bool is_delete = !v;
     if (!v) {
       // Get an empty varstr just to store the overwritten tuple's

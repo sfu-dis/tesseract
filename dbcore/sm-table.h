@@ -52,8 +52,7 @@ class TableDescriptor {
   FID tuple_fid;
   oid_array* tuple_array;
 
-  // An auxiliary array: on primary this is the key array, on
-  // backups this is the persistent address array.
+  // An auxiliary array: on primary this is the key array
   FID aux_fid_;
   oid_array* aux_array_;
 

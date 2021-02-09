@@ -33,22 +33,10 @@ uint64_t sm_log::get_tls_lsn_offset() {
   return _lm.get_tls_lsn_offset();
 }
 
-sm_log_recover_impl *sm_log::get_backup_replay_functor() {
-  return _lm._lm.get_backup_replay_functor();
-}
-
 window_buffer *sm_log::get_logbuf() { return sm_log::logbuf; }
 
 void sm_log::redo_log(LSN start_lsn, LSN end_lsn) {
   _lm._lm.redo_log(start_lsn, end_lsn);
-}
-
-LSN sm_log::backup_redo_log_by_oid(LSN start_lsn, LSN end_lsn) {
-  return _lm._lm.backup_redo_log_by_oid(start_lsn, end_lsn);
-}
-
-void sm_log::start_logbuf_redoers() {
-  _lm._lm.start_logbuf_redoers();
 }
 
 void sm_log::recover() { _lm._lm.recover(); }
@@ -72,11 +60,6 @@ void sm_log::update_chkpt_mark(LSN cstart, LSN cend) {
 void sm_log::load_object(char *buf, size_t bufsz, fat_ptr ptr,
                          size_t align_bits) {
   _lm._lm.load_object(buf, bufsz, ptr, align_bits);
-}
-
-void sm_log::load_object_from_logbuf(char *buf, size_t bufsz, fat_ptr ptr,
-                                     size_t align_bits) {
-  _lm._lm.load_object_from_logbuf(buf, bufsz, ptr, align_bits);
 }
 
 fat_ptr sm_log::load_ext_pointer(fat_ptr ptr) {

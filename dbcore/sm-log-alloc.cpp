@@ -180,8 +180,8 @@ LSN sm_log_alloc_mgr::flush() {
   return _lm.get_durable_mark();
 }
 
-// Wait for persistence ack from backups (if required) and dequeue transactions
-// pending persistence. Called only after successfully persisting the log.
+// Dequeue transactions pending persistence. 
+// Called only after successfully persisting the log.
 void sm_log_alloc_mgr::CommitPersistedWork(uint64_t new_offset) {
   if (config::group_commit) {
     util::timer t;

@@ -826,8 +826,6 @@ start_over:
     // pointing to some irrelevant object in the allocator's memory pool,
     // hence must start over from the beginning of the version chain.
     fat_ptr tentative_next = NULL_PTR;
-    // If this is a backup server, then must see persistent_next to find out
-    // the **real** overwritten version.
     ASSERT(ptr.asi_type() == 0);
     cur_obj = (Object *)ptr.offset();
     ::prefetch((const char*)cur_obj);
@@ -860,7 +858,6 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
 
   ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_LOG);
   if (asi_type == fat_ptr::ASI_XID) {  // in-flight
-    // Backups don't write unless for command logging
 
     XID holder_xid = XID::from_ptr(clsn);
     // Dirty data made by me is visible!

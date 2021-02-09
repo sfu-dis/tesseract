@@ -72,7 +72,7 @@ process:
     }
   }
 
-  // Reset redoer states for backup servers to reuse
+  // Reset redoer states for reuse
   for (auto &r : redoers) {
     r.done = false;
   }
@@ -100,12 +100,6 @@ void parallel_oid_replay::redo_runner::redo_partition() {
   replayed_lsn = INVALID_LSN;
 
   for (; scan->valid() and scan->payload_lsn().offset() + scan->payload_size() <= owner->end_lsn.offset(); scan->next()) {
-    // During replay on backups we might encounter incomplete log blocks,
-    // because the primary might just ship X bytes without considering
-    // log block boundaries. So here we remember the log block's starting
-    // LSN and return it to the caller, so it will know where to continue
-    // for the next batch of replay (ie starting from the last incomplete
-    // log block).
     replayed_lsn = scan->block_lsn();
 
     auto oid = scan->oid();

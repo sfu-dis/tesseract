@@ -275,8 +275,6 @@ start_over:
       // pointing to some irrelevant object in the allocator's memory pool,
       // hence must start over from the beginning of the version chain.
       fat_ptr tentative_next = NULL_PTR;
-      // If this is a backup server, then must see persistent_next to find out
-      // the **real** overwritten version.
       ASSERT(ptr.asi_type() == 0);
       cur_obj = (Object *)ptr.offset();
       Object::PrefetchHeader(cur_obj);
@@ -478,8 +476,6 @@ start_over:
       // pointing to some irrelevant object in the allocator's memory pool,
       // hence must start over from the beginning of the version chain.
       fat_ptr tentative_next = NULL_PTR;
-      // If this is a backup server, then must see persistent_next to find out
-      // the **real** overwritten version.
       ASSERT(ptr.asi_type() == 0);
       cur_obj = (Object *)ptr.offset();
       //Object::PrefetchHeader(cur_obj);
@@ -837,8 +833,7 @@ forward:
 
       // The varstr also encodes the pdest of the overwritten version.
       // FIXME(tzwang): the pdest of the overwritten version doesn't belong to
-      // varstr. Embedding it in varstr makes it part of the payload and is
-      // helpful for digging out versions on backups. Not used by the primary.
+      // varstr. 
       value.ptr = prev_persistent_ptr;
       ASSERT(is_delete || (value.ptr.offset() && value.ptr.asi_type() == fat_ptr::ASI_LOG));
 
@@ -1409,8 +1404,6 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
         while (ptr.offset()) {
           Object *cur_obj = nullptr;
           fat_ptr tentative_next = NULL_PTR;
-          // If this is a backup server, then must see persistent_next to find out
-          // the **real** overwritten version.
           ASSERT(ptr.asi_type() == 0);
           cur_obj = (Object *)ptr.offset();
           Object::PrefetchHeader(cur_obj);

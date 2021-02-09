@@ -25,7 +25,6 @@ Engine::Engine() {
     chkptmgr = new sm_chkpt_mgr(chkpt_lsn);
   }
 
-  // The backup will want to recover in another thread
   if (sm_log::need_recovery) {
     logmgr->recover();
   }

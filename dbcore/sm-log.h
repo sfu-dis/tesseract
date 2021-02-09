@@ -417,8 +417,6 @@ struct sm_log {
    */
   void load_object(char *buf, size_t bufsz, fat_ptr ptr,
                    size_t align_bits = DEFAULT_ALIGNMENT_BITS);
-  void load_object_from_logbuf(char *buf, size_t bufsz, fat_ptr ptr,
-                               size_t align_bits = DEFAULT_ALIGNMENT_BITS);
 
   /* Retrieve the address of an externalized log record payload.
 
@@ -430,15 +428,12 @@ struct sm_log {
   LSN get_chkpt_start();
   static window_buffer *get_logbuf();
   segment_id *assign_segment(uint64_t lsn_begin, uint64_t lsn_end);
-  void BackupFlushLog(uint64_t new_dlsn_offset);
   segment_id *get_segment(uint32_t segnum);
   void redo_log(LSN start_lsn, LSN end_lsn);
-  LSN backup_redo_log_by_oid(LSN start_lsn, LSN end_lsn);
   void start_logbuf_redoers();
   void recover();
   void enqueue_committed_xct(uint32_t worker_id, uint64_t start_time);
   uint64_t durable_flushed_lsn_offset();
-  sm_log_recover_impl *get_backup_replay_functor();
   int open_segment_for_read(segment_id *sid);
   void dequeue_committed_xcts(uint64_t upto, uint64_t end_time);
 
