@@ -1,4 +1,5 @@
 #include <string>
+#include "sm-tx-log.h"
 #include "sm-log.h"
 
 namespace ermia {
