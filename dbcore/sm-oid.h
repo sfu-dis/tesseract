@@ -323,22 +323,53 @@ struct sm_oid_mgr {
   inline fat_ptr oid_get(oid_array *oa, OID o) { return *oa->get(o); }
   inline fat_ptr *oid_get_ptr(oid_array *oa, OID o) { return oa->get(o); }
 
-  bool file_exists(FID f);
   void recreate_file(FID f);              // for recovery only
   void recreate_allocator(FID f, OID m);  // for recovery only
-  oid_array *get_array(FID f);
-  sm_allocator *get_allocator(FID f);
 
   static void warm_up();
   void start_warm_up();
 
   int dfd;  // dir for storing OID chkpt data file
 
-  virtual ~sm_oid_mgr() {}
+  /* The object array for each file resides in the OID array for
+     file 0; allocators go in file 1 (including the file allocator,
+     which predictably resides at OID 0). We don't attempt to store
+     the file level object array at entry 0 of itself, though.
+   */
+  static FID const OBJARRAY_FID = 0;
+  static FID const ALLOCATOR_FID = 1;
+  static FID const FIRST_FREE_FID = 3;
 
- protected:
-  // Forbid direct instantiation
-  sm_oid_mgr() {}
+  static size_t const MUTEX_COUNT = 256;
+
+  sm_allocator *get_allocator(FID f) {
+    // TODO: allow allocators to be paged out
+    sm_allocator *alloc = oid_get(ALLOCATOR_FID, f);
+    THROW_IF(not alloc, illegal_argument, "No allocator for FID %d", f);
+    return alloc;
+  }
+  inline oid_array *get_array(FID f) {
+    // TODO: allow allocators to be paged out
+    oid_array *oa = (oid_array *)files->get(f)->offset();
+    THROW_IF(not oa, illegal_argument, "No such file: %d", f);
+    return oa;
+  }
+  inline void lock_file(FID f) { mutexen[f % MUTEX_COUNT].lock(); }
+  inline void unlock_file(FID f) { mutexen[f % MUTEX_COUNT].unlock(); }
+  inline fat_ptr *oid_access(FID f, OID o) { return get_array(f)->get(o); }
+  inline bool file_exists(FID f) { return files->get(f)->offset(); }
+
+  /* And here they all are! */
+  oid_array *files;
+
+  /* Plus some mutexen to protect them. We don't need one per
+     allocator, but we do want enough that false sharing is
+     unlikely.
+   */
+  os_mutex mutexen[MUTEX_COUNT];
+
+  sm_oid_mgr();
+  ~sm_oid_mgr();
 };
 
 extern sm_oid_mgr *oidmgr;

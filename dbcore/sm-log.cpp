@@ -1,8 +1,7 @@
+#include <cstring>
 #include "sm-log-offset.h"
 #include "sm-oid.h"
-#include "sm-oid-impl.h"
 #include "sm-thread.h"
-#include <cstring>
 
 namespace ermia {
 

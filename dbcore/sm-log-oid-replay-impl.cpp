@@ -3,7 +3,6 @@
 #include "sm-table.h"
 #include "sm-log-recover-impl.h"
 #include "sm-oid.h"
-#include "sm-oid-impl.h"
 #include "sm-oid-alloc.h"
 
 namespace ermia {
@@ -43,9 +42,9 @@ LSN parallel_oid_replay::operator()(void *arg, sm_log_scan_mgr *s,
   }
 
   // Fix internal files' marks
-  oidmgr->recreate_allocator(sm_oid_mgr_impl::OBJARRAY_FID, max_fid);
-  oidmgr->recreate_allocator(sm_oid_mgr_impl::ALLOCATOR_FID, max_fid);
-  // oidmgr->recreate_allocator(sm_oid_mgr_impl::METADATA_FID, max_fid);
+  oidmgr->recreate_allocator(sm_oid_mgr::OBJARRAY_FID, max_fid);
+  oidmgr->recreate_allocator(sm_oid_mgr::ALLOCATOR_FID, max_fid);
+  // oidmgr->recreate_allocator(sm_oid_mgr::METADATA_FID, max_fid);
 
   uint32_t done = 0;
   LSN replayed_lsn = INVALID_LSN;

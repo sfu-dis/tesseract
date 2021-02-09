@@ -15,7 +15,6 @@
 #include "sm-table.h"
 #include "sm-log-recover-impl.h"
 #include "sm-object.h"
-#include "sm-oid-impl.h"
 
 namespace ermia {
 
@@ -69,7 +68,7 @@ thread_local thread_data *tls = nullptr;
 
 /* Used to make sure threads give back their caches on exit */
 os_mutex_pod oid_mutex = os_mutex_pod::static_init();
-sm_oid_mgr_impl *master;
+sm_oid_mgr *master;
 std::map<pthread_t, thread_data *> *threads;
 pthread_key_t pthread_key;
 
@@ -80,7 +79,7 @@ pthread_key_t pthread_key;
    before the allocator bucket mutexes, while a checkpoint thread
    would tend to do the opposite.
  */
-void thread_revoke_caches(sm_oid_mgr_impl *om) {
+void thread_revoke_caches(sm_oid_mgr *om) {
   for (auto it = tls->caches.begin(); it != tls->caches.end(); ++it) {
     om->lock_file(it->f);
     DEFER(om->unlock_file(it->f));
@@ -94,7 +93,7 @@ void thread_revoke_caches(sm_oid_mgr_impl *om) {
   tls->caches.clear();
 }
 
-void thread_fini(sm_oid_mgr_impl *om) {
+void thread_fini(sm_oid_mgr *om) {
   auto tid = pthread_self();
   thread_revoke_caches(om);
 
@@ -124,7 +123,7 @@ void thread_init() {
 /* Find (or create, if necessary) the thread-local cache for the
    requested FID
  */
-thread_data::cache_map::iterator thread_cache(sm_oid_mgr_impl *om, FID f) {
+thread_data::cache_map::iterator thread_cache(sm_oid_mgr *om, FID f) {
   if (not tls) thread_init();
 
   /* Attempt to insert [f] into the cache. If present, return the
@@ -146,7 +145,7 @@ thread_data::cache_map::iterator thread_cache(sm_oid_mgr_impl *om, FID f) {
   return rval.first;
 }
 
-OID thread_allocate(sm_oid_mgr_impl *om, FID f) {
+OID thread_allocate(sm_oid_mgr *om, FID f) {
   // correct cache entry definitely exists now... but may be empty
   auto it = thread_cache(om, f);
   ASSERT(it->f == f);
@@ -166,7 +165,7 @@ OID thread_allocate(sm_oid_mgr_impl *om, FID f) {
   return it->entries[--it->nentries];
 }
 
-void thread_free(sm_oid_mgr_impl *om, FID f, OID o) {
+void thread_free(sm_oid_mgr *om, FID f, OID o) {
   // cache entry exists, but may be full
   auto it = thread_cache(om, f);
   if (not it->space_remaining()) {
@@ -200,7 +199,7 @@ void oid_array::ensure_size(size_t n) {
   _backing_store.ensure_size(OFFSETOF(oid_array, _entries[n]));
 }
 
-sm_oid_mgr_impl::sm_oid_mgr_impl() {
+sm_oid_mgr::sm_oid_mgr() {
   /* Bootstrap the OBJARRAY, which contains everything (including
      itself). Then seed it with OID arrays for allocators and
      metadata
@@ -230,7 +229,7 @@ sm_oid_mgr_impl::sm_oid_mgr_impl() {
   DIE_IF(master, "Multiple OID managers found.");
   if (not threads) {
     auto fini = [](void *arg) -> void {
-      auto *om = (sm_oid_mgr_impl *)arg;
+      auto *om = (sm_oid_mgr *)arg;
       if (om == master) thread_fini(om);
     };
 
@@ -242,7 +241,7 @@ sm_oid_mgr_impl::sm_oid_mgr_impl() {
   master = this;
 }
 
-sm_oid_mgr_impl::~sm_oid_mgr_impl() {
+sm_oid_mgr::~sm_oid_mgr() {
   oid_mutex.lock();
   DEFER(oid_mutex.unlock());
 
@@ -261,7 +260,7 @@ sm_oid_mgr_impl::~sm_oid_mgr_impl() {
   }
 }
 
-FID sm_oid_mgr_impl::create_file(bool needs_alloc) {
+FID sm_oid_mgr::create_file(bool needs_alloc) {
   /* Let the thread-local allocator choose an FID; with that in
      hand, we create the corresponding OID array and allocator.
    */
@@ -285,7 +284,7 @@ FID sm_oid_mgr_impl::create_file(bool needs_alloc) {
  * WARNING: this is for recovery use only; there's no CC for it.
  * Caller has full responsibility.
  */
-void sm_oid_mgr_impl::recreate_file(FID f) {
+void sm_oid_mgr::recreate_file(FID f) {
   if (file_exists(f)) {
     LOG(FATAL) << "File already exists. Is this a secondary index?";
   }
@@ -303,7 +302,7 @@ void sm_oid_mgr_impl::recreate_file(FID f) {
  * WARNING: for recovery only; no CC for it.
  * Caller has full responsibility.
  */
-void sm_oid_mgr_impl::recreate_allocator(FID f, OID m) {
+void sm_oid_mgr::recreate_allocator(FID f, OID m) {
   static std::mutex recreate_lock;
 
   recreate_lock.lock();
@@ -352,7 +351,7 @@ void sm_oid_mgr_impl::recreate_allocator(FID f, OID m) {
   DLOG(INFO) << "[Recovery] recreate allocator " << f << ", himark=" << m;
 }
 
-void sm_oid_mgr_impl::destroy_file(FID f) {
+void sm_oid_mgr::destroy_file(FID f) {
   /* As with most resources, a file should only be reclaimed once it
      has not only been deleted logically, but also become
      unreachable by any in-flight transaction. At that point, only
@@ -397,11 +396,9 @@ void sm_oid_mgr_impl::destroy_file(FID f) {
   thread_free(this, OBJARRAY_FID, f);
 }
 
-oid_array *sm_oid_mgr::get_array(FID f) { return get_impl(this)->get_array(f); }
-
 void sm_oid_mgr::create() {
   // Create an empty oidmgr, with initial internal files
-  oidmgr = new sm_oid_mgr_impl{};
+  oidmgr = new sm_oid_mgr;
   oidmgr->dfd = dirent_iterator(config::log_dir.c_str()).dup();
 }
 
@@ -565,10 +562,6 @@ iterate_index:
 #endif
 }
 
-sm_allocator *sm_oid_mgr::get_allocator(FID f) {
-  return get_impl(this)->get_allocator(f);
-}
-
 void sm_oid_mgr::start_warm_up() {
   std::thread t(sm_oid_mgr::warm_up);
   t.detach();
@@ -595,22 +588,6 @@ void sm_oid_mgr::warm_up() {
     */
 }
 
-FID sm_oid_mgr::create_file(bool needs_alloc) {
-  return get_impl(this)->create_file(needs_alloc);
-}
-
-void sm_oid_mgr::recreate_file(FID f) {
-  return get_impl(this)->recreate_file(f);
-}
-
-void sm_oid_mgr::recreate_allocator(FID f, OID m) {
-  return get_impl(this)->recreate_allocator(f, m);
-}
-
-bool sm_oid_mgr::file_exists(FID f) { return get_impl(this)->file_exists(f); }
-
-void sm_oid_mgr::destroy_file(FID f) { get_impl(this)->destroy_file(f); }
-
 OID sm_oid_mgr::alloc_oid(FID f) {
 /* FIXME (tzwang): OID=0's original intent was to denote
  * NULL, but I'm not sure what it's for currently; probably
@@ -621,7 +598,7 @@ OID sm_oid_mgr::alloc_oid(FID f) {
  * OK for the version chain's OID array to use OID=0.
  */
 alloc:
-  auto o = thread_allocate(get_impl(this), f);
+  auto o = thread_allocate(this, f);
   if (unlikely(o == 0)) goto alloc;
 
   ASSERT(oid_get(f, o) == NULL_PTR);
@@ -629,7 +606,7 @@ alloc:
 }
 
 fat_ptr sm_oid_mgr::free_oid(FID f, OID o) {
-  auto *self = get_impl(this);
+  auto *self = this;
   auto *ptr = self->oid_access(f, o);
   auto rval = *ptr;
   *ptr = NULL_PTR;
@@ -638,15 +615,15 @@ fat_ptr sm_oid_mgr::free_oid(FID f, OID o) {
 }
 
 fat_ptr sm_oid_mgr::oid_get(FID f, OID o) {
-  return *get_impl(this)->oid_access(f, o);
+  return *oid_access(f, o);
 }
 
 fat_ptr *sm_oid_mgr::oid_get_ptr(FID f, OID o) {
-  return get_impl(this)->oid_access(f, o);
+  return oid_access(f, o);
 }
 
 void sm_oid_mgr::oid_put(FID f, OID o, fat_ptr p) {
-  *get_impl(this)->oid_access(f, o) = p;
+  *oid_access(f, o) = p;
 }
 
 void sm_oid_mgr::oid_put_new(FID f, OID o, fat_ptr p) {
