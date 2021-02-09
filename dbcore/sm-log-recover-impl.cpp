@@ -40,7 +40,7 @@ void sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan* logrec,
   OID o = logrec->oid();
   if (config::is_backup_srv()) {
     if (config::full_replay) {
-      oid_array* oa = get_impl(oidmgr)->get_array(f);
+      oid_array* oa = oidmgr->get_array(f);
       oa->ensure_size(o);
       fat_ptr* entry_ptr = oa->get(o);
       if (volatile_read(entry_ptr->_ptr) == 0) {
@@ -56,7 +56,7 @@ void sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan* logrec,
       // Install a fat_ptr in the persistent array directly
       fat_ptr ptr = logrec->payload_ptr();
       FID pf = IndexDescriptor::Get(f)->GetPersistentAddressFid();
-      oid_array* oa = get_impl(oidmgr)->get_array(pf);
+      oid_array* oa = oidmgr->get_array(pf);
       oa->ensure_size(o);
       // Skip if a newer one is already there
       fat_ptr* entry_ptr = oa->get(o);
@@ -67,7 +67,7 @@ void sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan* logrec,
   } else {
     fat_ptr ptr = PrepareObject(logrec);
     ASSERT(oidmgr->file_exists(f));
-    oid_array* oa = get_impl(oidmgr)->get_array(f);
+    oid_array* oa = oidmgr->get_array(f);
     oa->ensure_size(o);
     // The chkpt recovery process might have picked up this tuple already
     if (latest) {
@@ -129,7 +129,7 @@ void sm_log_recover_impl::recover_index_insert(
   size_t len = ((varstr*)payload_buf)->size();
   ASSERT(align_up(len + sizeof(varstr)) == sz);
 
-  oid_array* ka = get_impl(oidmgr)->get_array(logrec->fid());
+  oid_array* ka = oidmgr->get_array(logrec->fid());
   if (!config::is_backup_srv() &&
       volatile_read(*ka->get(logrec->oid())) != NULL_PTR) {
     return;
@@ -193,7 +193,7 @@ void sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan* logrec,
       }
     } else {
       FID pf = IndexDescriptor::Get(f)->GetPersistentAddressFid();
-      oid_array* oa = get_impl(oidmgr)->get_array(pf);
+      oid_array* oa = oidmgr->get_array(pf);
       fat_ptr* entry_ptr = oa->get(o);
       fat_ptr ptr = logrec->payload_ptr();
     retry_backup:

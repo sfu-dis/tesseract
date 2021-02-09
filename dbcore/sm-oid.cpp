@@ -443,7 +443,7 @@ iterate_index:
     size_t len = id->GetName().length();
     FID tuple_fid = id->GetTupleFid();
     FID key_fid = id->GetKeyFid();
-    auto *alloc = get_impl(this)->get_allocator(tuple_fid);
+    auto *alloc = get_allocator(tuple_fid);
     OID himark = alloc->head.hiwater_mark;
 
     // [Name length, name, tuple/key FID, himark]
@@ -466,7 +466,7 @@ iterate_index:
     FID tuple_fid = id->GetTupleFid();
     // Find the high watermark of this file and dump its
     // backing store up to the size of the high watermark
-    auto *alloc = get_impl(this)->get_allocator(tuple_fid);
+    auto *alloc = get_allocator(tuple_fid);
     OID himark = alloc->head.hiwater_mark;
 
     // Write himark
