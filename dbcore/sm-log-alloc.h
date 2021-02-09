@@ -1,10 +1,14 @@
 #pragma once
 
 #include <deque>
-#include "sm-log.h"
+#include "sm-config.h"
 #include "sm-log-recover.h"
+#include "sm-thread.h"
+#include "mcs_lock.h"
 
 namespace ermia {
+
+struct segment_id;
 
 /* The log block allocator.
 
@@ -74,11 +78,9 @@ struct sm_log_alloc_mgr {
 
   void _log_write_daemon();
   void _kick_log_write_daemon();
-  segment_id *PrimaryFlushLog(uint64_t new_dlsn_dlsn,
+  segment_id *FlushLog(uint64_t new_dlsn_dlsn,
                               bool update_dmark = false);
-  void PrimaryShipLog(segment_id *durable_sid, uint64_t nbytes,
-                      bool new_seg, uint64_t new_offset, const char *buf);
-  void PrimaryCommitPersistedWork(uint64_t new_offset);
+  void CommitPersistedWork(uint64_t new_offset);
   uint64_t smallest_tls_lsn_offset();
   void enqueue_committed_xct(uint32_t worker_id, uint64_t start_time);
   void dequeue_committed_xcts(uint64_t up_to, uint64_t end_time);

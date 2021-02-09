@@ -1,10 +1,13 @@
 #pragma once
 
+#include <vector>
 #include "sm-log-offset.h"
 
-#include <vector>
-
 namespace ermia {
+
+struct sm_log_scan_mgr;
+struct sm_log_recover_impl;
+
 /* The log recovery manager.
 
    To avoid confusion and errors, we have to recover the existing log

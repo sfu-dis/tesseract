@@ -59,37 +59,4 @@ struct parallel_oid_replay : public sm_log_recover_impl {
   virtual LSN operator()(void *arg, sm_log_scan_mgr *scanner, LSN from,
                          LSN to);
 };
-
-// A special case that each thread will replay a given range of LSN offsets
-// that are guaranteed to respect log block/transaction boundaries. Used by
-// replay during log shipping.
-struct parallel_offset_replay : public sm_log_recover_impl {
-  struct redo_runner : public thread::Runner {
-    parallel_offset_replay *owner;
-    // The half-open interval
-    LSN start_lsn;
-    LSN end_lsn;
-    uint64_t redo_latency_us;
-    uint64_t redo_size;
-    uint64_t redo_batches;
-
-    redo_runner(parallel_offset_replay *o, LSN start, LSN end)
-        : thread::Runner(), owner(o), start_lsn(start),
-          end_lsn(end), redo_latency_us(0), redo_size(0), redo_batches(0) {}
-    virtual void MyWork(char *);
-    void redo_logbuf_partition();
-    void persist_logbuf_partition();
-  };
-
-  uint32_t nredoers;
-  std::vector<struct redo_runner *> redoers;
-  sm_log_scan_mgr *scanner;
-
-  parallel_offset_replay() : nredoers(config::replay_threads) {
-    LOG(INFO) << "[Backup] " << nredoers << " replay threads";
-  }
-  virtual ~parallel_offset_replay() {}
-  virtual LSN operator()(void *arg, sm_log_scan_mgr *scanner, LSN from,
-                         LSN to);
-};
 }  // namespace ermia

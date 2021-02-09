@@ -1,4 +1,5 @@
 #include "rcu.h"
+#include "sm-log.h"
 #include "sm-log-alloc.h"
 #include "stopwatch.h"
 #include "../util.h"
@@ -181,7 +182,7 @@ LSN sm_log_alloc_mgr::flush() {
 
 // Wait for persistence ack from backups (if required) and dequeue transactions
 // pending persistence. Called only after successfully persisting the log.
-void sm_log_alloc_mgr::PrimaryCommitPersistedWork(uint64_t new_offset) {
+void sm_log_alloc_mgr::CommitPersistedWork(uint64_t new_offset) {
   if (config::group_commit) {
     util::timer t;
     dequeue_committed_xcts(new_offset, t.get_start());
@@ -195,21 +196,8 @@ int sm_log_alloc_mgr::open_segment_for_read(segment_id *sid) {
 /* Figure out the corresponding segments in the logbuf and flush them.
  * The caller should enter/exit_rcu().
  */
-segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
+segment_id *sm_log_alloc_mgr::FlushLog(uint64_t new_dlsn_offset,
                                               bool update_dmark) {
-  /* The primary ships log records at log buffer flush boundaries, and log
-   * flushing respects segment boundaries. Threads trying to carve out a range
-   * of LSN offset also need to respect segment boundaries, boundary-crossing
-   * threads will try again after realizing the current segment isn't enough to
-   * hold the requested range, hence we might have daed zones that don't
-   * correspond to any valid range.
-   *
-   * When shipping log records, we never ship across buffer boundaries or
-   * segments. The backup always receives a chunk of the log guaranteed to
-   * reside in a single segment, but the range might extend into the dead zone.
-   * So we might have a durable LSN in the dead zone on the backup, which is
-   * fine as we skip it during redo.
-   */
   LSN dlsn = _lm.get_durable_mark();
   ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
   ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
@@ -309,11 +297,6 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     durable_byte = new_byte;
 
     if (update_dmark) {
-      // Have to use LSN::make (instead of durable_sid->make_lsn which checks
-      // lsn offset ownership): If we're on a backup server, then this new
-      // durable lsn offset might end up in the deadzone which isn't contained
-      // by any sid, because we ship at log buffer flush boundaries (no info
-      // for the next segment until the next shipping).
       _lm.update_durable_mark(
           LSN::make(_durable_flushed_lsn_offset, durable_sid->segnum));
     }
@@ -502,8 +485,6 @@ grab_buffer:
 void sm_log_alloc_mgr::release(log_allocation *x) {
   // Include the size of our allocation, indicated by next_lsn.
   // Otherwise we might lose committed work.
-  // Only need to do this for the primary server - worker threads on
-  // backups don't do updates
   set_tls_lsn_offset(x->block->next_lsn().offset());
   free(x);
   bool should_kick = config::group_commit ?
@@ -579,11 +560,11 @@ void sm_log_alloc_mgr::_log_write_daemon() {
     uint64_t new_dlsn_offset = min_tls;
     segment_id *durable_sid = nullptr;
     if (new_dlsn_offset > _durable_flushed_lsn_offset) {
-      durable_sid = PrimaryFlushLog(new_dlsn_offset);
+      durable_sid = FlushLog(new_dlsn_offset);
     }
 
     // Dequeue transactions pending persistence (if pipelined group commit is on)
-    PrimaryCommitPersistedWork(new_dlsn_offset);
+    CommitPersistedWork(new_dlsn_offset);
 
     /* Having completed a round of writes, notify waiting threads
        and take care of special cases

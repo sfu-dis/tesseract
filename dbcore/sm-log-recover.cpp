@@ -2,7 +2,6 @@
 #include "sm-chkpt.h"
 #include "sm-log-recover.h"
 #include "sm-log-recover-impl.h"
-#include "sm-log-impl.h"
 #include "sm-oid.h"
 
 #include <cstring>

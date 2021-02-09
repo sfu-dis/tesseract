@@ -5,7 +5,6 @@
 #include <thread>
 #include <mutex>
 #include "sm-common.h"
-#include "sm-log-impl.h"
 #include "sm-oid.h"
 
 #define CHKPT_DATA_FILE_NAME_FMT "oac-%016zx"

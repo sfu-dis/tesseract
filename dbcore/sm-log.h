@@ -13,17 +13,19 @@
 
  */
 #include <unordered_map>
+#include "sm-log-alloc.h"
+#include "sm-log-recover.h"
+
 #include "sm-common.h"
 #include "sm-thread.h"
 #include "window-buffer.h"
-#include "sm-log-defs.h"
 
 namespace ermia {
 class object;
 struct sm_log_file_mgr;
 struct segment_id;
 struct sm_log_recover_impl;
-class sm_log_impl;
+class sm_log;
 struct log_allocation;
 
 /* This is the staging area for log record requests until they
@@ -33,7 +35,7 @@ struct log_allocation;
  */
 class sm_tx_log {
 public:
-  sm_tx_log(sm_log_impl *l)
+  sm_tx_log(sm_log *l)
       : _log(l),
         _nreq(0),
         _payload_bytes(0),
@@ -145,7 +147,7 @@ public:
   void discard();
 
 private:
-  sm_log_impl *_log;
+  sm_log *_log;
   size_t _nreq;  // includes a pending overflow record, if such is needed!!!
   size_t _payload_bytes;
   LSN _prev_overflow;
@@ -361,7 +363,6 @@ typedef void sm_log_recover_function(void *arg, sm_log_scan_mgr *scanner,
 struct sm_log {
   static bool need_recovery;
 
-  // RDMA needs the space to be allocated before we create the logmgr
   static window_buffer *logbuf;
 
   void update_chkpt_mark(LSN cstart, LSN cend);
@@ -441,12 +442,63 @@ struct sm_log {
   int open_segment_for_read(segment_id *sid);
   void dequeue_committed_xcts(uint64_t upto, uint64_t end_time);
 
-  virtual ~sm_log() {}
+  ~sm_log() {}
+  sm_log(sm_log_recover_impl *rf, void *rarg) : _lm(rf, rarg) {}
 
- protected:
-  // Forbid direct instantiation
-  sm_log() {}
+  /* Convert the given LSN into a fat_ptr that can be used to access
+     the corresponding log record.
+   */
+  fat_ptr lsn2ptr(LSN lsn, bool is_ext);
+
+  /* Convert a fat_ptr into the LSN it corresponds to.
+
+     Throw illegal_argument if the pointer does not correspond to
+     any LSN.
+   */
+  LSN ptr2lsn(fat_ptr ptr);
+
+  sm_log_alloc_mgr _lm;
 };
 
+/* NOTE: This class is needed during recovery, so the implementation
+   is in sm-log-recover.cpp, not sm-log.cpp.
+ */
+struct sm_log_scan_mgr_impl : sm_log_scan_mgr {
+  sm_log_scan_mgr_impl(sm_log_recover_mgr *lm);
+
+  sm_log_recover_mgr *lm;
+};
+
+/* NOTE: This class is needed during recovery, so the implementation
+   is in sm-log-recover.cpp, not sm-log.cpp.
+ */
+struct sm_log_header_scan_impl : sm_log_scan_mgr::header_scan {
+  sm_log_header_scan_impl(sm_log_recover_mgr *lm, LSN start,
+                          bool force_fetch_from_logbuf);
+
+  sm_log_recover_mgr::log_scanner scan;
+  sm_log_recover_mgr *lm;
+};
+
+/* NOTE: This class is needed during recovery, so the implementation
+   is in sm-log-recover.cpp, not sm-log.cpp.
+ */
+struct sm_log_record_scan_impl : sm_log_scan_mgr::record_scan {
+  sm_log_record_scan_impl(sm_log_recover_mgr *lm, LSN start, bool just_one_tx,
+                          bool fetch_payloads, bool force_fetch_from_logbuf);
+
+  sm_log_recover_mgr::log_scanner scan;
+  sm_log_recover_mgr *lm;
+
+  LSN start_lsn;
+  bool just_one;
+};
+
+DEF_IMPL(sm_log_scan_mgr);
+DEF_IMPL2(sm_log_scan_mgr::record_scan, sm_log_record_scan_impl);
+DEF_IMPL2(sm_log_scan_mgr::header_scan, sm_log_header_scan_impl);
+
+// Global log manager instance
 extern sm_log *logmgr;
+
 }  // namespace ermia

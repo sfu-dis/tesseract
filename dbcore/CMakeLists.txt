@@ -28,31 +28,12 @@ set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-oid-replay-impl.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-recover.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-recover-impl.cpp
-  #${CMAKE_CURRENT_SOURCE_DIR}/sm-oid-alloc.cpp     # belongs to test cases only
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-object.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-oid-alloc-impl.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-oid.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-tx-log.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/window-buffer.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/w_rand.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/xid.cpp
 )
 
 set_property(GLOBAL APPEND PROPERTY ALL_SRC ${DBCORE_SRC})
-
-# TODO(tzwang): generate executables for test cases below
-#${CMAKE_CURRENT_SOURCE_DIR}/test-adler.cpp
-#${CMAKE_CURRENT_SOURCE_DIR}/test-dynarray.cpp
-#${CMAKE_CURRENT_SOURCE_DIR}/test-epoch.cpp
-#${CMAKE_CURRENT_SOURCE_DIR}/test-rcu.cpp
-#${CMAKE_CURRENT_SOURCE_DIR}/test-sc-hash.cpp
-#${CMAKE_CURRENT_SOURCE_DIR}/test-size-encode.cpp
-#${CMAKE_CURRENT_SOURCE_DIR}/test-sm-log-alloc.cpp
-#${CMAKE_CURRENT_SOURCE_DIR}/test-sm-log.cpp
-#${CMAKE_CURRENT_SOURCE_DIR}/test-sm-log-file.cpp
-#${CMAKE_CURRENT_SOURCE_DIR}/test-sm-log-offset.cpp
-#${CMAKE_CURRENT_SOURCE_DIR}/test-sm-oid-alloc-impl.cpp
-#${CMAKE_CURRENT_SOURCE_DIR}/test-sm-oid.cpp
-#${CMAKE_CURRENT_SOURCE_DIR}/test-window-buffer.cpp
-#${CMAKE_CURRENT_SOURCE_DIR}/test-xid.cpp
-
