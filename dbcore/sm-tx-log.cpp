@@ -1,33 +1,25 @@
 #include <string>
 #include "sm-log-impl.h"
 
-namespace {
-static ermia::sm_tx_log_impl *get_log_impl(ermia::sm_tx_log *x) {
-  return get_impl(x);
-}
-}
-
 namespace ermia {
 
 void sm_tx_log::log_insert_index(FID f, OID o, fat_ptr ptr, int abits,
                                  fat_ptr *pdest) {
-  get_log_impl(this)
-      ->add_payload_request(LOG_INSERT_INDEX, f, o, ptr, abits, pdest);
+  add_payload_request(LOG_INSERT_INDEX, f, o, ptr, abits, pdest);
 }
 
 void sm_tx_log::log_insert(FID f, OID o, fat_ptr ptr, int abits,
                            fat_ptr *pdest) {
-  get_log_impl(this)->add_payload_request(LOG_INSERT, f, o, ptr, abits, pdest);
+  add_payload_request(LOG_INSERT, f, o, ptr, abits, pdest);
 }
 
 void sm_tx_log::log_update(FID f, OID o, fat_ptr ptr, int abits,
                            fat_ptr *pdest) {
-  get_log_impl(this)->add_payload_request(LOG_UPDATE, f, o, ptr, abits, pdest);
+  add_payload_request(LOG_UPDATE, f, o, ptr, abits, pdest);
 }
 
 void sm_tx_log::log_update_key(FID f, OID o, fat_ptr ptr, int abits) {
-  get_log_impl(this)
-      ->add_payload_request(LOG_UPDATE_KEY, f, o, ptr, abits, nullptr);
+  add_payload_request(LOG_UPDATE_KEY, f, o, ptr, abits, nullptr);
 }
 
 void sm_tx_log::log_table(FID tuple_fid, FID key_fid, const std::string &name) {
@@ -39,9 +31,7 @@ void sm_tx_log::log_table(FID tuple_fid, FID key_fid, const std::string &name) {
   memcpy(buf + sizeof(FID), (char *)name.c_str(), name.length());
   ASSERT(buf[sizeof(FID) + name.length()] == '\0');
   // only use the logrec's fid field, payload is name
-  get_log_impl(this)->add_payload_request(LOG_FID, tuple_fid, 0,
-                                          fat_ptr::make(buf, size_code),
-                                          DEFAULT_ALIGNMENT_BITS, NULL);
+  add_payload_request(LOG_FID, tuple_fid, 0, fat_ptr::make(buf, size_code), DEFAULT_ALIGNMENT_BITS, NULL);
 }
 
 void sm_tx_log::log_index(FID table_fid, FID index_fid, const std::string &index_name, bool primary) {
@@ -53,10 +43,10 @@ void sm_tx_log::log_index(FID table_fid, FID index_fid, const std::string &index
   memcpy(buf + sizeof(FID), (char *)index_name.c_str(), index_name.length());
   ASSERT(buf[sizeof(FID) + index_name.length()] == '\0');
   // only use the logrec's fid field, payload is name
-  get_log_impl(this)->add_payload_request(primary ? LOG_PRIMARY_INDEX : LOG_SECONDARY_INDEX, 
-                                          table_fid, 0,
-                                          fat_ptr::make(buf, size_code),
-                                          DEFAULT_ALIGNMENT_BITS, NULL);
+  add_payload_request(primary ? LOG_PRIMARY_INDEX : LOG_SECONDARY_INDEX, 
+                      table_fid, 0,
+                      fat_ptr::make(buf, size_code),
+                      DEFAULT_ALIGNMENT_BITS, NULL);
 }
 
 static void format_extra_ptr(log_request &req) {
@@ -81,17 +71,16 @@ static log_request make_log_request(log_record_type type, FID f, OID o,
 void sm_tx_log::log_relocate(FID f, OID o, fat_ptr ptr, int abits) {
   log_request req = make_log_request(LOG_RELOCATE, f, o, ptr, abits);
   format_extra_ptr(req);
-  get_log_impl(this)->add_request(req);
+  add_request(req);
 }
 
 void sm_tx_log::log_delete(FID f, OID o) {
   log_request req = make_log_request(LOG_DELETE, f, o, NULL_PTR, 0);
-  get_log_impl(this)->add_request(req);
+  add_request(req);
 }
 
 void sm_tx_log::log_enhanced_delete(FID f, OID o, fat_ptr ptr, int abits) {
-  get_log_impl(this)
-      ->add_payload_request(LOG_ENHANCED_DELETE, f, o, ptr, abits, nullptr);
+  add_payload_request(LOG_ENHANCED_DELETE, f, o, ptr, abits, nullptr);
 }
 
 LSN sm_tx_log::get_clsn() {
@@ -106,9 +95,8 @@ LSN sm_tx_log::get_clsn() {
      so the caller must use an appropriate RCU transaction to avoid
      use-after-free bugs.
    */
-  auto *impl = get_log_impl(this);
-  if (auto *a = volatile_read(impl->_commit_block)) {
-    a = impl->_install_commit_block(a);
+  if (auto *a = volatile_read(_commit_block)) {
+    a = _install_commit_block(a);
     return a->block->next_lsn();
   }
 
@@ -116,33 +104,34 @@ LSN sm_tx_log::get_clsn() {
 }
 
 LSN sm_tx_log::pre_commit() {
-  auto *impl = get_log_impl(this);
-  if (not impl->_commit_block) impl->enter_precommit();
-  return impl->_commit_block->block->next_lsn();
+  if (!_commit_block) {
+    enter_precommit();
+  }
+  return _commit_block->block->next_lsn();
 }
 
 LSN sm_tx_log::commit(LSN *pdest) {
   // make sure we acquired a commit block
   LSN clsn = pre_commit();
 
-  auto *impl = get_log_impl(this);
   // now copy log record data
-  impl->_populate_block(impl->_commit_block->block);
+  _populate_block(_commit_block->block);
 
-  if (pdest) *pdest = impl->_commit_block->block->lsn;
+  if (pdest) {
+    *pdest = _commit_block->block->lsn;
+  }
 
-  impl->_log->_lm.release(impl->_commit_block);
+  _log->_lm.release(_commit_block);
   return clsn;
 }
 
 void sm_tx_log::discard() {
-  auto *impl = get_log_impl(this);
-  if (impl->_commit_block) {
-    impl->_log->_lm.discard(impl->_commit_block);
+  if (_commit_block) {
+    _log->_lm.discard(_commit_block);
   }
 }
 
-void sm_tx_log_impl::add_payload_request(log_record_type type, FID f, OID o,
+void sm_tx_log::add_payload_request(log_record_type type, FID f, OID o,
                                          fat_ptr p, int abits, fat_ptr *pdest) {
   log_request req = make_log_request(type, f, o, p, abits);
 
@@ -192,7 +181,7 @@ void sm_tx_log_impl::add_payload_request(log_record_type type, FID f, OID o,
   add_request(req);
 }
 
-void sm_tx_log_impl::add_request(log_request const &req) {
+void sm_tx_log::add_request(log_request const &req) {
   ASSERT(not _commit_block);
   auto new_nreq = _nreq + 1;
   bool too_many = (new_nreq > sm_log_recover_mgr::MAX_BLOCK_RECORDS);
@@ -211,7 +200,7 @@ void sm_tx_log_impl::add_request(log_request const &req) {
   _payload_bytes = new_payload_bytes;
 }
 
-void sm_tx_log_impl::_populate_block(log_block *b) {
+void sm_tx_log::_populate_block(log_block *b) {
   size_t i = 0;
   uint32_t payload_end = 0;
   uint32_t csum_payload = ADLER32_CSUM_INIT;
@@ -274,7 +263,7 @@ static log_allocation *const ENTERING_PRECOMMIT =
 /* Sometimes the log block overflows before a transaction completes
    and we have to spill and overflow block to the log.
  */
-void sm_tx_log_impl::spill_overflow() {
+void sm_tx_log::spill_overflow() {
   size_t inner_nreq = _nreq;
   size_t outer_nreq = 0;
   size_t pbytes = log_block::size(inner_nreq, _payload_bytes);
@@ -314,7 +303,7 @@ void sm_tx_log_impl::spill_overflow() {
    see a non-NULL value (which might be the signal, or might be an
    already-installed commit block).
  */
-log_allocation *sm_tx_log_impl::_install_commit_block(log_allocation *a) {
+log_allocation *sm_tx_log::_install_commit_block(log_allocation *a) {
   ASSERT(a);
   if (a == ENTERING_PRECOMMIT) {
     a = _log->_lm.allocate(_nreq, _payload_bytes);
@@ -333,7 +322,7 @@ log_allocation *sm_tx_log_impl::_install_commit_block(log_allocation *a) {
   return a;
 }
 
-void sm_tx_log_impl::enter_precommit() {
+void sm_tx_log::enter_precommit() {
   _commit_block = ENTERING_PRECOMMIT;
   auto *a = _install_commit_block(ENTERING_PRECOMMIT);
   DEFER_UNLESS(it_worked, _log->_lm.discard(a));

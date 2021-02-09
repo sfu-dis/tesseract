@@ -171,8 +171,7 @@ class tpcc_bench_runner : public bench_runner {
     // A labmda function to be executed by an sm-thread
     auto register_index = [=](char *) {
       if (g_enable_separate_tree_per_partition && !is_read_only) {
-        if (ermia::config::is_backup_srv() ||
-            NumWarehouses() <= ermia::config::worker_threads) {
+        if (NumWarehouses() <= ermia::config::worker_threads) {
           for (size_t i = 0; i < NumWarehouses(); i++) {
             if (!is_primary) {
               // Secondary index
@@ -316,18 +315,6 @@ class tpcc_bench_runner : public bench_runner {
                                      &barrier_a, &barrier_b, i + 1));
       }
     }
-    return ret;
-  }
-
-  virtual std::vector<bench_worker *> make_cmdlog_redoers() {
-    std::vector<bench_worker *> ret;
-    /*
-    ALWAYS_ASSERT(ermia::config::is_backup_srv() && ermia::config::command_log);
-    util::fast_random r(23984543);
-    for (size_t i = 0; i < ermia::config::replay_threads; i++) {
-      ret.push_back(new tpcc_cmdlog_redoer(i, r.next(), db, open_tables, partitions));
-    }
-    */
     return ret;
   }
 

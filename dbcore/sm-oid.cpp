@@ -675,7 +675,6 @@ fat_ptr sm_oid_mgr::PrimaryTupleUpdate(oid_array *oa, OID o,
                                        const varstr *value,
                                        TXN::xid_context *updater_xc,
                                        fat_ptr *new_obj_ptr) {
-  ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
   auto *ptr = oa->get(o);
 start_over:
   fat_ptr head = volatile_read(*ptr);
@@ -970,7 +969,6 @@ void sm_oid_mgr::oid_get_version_backup(fat_ptr &ptr,
 void sm_oid_mgr::oid_get_version_amac(oid_array *oa,
                                       std::vector<OIDAMACState> &requests,
                                       TXN::xid_context *visitor_xc) {
-  ALWAYS_ASSERT(!config::is_backup_srv());
   uint32_t finished = 0;
   while (finished < requests.size()) {
     for (auto &s : requests) {
@@ -1056,16 +1054,12 @@ start_over:
     fat_ptr tentative_next = NULL_PTR;
     // If this is a backup server, then must see persistent_next to find out
     // the **real** overwritten version.
-    if (config::is_backup_srv() && !config::command_log) {
-      oid_get_version_backup(ptr, tentative_next, prev_obj, cur_obj, visitor_xc);
-    } else {
-      ASSERT(ptr.asi_type() == 0);
-      cur_obj = (Object *)ptr.offset();
-      ::prefetch((const char*)cur_obj);
-      SUSPEND;
-      tentative_next = cur_obj->GetNextVolatile();
-      ASSERT(tentative_next.asi_type() == 0);
-    }
+    ASSERT(ptr.asi_type() == 0);
+    cur_obj = (Object *)ptr.offset();
+    ::prefetch((const char*)cur_obj);
+    SUSPEND;
+    tentative_next = cur_obj->GetNextVolatile();
+    ASSERT(tentative_next.asi_type() == 0);
 
     bool retry = false;
     bool visible = TestVisibility(cur_obj, visitor_xc, retry);
@@ -1085,7 +1079,6 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
   fat_ptr clsn = object->GetClsn();
   uint16_t asi_type = clsn.asi_type();
   if (clsn == NULL_PTR) {
-    ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
     // dead tuple that was (or about to be) unlinked, start over
     retry = true;
     return false;
@@ -1094,7 +1087,6 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
   ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_LOG);
   if (asi_type == fat_ptr::ASI_XID) {  // in-flight
     // Backups don't write unless for command logging
-    ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
 
     XID holder_xid = XID::from_ptr(clsn);
     // Dirty data made by me is visible!
@@ -1103,7 +1095,6 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
              ((Object *)object->GetNextVolatile().offset())
                      ->GetClsn()
                      .asi_type() == fat_ptr::ASI_LOG);
-      ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
       return true;
     }
     auto *holder = TXN::xid_get_context(holder_xid);
@@ -1118,7 +1109,6 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
 
     // context still valid for this XID?
     if (owner != holder_xid) {
-      ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
       retry = true;
       return false;
     }

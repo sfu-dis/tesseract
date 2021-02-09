@@ -1,7 +1,5 @@
 #include "dbcore/rcu.h"
 #include "dbcore/sm-chkpt.h"
-#include "dbcore/sm-cmd-log.h"
-#include "dbcore/sm-rep.h"
 
 #include "ermia.h"
 #include "txn.h"
@@ -13,37 +11,30 @@ namespace ermia {
 Engine::Engine() {
   config::sanity_check();
 
-  if (config::is_backup_srv()) {
-    rep::BackupStartReplication();
-  } else {
-    ALWAYS_ASSERT(config::log_dir.size());
-    ALWAYS_ASSERT(not logmgr);
-    ALWAYS_ASSERT(not oidmgr);
-    sm_log::allocate_log_buffer();
-    logmgr = sm_log::new_log(config::recover_functor, nullptr);
-    sm_oid_mgr::create();
-    if (config::command_log) {
-      CommandLog::cmd_log = new CommandLog::CommandLogManager();
-    }
-    ALWAYS_ASSERT(logmgr);
-    ALWAYS_ASSERT(oidmgr);
+  ALWAYS_ASSERT(config::log_dir.size());
+  ALWAYS_ASSERT(not logmgr);
+  ALWAYS_ASSERT(not oidmgr);
+  sm_log::allocate_log_buffer();
+  logmgr = sm_log::new_log(config::recover_functor, nullptr);
+  sm_oid_mgr::create();
+  ALWAYS_ASSERT(logmgr);
+  ALWAYS_ASSERT(oidmgr);
 
-    LSN chkpt_lsn = logmgr->get_chkpt_start();
-    if (config::enable_chkpt) {
-      chkptmgr = new sm_chkpt_mgr(chkpt_lsn);
-    }
+  LSN chkpt_lsn = logmgr->get_chkpt_start();
+  if (config::enable_chkpt) {
+    chkptmgr = new sm_chkpt_mgr(chkpt_lsn);
+  }
 
-    // The backup will want to recover in another thread
-    if (sm_log::need_recovery) {
-      logmgr->recover();
-    }
+  // The backup will want to recover in another thread
+  if (sm_log::need_recovery) {
+    logmgr->recover();
   }
 }
 
 TableDescriptor *Engine::CreateTable(const char *name) {
   auto *td = TableDescriptor::New(name);
 
-  if (!sm_log::need_recovery && !config::is_backup_srv()) {
+  if (!sm_log::need_recovery) {
     // Note: this will insert to the log and therefore affect min_flush_lsn,
     // so must be done in an sm-thread which must be created by the user
     // application (not here in ERMIA library).
@@ -51,7 +42,7 @@ TableDescriptor *Engine::CreateTable(const char *name) {
 
     // TODO(tzwang): perhaps make this transactional to allocate it from
     // transaction string arena to avoid malloc-ing memory (~10k size).
-    char *log_space = (char *)malloc(sizeof(sm_tx_log_impl));
+    char *log_space = (char *)malloc(sizeof(sm_tx_log));
     ermia::sm_tx_log *log = ermia::logmgr->new_tx_log(log_space);
     td->Initialize();
     log->log_table(td->GetTupleFid(), td->GetKeyFid(), td->GetName());
@@ -62,7 +53,7 @@ TableDescriptor *Engine::CreateTable(const char *name) {
 }
 
 void Engine::LogIndexCreation(bool primary, FID table_fid, FID index_fid, const std::string &index_name) {
-  if (!sm_log::need_recovery && !config::is_backup_srv()) {
+  if (!sm_log::need_recovery) {
     // Note: this will insert to the log and therefore affect min_flush_lsn,
     // so must be done in an sm-thread which must be created by the user
     // application (not here in ERMIA library).
@@ -70,7 +61,7 @@ void Engine::LogIndexCreation(bool primary, FID table_fid, FID index_fid, const 
 
     // TODO(tzwang): perhaps make this transactional to allocate it from
     // transaction string arena to avoid malloc-ing memory (~10k size).
-    char *log_space = (char *)malloc(sizeof(sm_tx_log_impl));
+    char *log_space = (char *)malloc(sizeof(sm_tx_log));
     ermia::sm_tx_log *log = ermia::logmgr->new_tx_log(log_space);
     log->log_index(table_fid, index_fid, index_name, primary);
     log->commit(nullptr);
@@ -159,14 +150,7 @@ PROMISE(void) ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const
     dbtuple *tuple = nullptr;
     if (found) {
       // Key-OID mapping exists, now try to get the actual tuple to be sure
-      if (config::is_backup_srv()) {
-        tuple = oidmgr->BackupGetVersion(
-            table_descriptor->GetTupleArray(),
-            table_descriptor->GetPersistentAddressArray(), oid, t->xc);
-      } else {
-        tuple =
-            AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oid, t->xc);
-      }
+      tuple = AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oid, t->xc);
       if (!tuple) {
         found = false;
       }

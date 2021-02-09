@@ -185,9 +185,6 @@ rc_t tpcc_worker::txn_new_order() {
   }
 
   TryCatch(db->Commit(txn));
-  if (ermia::config::command_log && !ermia::config::is_backup_srv()) {
-    ermia::CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_NEW_ORDER);
-  }
   return {RC_TRUE};
 }  // new-order
 
@@ -292,14 +289,8 @@ rc_t tpcc_worker::txn_payment() {
       ermia::dbtuple* tuple = nullptr;
       bool more = iter.init_or_next</*IsNext=*/false>();
       while (more) {
-        if (unlikely(ermia::config::is_backup_srv())) {
-            tuple = ermia::oidmgr->BackupGetVersion(
-                iter.tuple_array(), iter.pdest_array(), iter.value(),
-                txn->GetXIDContext());
-        } else {
-            tuple = ermia::oidmgr->oid_get_version(
-                iter.tuple_array(), iter.value(), txn->GetXIDContext());
-        }
+        tuple = ermia::oidmgr->oid_get_version(
+            iter.tuple_array(), iter.value(), txn->GetXIDContext());
         if (tuple) {
             rc = txn->DoTupleRead(tuple, &valptr);
             if (rc._val == RC_TRUE) {
@@ -371,9 +362,6 @@ rc_t tpcc_worker::txn_payment() {
                          Encode(str(Size(v_h)), v_h)));
 
   TryCatch(db->Commit(txn));
-  if (ermia::config::command_log && !ermia::config::is_backup_srv()) {
-    ermia::CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_PAYMENT);
-  }
   return {RC_TRUE};
 }
 
@@ -493,9 +481,6 @@ rc_t tpcc_worker::txn_delivery() {
                         Encode(str(Size(v_c_new)), v_c_new)));
   }
   TryCatch(db->Commit(txn));
-  if (ermia::config::command_log && !ermia::config::is_backup_srv()) {
-    ermia::CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_DELIVERY);
-  }
   return {RC_TRUE};
 }
 

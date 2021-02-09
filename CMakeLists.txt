@@ -3,11 +3,11 @@ if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
   message(FATAL_ERROR "In-source builds are not allowed.")
 endif("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
 
-project(ermia)
+project(corobase)
 cmake_minimum_required(VERSION 3.1)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++14 -fcoroutines-ts -stdlib=libc++ -Woverloaded-virtual -Werror=reorder -Werror=unused-result -Wno-address-of-packed-member")
-set(LINK_FLAGS "-lc++abi -libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags")
+set(LINK_FLAGS "-lc++abi -lnuma -lpthread -pthread -lrt -lglog -lgflags")
 link_libraries(${LINK_FLAGS})
 
 include_directories(/opt/dis/llvm-libc++/include/c++/v1)
@@ -48,14 +48,14 @@ add_subdirectory(benchmarks)
 add_subdirectory(dbcore)
 add_subdirectory(masstree)
 
-set_property(GLOBAL APPEND PROPERTY ALL_ERMIA_SRC
+set_property(GLOBAL APPEND PROPERTY ALL_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/ermia.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/corobase.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/tuple.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/txn.cc
 )
 
-get_property(LIB_ERMIA_SRC GLOBAL PROPERTY ALL_ERMIA_SRC)
+get_property(LIB_SRC GLOBAL PROPERTY ALL_SRC)
 
 # Thread pool source
 set_property(GLOBAL APPEND PROPERTY THREAD_POOL_SRC
@@ -68,45 +68,45 @@ get_property(THREAD_POOL_SRC GLOBAL PROPERTY THREAD_POOL_SRC)
 add_library(thread_pool SHARED ${THREAD_POOL_SRC})
 
 # SI
-add_library(ermia_si SHARED ${LIB_ERMIA_SRC})
-set_target_properties(ermia_si PROPERTIES COMPILE_FLAGS "")
-#set_target_properties(ermia_si PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DBATCH_SAME_TRX -DCORO_UPDATE_VERSION_CHAIN")
+add_library(corobase_si SHARED ${LIB_SRC})
+set_target_properties(corobase_si PROPERTIES COMPILE_FLAGS "")
+#set_target_properties(corobase_si PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DBATCH_SAME_TRX -DCORO_UPDATE_VERSION_CHAIN")
 
-add_executable(ermia_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(ermia_SI PROPERTIES COMPILE_FLAGS "")
-#set_target_properties(ermia_SI PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DBATCH_SAME_TRX -DCORO_UPDATE_VERSION_CHAIN")
-target_link_libraries(ermia_SI ermia_si thread_pool)
+add_executable(corobase_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(corobase_SI PROPERTIES COMPILE_FLAGS "")
+#set_target_properties(corobase_SI PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DBATCH_SAME_TRX -DCORO_UPDATE_VERSION_CHAIN")
+target_link_libraries(corobase_SI corobase_si thread_pool)
 
 # SI with fully nested coroutine
-add_library(ermia_adv_coro_si SHARED ${LIB_ERMIA_SRC})
-set_target_properties(ermia_adv_coro_si PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
+add_library(corobase_adv_coro_si SHARED ${LIB_SRC})
+set_target_properties(corobase_adv_coro_si PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
 
-add_executable(ermia_adv_coro_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(ermia_adv_coro_SI PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
-target_link_libraries(ermia_adv_coro_SI ermia_adv_coro_si thread_pool)
+add_executable(corobase_adv_coro_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(corobase_adv_coro_SI PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
+target_link_libraries(corobase_adv_coro_SI corobase_adv_coro_si thread_pool)
 
 # Thread pool library with SSN enabled
 add_library(thread_pool_ssn SHARED ${THREAD_POOL_SRC})
 set_target_properties(thread_pool_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
 
 # SI+SSN
-add_library(ermia_si_ssn SHARED ${LIB_ERMIA_SRC})
-set_target_properties(ermia_si_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
+add_library(corobase_si_ssn SHARED ${LIB_SRC})
+set_target_properties(corobase_si_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
 
-add_executable(ermia_SI_SSN ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(ermia_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
-target_link_libraries(ermia_SI_SSN ermia_si_ssn thread_pool_ssn)
+add_executable(corobase_SI_SSN ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(corobase_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
+target_link_libraries(corobase_SI_SSN corobase_si_ssn thread_pool_ssn)
 
 # SI+SSN with fully nested coroutine
-add_library(ermia_adv_coro_si_ssn SHARED ${LIB_ERMIA_SRC})
-set_target_properties(ermia_adv_coro_si_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK -DADV_COROUTINE")
+add_library(corobase_adv_coro_si_ssn SHARED ${LIB_SRC})
+set_target_properties(corobase_adv_coro_si_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK -DADV_COROUTINE")
 
-add_executable(ermia_adv_coro_SI_SSN ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(ermia_adv_coro_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK -DADV_COROUTINE")
-target_link_libraries(ermia_adv_coro_SI_SSN ermia_adv_coro_si_ssn thread_pool_ssn)
+add_executable(corobase_adv_coro_SI_SSN ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(corobase_adv_coro_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK -DADV_COROUTINE")
+target_link_libraries(corobase_adv_coro_SI_SSN corobase_adv_coro_si_ssn thread_pool_ssn)
 
 # SSI
-#add_library(ermia_ssi SHARED ${LIB_ERMIA_SRC})
+#add_library(ermia_ssi SHARED ${LIB_SRC})
 #set_target_properties(ermia_ssi PROPERTIES COMPILE_FLAGS "-DSSI")
 
 #add_executable(ermia_SSI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
@@ -114,7 +114,7 @@ target_link_libraries(ermia_adv_coro_SI_SSN ermia_adv_coro_si_ssn thread_pool_ss
 #target_link_libraries(ermia_SSI ermia_ssi thread_pool)
 
 # MVOCC
-#add_library(ermia_mvocc SHARED ${LIB_ERMIA_SRC})
+#add_library(ermia_mvocc SHARED ${LIB_SRC})
 #set_target_properties(ermia_mvocc PROPERTIES COMPILE_FLAGS "-DMVOCC")
 
 #add_executable(ermia_MVOCC ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
@@ -123,10 +123,6 @@ target_link_libraries(ermia_adv_coro_SI_SSN ermia_adv_coro_si_ssn thread_pool_ss
 
 # Benchmark scripts
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run.sh" DESTINATION ${CMAKE_BINARY_DIR})
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run2.sh" DESTINATION ${CMAKE_BINARY_DIR})
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run-cluster.sh" DESTINATION ${CMAKE_BINARY_DIR})
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run-rdma-cluster.sh" DESTINATION ${CMAKE_BINARY_DIR})
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run-tcp-cluster.sh" DESTINATION ${CMAKE_BINARY_DIR})
 
 enable_testing()
 

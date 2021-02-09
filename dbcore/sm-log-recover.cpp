@@ -30,22 +30,11 @@ sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
   if (changed) update_durable_mark(dlsn);
 
   auto *sid = get_segment(dlsn.segment());
-  if (config::is_backup_srv()) {
-    if (config::replay_threads > 0 && config::replay_policy != config::kReplayNone) {
-      if (config::log_ship_offset_replay) {
-        backup_replay_functor = new parallel_offset_replay;
-      } else {
-        backup_replay_functor = new parallel_oid_replay(config::replay_threads);
-      }
-      backup_replayer = new sm_log_scan_mgr_impl{this};
-    }
-  } else {
-    truncate_after(sid->segnum, dlsn.offset());
-  }
+  truncate_after(sid->segnum, dlsn.offset());
 }
 
 void sm_log_recover_mgr::recover() {
-  if (!sm_log::need_recovery && !config::is_backup_srv()) {
+  if (!sm_log::need_recovery) {
     LOG(INFO) << "No need for recovery";
     return;
   }
@@ -123,19 +112,13 @@ void sm_log_recover_mgr::block_scanner::_load_block(LSN x,
   }
 
   bool read_from_logbuf = false;
-  if (config::is_backup_srv()) {
-    read_from_logbuf = _force_fetch_from_logbuf;
-  } else {
-    read_from_logbuf =
-        logmgr && x.offset() > logmgr->durable_flushed_lsn_offset();
-  }
+  read_from_logbuf = logmgr && x.offset() > logmgr->durable_flushed_lsn_offset();
 
   // helper function... pread may not read everything in one call
   auto pread = [&](size_t nbytes, uint64_t i) -> size_t {
     uint64_t offset = sid->offset(x);
     // See if it's stepping into the log buffer
     if (read_from_logbuf) {
-      ALWAYS_ASSERT(config::is_backup_srv());
       // we should be scanning and replaying the log at a backup node
       auto *logbuf = logmgr->get_logbuf();
       // the caller should have called advance_writer(end_lsn) already
@@ -251,7 +234,6 @@ void sm_log_recover_mgr::load_object_from_logbuf(char *buf, size_t bufsz,
   ASSERT(sid);
   ASSERT(ptr.offset() >= sid->start_offset);
 
-  ALWAYS_ASSERT(config::is_backup_srv());
   auto *logbuf = logmgr->get_logbuf();
   size_t read_end = logbuf->read_end();
   size_t read_begin = logbuf->read_begin();
@@ -285,11 +267,6 @@ void sm_log_recover_mgr::load_object(char *buf, size_t bufsz, fat_ptr ptr,
   auto *sid = get_segment(segnum);
   ASSERT(sid);
   ASSERT(ptr.offset() >= sid->start_offset);
-
-  if (config::is_backup_srv() && config::persist_policy != config::kPersistAsync &&
-    ptr.offset() + nbytes > logmgr->durable_flushed_lsn().offset()) {
-    return load_object_from_logbuf(buf, bufsz, ptr, align_bits);
-  }
 
   size_t m = os_pread(sid->fd, buf, nbytes, ptr.offset() - sid->start_offset);
   LOG_IF(FATAL, m != nbytes) << "Unable to read full object ("

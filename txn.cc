@@ -1,7 +1,6 @@
 #include "macros.h"
 #include "txn.h"
 #include "dbcore/rcu.h"
-#include "dbcore/sm-rep.h"
 #include "dbcore/serial.h"
 #include "ermia.h"
 
@@ -11,21 +10,7 @@ namespace ermia {
 
 transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     : flags(flags), sa(&sa), coro_batch_idx(coro_batch_idx) {
-  if (!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv()) {
-    // Read-only transaction on backup - grab a begin timestamp and go.
-    // A read-only 'transaction' on a backup basically is reading a
-    // consistent snapshot back in time. No CC involved.
-    static thread_local TXN::xid_context *ctx = nullptr;
-    if (!ctx) {
-      ctx = TXN::xid_get_context(TXN::xid_alloc());
-    }
-    xc = ctx;
-    xc->begin = rep::GetReadView();
-    ASSERT(xc->begin);
-    xc->xct = this;
-  } else {
-    initialize_read_write();
-  }
+  initialize_read_write();
 }
 
 void transaction::initialize_read_write() {
@@ -61,7 +46,7 @@ void transaction::initialize_read_write() {
     log = NULL;
   } else {
     TXN::serial_register_tx(coro_batch_idx, xid);
-    log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log_impl))->data());
+    log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log))->data());
     // Must +1: a tx T can only update a tuple if its latest version was
     // created before T's begin timestamp (i.e., version.clsn < T.begin,
     // note the range is exclusive; see first updater wins rule in
@@ -77,25 +62,20 @@ void transaction::initialize_read_write() {
 #endif
   }
 #elif defined(MVOCC)
-  log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log_impl))->data());
+  log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log))->data());
   xc->begin = logmgr->cur_lsn().offset() + 1;
 #else
   // SI - see if it's read only. If so, skip logging etc.
   if (flags & TXN_FLAG_READ_ONLY) {
     log = nullptr;
   } else {
-    log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log_impl))->data());
+    log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log))->data());
   }
   xc->begin = logmgr->cur_lsn().offset() + 1;
 #endif
 }
 
 transaction::~transaction() {
-  // "Normal" transactions
-  if (config::is_backup_srv() && !(flags & TXN_FLAG_CMD_REDO)) {
-    return;
-  }
-
   // transaction shouldn't fall out of scope w/o resolution
   // resolution means TXN_CMMTD, and TXN_ABRTD
   ASSERT(state() != TXN::TXN_ACTIVE && state() != TXN::TXN_COMMITTING);
@@ -986,10 +966,6 @@ rc_t transaction::parallel_ssi_commit() {
 }
 #elif defined(MVOCC)
 rc_t transaction::mvocc_commit() {
-  if (!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv()) {
-    return rc_t{RC_TRUE};
-  }
-
   ASSERT(log);
   // get clsn, abort if failed
   xc->end = log->pre_commit().offset();
@@ -1100,10 +1076,6 @@ rc_t transaction::mvocc_commit() {
 }
 #else
 rc_t transaction::si_commit() {
-  if ((!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv())) {
-    return rc_t{RC_TRUE};
-  }
-
   if (flags & TXN_FLAG_READ_ONLY) {
     volatile_write(xc->state, TXN::TXN_CMMTD);
     return rc_t{RC_TRUE};

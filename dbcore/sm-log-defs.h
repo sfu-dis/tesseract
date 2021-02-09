@@ -6,11 +6,10 @@
     Should not be exposed to other parts of the system, because
     sm-log.h is the official interface to the log.
  */
-#include "sm-log.h"
-
 #include "adler.h"
 #include "stub-impl.h"
 #include "window-buffer.h"
+#include "sm-common.h"
 
 #include <pthread.h>
 

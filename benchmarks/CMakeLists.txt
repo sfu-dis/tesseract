@@ -1,7 +1,7 @@
 add_subdirectory(egen)
 add_subdirectory(record)
 
-set_property(GLOBAL APPEND PROPERTY ALL_ERMIA_SRC
+set_property(GLOBAL APPEND PROPERTY ALL_SRC
 #  ${CMAKE_CURRENT_SOURCE_DIR}/tpce.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/tpcc-common.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/tpcc.cc

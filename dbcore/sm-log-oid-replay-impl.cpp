@@ -5,7 +5,6 @@
 #include "sm-oid.h"
 #include "sm-oid-impl.h"
 #include "sm-oid-alloc-impl.h"
-#include "sm-rep.h"
 
 namespace ermia {
 
@@ -114,9 +113,7 @@ void parallel_oid_replay::redo_runner::redo_partition() {
     if (oid % owner->redoers.size() != oid_partition) continue;
 
     auto fid = scan->fid();
-    if (!config::is_backup_srv()) {
-      max_oid[fid] = std::max(max_oid[fid], oid);
-    }
+    max_oid[fid] = std::max(max_oid[fid], oid);
 
     switch (scan->type()) {
       case sm_log_scan_mgr::LOG_UPDATE_KEY:
@@ -130,9 +127,6 @@ void parallel_oid_replay::redo_runner::redo_partition() {
       case sm_log_scan_mgr::LOG_DELETE:
       case sm_log_scan_mgr::LOG_ENHANCED_DELETE:
         // Ignore delete on primary server
-        if (config::is_backup_srv()) {
-          owner->recover_update(scan, true, true);
-        }
         dcount++;
         break;
       case sm_log_scan_mgr::LOG_INSERT_INDEX:
@@ -141,7 +135,7 @@ void parallel_oid_replay::redo_runner::redo_partition() {
         break;
       case sm_log_scan_mgr::LOG_INSERT:
         icount++;
-        owner->recover_insert(scan, config::is_backup_srv());
+        owner->recover_insert(scan, false);
         break;
       case sm_log_scan_mgr::LOG_FID:
         // The main recover function should have already did this
@@ -157,10 +151,8 @@ void parallel_oid_replay::redo_runner::redo_partition() {
              << " - inserts/updates/deletes/size: " << icount << "/" << ucount
              << "/" << dcount << "/" << size;
 
-  if (!config::is_backup_srv()) {
-    for (auto &m : max_oid) {
-      oidmgr->recreate_allocator(m.first, m.second);
-    }
+  for (auto &m : max_oid) {
+    oidmgr->recreate_allocator(m.first, m.second);
   }
 
   delete scan;

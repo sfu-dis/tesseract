@@ -228,14 +228,8 @@ private:
       bool more = co_await iter.init_or_next</*IsNext=*/false>();
       while (more) {
         if (!ermia::config::index_probe_only) {
-          if (unlikely(ermia::config::is_backup_srv())) {
-            tuple = ermia::oidmgr->BackupGetVersion(
-                iter.tuple_array(), iter.pdest_array(), iter.value(),
-                txn->GetXIDContext());
-          } else {
-            tuple = co_await ermia::oidmgr->oid_get_version(
-                iter.tuple_array(), iter.value(), txn->GetXIDContext());
-          }
+          tuple = co_await ermia::oidmgr->oid_get_version(
+              iter.tuple_array(), iter.value(), txn->GetXIDContext());
           if (tuple) {
             rc = txn->DoTupleRead(tuple, &valptr);
 	    if (rc._val == RC_TRUE) {

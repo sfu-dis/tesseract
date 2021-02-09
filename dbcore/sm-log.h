@@ -16,14 +16,30 @@
 #include "sm-common.h"
 #include "sm-thread.h"
 #include "window-buffer.h"
+#include "sm-log-defs.h"
 
 namespace ermia {
 class object;
 struct sm_log_file_mgr;
 struct segment_id;
 struct sm_log_recover_impl;
+class sm_log_impl;
+struct log_allocation;
 
-struct sm_tx_log {
+/* This is the staging area for log record requests until they
+   actually find a home in a proper log block. We do this because we
+   want the transaction's CSN to be as late as possible, and so we
+   can't just allocate a log block to put log records into.
+ */
+class sm_tx_log {
+public:
+  sm_tx_log(sm_log_impl *l)
+      : _log(l),
+        _nreq(0),
+        _payload_bytes(0),
+        _prev_overflow(INVALID_LSN),
+        _commit_block(NULL) {}
+
   /* Record an insertion. The payload of the version will be
      embedded in the log record on disk and the version's
      [disk_addr] will be set accordingly. The target OID will be
@@ -128,9 +144,25 @@ struct sm_tx_log {
    */
   void discard();
 
- protected:
-  // Forbid direct instantiation
-  sm_tx_log() {}
+private:
+  sm_log_impl *_log;
+  size_t _nreq;  // includes a pending overflow record, if such is needed!!!
+  size_t _payload_bytes;
+  LSN _prev_overflow;
+  log_allocation *_commit_block;
+
+private:
+  void add_request(log_request const &req);
+
+  void add_payload_request(log_record_type type, FID f, OID o, fat_ptr p,
+                           int abits, fat_ptr *pdest);
+  void spill_overflow();
+  void enter_precommit();
+
+  log_allocation *_install_commit_block(log_allocation *a);
+  void _populate_block(log_block *b);
+  static size_t const MAX_BLOCK_RECORDS = 254;
+  log_request log_requests[MAX_BLOCK_RECORDS];
 };
 
 /* A factory class for creating log scans.
@@ -404,7 +436,6 @@ struct sm_log {
   void start_logbuf_redoers();
   void recover();
   void enqueue_committed_xct(uint32_t worker_id, uint64_t start_time);
-  void create_segment_file(segment_id *sid);
   uint64_t durable_flushed_lsn_offset();
   sm_log_recover_impl *get_backup_replay_functor();
   int open_segment_for_read(segment_id *sid);

@@ -6,8 +6,6 @@
 #include "sm-oid.h"
 #include "sm-oid-impl.h"
 #include "sm-oid-alloc-impl.h"
-#include "sm-rep.h"
-#include "sm-rep-rdma.h"
 
 namespace ermia {
 

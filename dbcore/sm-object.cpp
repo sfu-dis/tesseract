@@ -55,10 +55,6 @@ void Object::Pin(bool load_from_logbuf) {
     // Not safe to dig out from the log buffer as it might be receiving a
     // new batch from the primary, unless we have NVRAM as log buffer.
     // XXX(tzwang): for now we can't flush - need coordinate with backup daemon
-    if (config::is_backup_srv() && !config::nvram_log_buffer) {
-      while (pdest_.offset() >= logmgr->durable_flushed_lsn().offset()) {
-      }
-    }
 
     // Load tuple varstr from the log
     if (load_from_logbuf) {
@@ -70,9 +66,6 @@ void Object::Pin(bool load_from_logbuf) {
     // Strip out the varstr stuff
     tuple->size = ((varstr *)tuple->get_value_start())->size();
     // Fill in the overwritten version's pdest if needed
-    if (config::is_backup_srv() && next_pdest_ == NULL_PTR) {
-      next_pdest_ = ((varstr *)tuple->get_value_start())->ptr;
-    }
     // Could be a delete
     ASSERT(tuple->size < data_sz);
     if (tuple->size == 0) {

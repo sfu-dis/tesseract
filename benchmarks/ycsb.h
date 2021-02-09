@@ -134,13 +134,6 @@ class ycsb_bench_runner : public bench_runner {
     return ret;
   }
 
-  virtual std::vector<bench_worker *> make_cmdlog_redoers() {
-    // Not implemented
-    LOG(FATAL) << "Not applicable";
-    std::vector<bench_worker *> ret;
-    return ret;
-  }
-
   virtual std::vector<bench_worker *> make_workers() {
     util::fast_random r(8544290);
     std::vector<bench_worker *> ret;
@@ -174,10 +167,6 @@ class ycsb_base_worker : public bench_worker {
                                        g_scan_length_zipfain_theta,
                                        scan_length_rng_seed);
       }
-  }
-
-  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
-    LOG(FATAL) << "Not applicable";
   }
 
  protected:

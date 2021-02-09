@@ -11,10 +11,6 @@ sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
 window_buffer *sm_log::logbuf = nullptr;
 
-void sm_log::create_segment_file(segment_id *sid) {
-  get_impl(this)->_lm._lm.create_segment_file(sid);
-}
-
 void sm_log::allocate_log_buffer() {
   logbuf = new window_buffer(config::log_buffer_mb * config::MB);
 }
@@ -65,10 +61,6 @@ segment_id *sm_log::assign_segment(uint64_t lsn_begin, uint64_t lsn_end) {
   return rval.sid;
 }
 
-void sm_log::BackupFlushLog(uint64_t new_dlsn_offset) {
-  return get_impl(this)->_lm.BackupFlushLog(new_dlsn_offset);
-}
-
 void sm_log::enqueue_committed_xct(uint32_t worker_id, uint64_t start_time) {
   get_impl(this)->_lm.enqueue_committed_xct(worker_id, start_time);
 }
@@ -117,8 +109,7 @@ sm_log_scan_mgr *sm_log::get_scan_mgr() {
 
 sm_tx_log *sm_log::new_tx_log(char *log_space) {
   auto *self = get_impl(this);
-  typedef _impl_of<sm_tx_log>::type Impl;
-  return new (log_space) Impl(self);
+  return new (log_space) sm_tx_log(self);
 }
 
 fat_ptr sm_log_impl::lsn2ptr(LSN lsn, bool is_ext) {

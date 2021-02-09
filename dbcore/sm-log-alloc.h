@@ -1,6 +1,7 @@
 #pragma once
 
 #include <deque>
+#include "sm-log.h"
 #include "sm-log-recover.h"
 
 namespace ermia {
@@ -78,7 +79,6 @@ struct sm_log_alloc_mgr {
   void PrimaryShipLog(segment_id *durable_sid, uint64_t nbytes,
                       bool new_seg, uint64_t new_offset, const char *buf);
   void PrimaryCommitPersistedWork(uint64_t new_offset);
-  void BackupFlushLog(uint64_t new_dlsn_dlsn);
   uint64_t smallest_tls_lsn_offset();
   void enqueue_committed_xct(uint32_t worker_id, uint64_t start_time);
   void dequeue_committed_xcts(uint64_t up_to, uint64_t end_time);
@@ -144,7 +144,6 @@ struct sm_log_alloc_mgr {
   static const uint64_t kDirtyTlsLsnOffset = uint64_t{1} << 63;
   uint64_t *_tls_lsn_offset CACHE_ALIGNED;
   uint64_t _lsn_offset CACHE_ALIGNED;
-  uint64_t _logbuf_partition_size CACHE_ALIGNED;
 
   // One queue per worker thread to account latency under group commit
   // The flusher dequeues all entries from these vectors up to

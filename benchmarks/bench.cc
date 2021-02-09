@@ -19,37 +19,22 @@
 
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-chkpt.h"
-#include "../dbcore/sm-cmd-log.h"
 #include "../dbcore/sm-config.h"
 #include "../dbcore/sm-table.h"
 #include "../dbcore/sm-log.h"
 #include "../dbcore/sm-log-recover-impl.h"
-#include "../dbcore/sm-rep.h"
 
 volatile bool running = true;
 std::vector<bench_worker *> bench_runner::workers;
-std::vector<bench_worker *> bench_runner::cmdlog_redoers;
 
 thread_local ermia::epoch_num coroutine_batch_end_epoch = 0;
 
 void bench_worker::do_workload_function(uint32_t i) {
-  ASSERT(workload.size() && cmdlog_redo_workload.size() == 0);
+  ASSERT(workload.size());
 retry:
   util::timer t;
   const unsigned long old_seed = r.get_seed();
   const auto ret = workload[i].fn(this);
-  if (finish_workload(ret, i, t)) {
-    r.set_seed(old_seed);
-    goto retry;
-  }
-}
-
-void bench_worker::do_cmdlog_redo_workload_function(uint32_t i, void *param) {
-  ASSERT(workload.size() == 0 && cmdlog_redo_workload.size());
-retry:
-  util::timer t;
-  const unsigned long old_seed = r.get_seed();
-  const auto ret = cmdlog_redo_workload[i].fn(this, param);
   if (finish_workload(ret, i, t)) {
     r.set_seed(old_seed);
     goto retry;
@@ -73,7 +58,7 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
   if (!ret.IsAbort()) {
     ++ntxn_commits;
     std::get<0>(txn_counts[workload_idx])++;
-    if (!ermia::config::is_backup_srv() && ermia::config::group_commit) {
+    if (ermia::config::group_commit) {
       ermia::logmgr->enqueue_committed_xct(worker_id, t.get_start());
     } else {
       latency_numer_us += t.lap();
@@ -136,36 +121,22 @@ void bench_worker::MyWork(char *) {
       uint32_t workload_idx = fetch_workload();
       do_workload_function(workload_idx);
     }
-
-  } else {
-    cmdlog_redo_workload = get_cmdlog_redo_workload();
-    txn_counts.resize(cmdlog_redo_workload.size());
-    if (ermia::config::replay_policy == ermia::config::kReplayBackground) {
-      ermia::CommandLog::cmd_log->BackgroundReplay(worker_id,
-        std::bind(&bench_worker::do_cmdlog_redo_workload_function, this, std::placeholders::_1, std::placeholders::_2));
-    } else if (ermia::config::replay_policy != ermia::config::kReplayNone) {
-      ermia::CommandLog::cmd_log->BackupRedo(worker_id,
-        std::bind(&bench_worker::do_cmdlog_redo_workload_function, this, std::placeholders::_1, std::placeholders::_2));
-    }
   }
 }
 
 void bench_runner::run() {
-  if (ermia::config::worker_threads ||
-      (ermia::config::is_backup_srv() && ermia::config::replay_threads && ermia::config::command_log)) {
-    // Get a thread to use benchmark-provided prepare(), which gathers
-    // information about index pointers created by create_file_task.
-    ermia::thread::Thread::Task runner_task =
-      std::bind(&bench_runner::prepare, this, std::placeholders::_1);
-    ermia::thread::Thread *runner_thread = ermia::thread::GetThread(true /* physical */);
-    runner_thread->StartTask(runner_task);
-    runner_thread->Join();
-    ermia::thread::PutThread(runner_thread);
-  }
+  // Get a thread to use benchmark-provided prepare(), which gathers
+  // information about index pointers created by create_file_task.
+  ermia::thread::Thread::Task runner_task =
+    std::bind(&bench_runner::prepare, this, std::placeholders::_1);
+  ermia::thread::Thread *runner_thread = ermia::thread::GetThread(true /* physical */);
+  runner_thread->StartTask(runner_task);
+  runner_thread->Join();
+  ermia::thread::PutThread(runner_thread);
 
   // load data, unless we recover from logs or is a backup server (recover from
   // shipped logs)
-  if (not ermia::sm_log::need_recovery && not ermia::config::is_backup_srv()) {
+  if (not ermia::sm_log::need_recovery) {
     std::vector<bench_loader *> loaders = make_loaders();
     {
       util::scoped_timer t("dataloading", ermia::config::verbose);
@@ -221,115 +192,13 @@ void bench_runner::run() {
   }
 
   // Start checkpointer after database is ready
-  if (ermia::config::is_backup_srv()) {
-    if (ermia::config::command_log &&
-        ermia::config::replay_policy != ermia::config::kReplayNone &&
-        ermia::config::replay_threads) {
-      cmdlog_redoers = make_cmdlog_redoers();
-      ermia::CommandLog::redoer_barrier = new spin_barrier(ermia::config::replay_threads);
-      if (ermia::config::replay_policy == ermia::config::kReplayBackground) {
-        std::thread bg(&ermia::CommandLog::CommandLogManager::BackgroundReplayDaemon, ermia::CommandLog::cmd_log);
-        bg.detach();
-      }
-      for (auto &r : cmdlog_redoers) {
-        while (!r->IsImpersonated()) {
-          r->TryImpersonate();
-        }
-        r->Start();
-      }
-      LOG(INFO) << "Started all redoers";
-    }
-
-    // See if we need to wait for the 'go' signal from the primary
-    if (ermia::config::wait_for_primary) {
-      while (!ermia::config::IsForwardProcessing()) {
-      }
-    }
-    if (ermia::config::log_ship_by_rdma && !ermia::config::quick_bench_start) {
-      std::cout << "Press Enter to start benchmark" << std::endl;
-      getchar();
-    }
-  } else {
-    if (ermia::config::num_backups) {
-      ALWAYS_ASSERT(not ermia::config::is_backup_srv());
-      ermia::rep::start_as_primary();
-      if (ermia::config::wait_for_backups) {
-        while (ermia::volatile_read(ermia::config::num_active_backups) !=
-               ermia::volatile_read(ermia::config::num_backups)) {
-        }
-      }
-      std::cout << "[Primary] " << ermia::config::num_backups << " backups\n";
-    }
-
-    if (ermia::config::enable_chkpt) {
-      ermia::chkptmgr->start_chkpt_thread();
-    }
-    ermia::volatile_write(ermia::config::state, ermia::config::kStateForwardProcessing);
+  if (ermia::config::enable_chkpt) {
+    ermia::chkptmgr->start_chkpt_thread();
   }
-
-  // Start a thread that dumps read view LSN
-  std::thread read_view_observer;
-  if (ermia::config::read_view_stat_interval_ms) {
-    read_view_observer = std::move(std::thread(measure_read_view_lsn));
-  }
+  ermia::volatile_write(ermia::config::state, ermia::config::kStateForwardProcessing);
 
   if (ermia::config::worker_threads) {
     start_measurement();
-  } else {
-    LOG(INFO) << "No worker threads available to run benchmarks.";
-    std::mutex trigger_lock;
-    std::unique_lock<std::mutex> lock(trigger_lock);
-    ermia::rep::backup_shutdown_trigger.wait(lock);
-    if (ermia::config::replay_policy != ermia::config::kReplayNone &&
-        ermia::config::replay_policy != ermia::config::kReplayBackground) {
-      while (ermia::volatile_read(ermia::rep::replayed_lsn_offset) <
-             ermia::volatile_read(ermia::rep::new_end_lsn_offset)) {
-      }
-    }
-    std::cerr << "Shutdown successfully" << std::endl;
-  }
-
-  if (ermia::config::is_backup_srv() && ermia::config::command_log && cmdlog_redoers.size()) {
-    tx_stat_map agg = cmdlog_redoers[0]->get_cmdlog_txn_counts();
-    for (size_t i = 1; i < cmdlog_redoers.size(); i++) {
-      cmdlog_redoers[i]->Join();
-      auto &c = cmdlog_redoers[i]->get_cmdlog_txn_counts();
-      for (auto &t : c) {
-        std::get<0>(agg[t.first]) += std::get<0>(t.second);
-        std::get<1>(agg[t.first]) += std::get<1>(t.second);
-        std::get<2>(agg[t.first]) += std::get<2>(t.second);
-        std::get<3>(agg[t.first]) += std::get<3>(t.second);
-      }
-    }
-#ifndef __clang__
-    std::cerr << "cmdlog txn breakdown: "
-      << util::format_list(agg.begin(), agg.end()) << std::endl;
-#endif
-  }
-  if (ermia::config::read_view_stat_interval_ms) {
-    read_view_observer.join();
-  }
-}
-
-void bench_runner::measure_read_view_lsn() {
-  std::ofstream out_file(ermia::config::read_view_stat_file, std::ios::out | std::ios::trunc);
-  LOG_IF(FATAL, !out_file.is_open()) << "Read view stat file not open";
-  DEFER(out_file.close());
-  out_file << "Time,LSN,DLSN" << std::endl;
-  while (!ermia::config::IsShutdown()) {
-    while (ermia::config::IsForwardProcessing()) {
-      uint64_t lsn = 0;
-      uint64_t dlsn = ermia::logmgr->durable_flushed_lsn().offset();
-      if (ermia::config::is_backup_srv()) {
-        lsn = ermia::rep::GetReadView();
-      } else {
-        lsn = ermia::logmgr->cur_lsn().offset();
-      }
-      uint64_t t = std::chrono::system_clock::now().time_since_epoch() /
-                   std::chrono::milliseconds(1);
-      out_file << t << "," << lsn << "," << dlsn << std::endl;
-      usleep(ermia::config::read_view_stat_interval_ms * 1000);
-    }
   }
 }
 
@@ -420,10 +289,6 @@ void bench_runner::start_measurement() {
     return percent;
   };
 
-  if (ermia::config::truncate_at_bench_start) {
-    ermia::rep::TruncateFilesInLogDir();
-  }
-
   if (ermia::config::print_cpu_util) {
     printf("Sec,Commits,Aborts,CPU\n");
   } else {
@@ -458,31 +323,14 @@ void bench_runner::start_measurement() {
   };
 
   // Backups run forever until told to stop.
-  if (ermia::config::is_backup_srv()) {
-    while (!ermia::config::IsShutdown()) {
-      gather_stats();
-    }
-  } else {
-    while (slept < ermia::config::benchmark_seconds) {
-      gather_stats();
-    }
+  while (slept < ermia::config::benchmark_seconds) {
+    gather_stats();
   }
   running = false;
 
   ermia::volatile_write(ermia::config::state, ermia::config::kStateShutdown);
   for (size_t i = 0; i < ermia::config::worker_threads; i++) {
     workers[i]->Join();
-  }
-
-  if (ermia::config::num_backups) {
-    delete ermia::logmgr;
-    if (ermia::config::command_log) {
-      delete ermia::CommandLog::cmd_log;
-      for (auto &t : bench_runner::cmdlog_redoers) {
-        t->Join();
-      }
-    }
-    ermia::rep::PrimaryShutdown();
   }
 
   const unsigned long elapsed_nosync = t_nosync.lap();
@@ -513,12 +361,12 @@ void bench_runner::start_measurement() {
     n_rw_aborts += workers[i]->get_ntxn_rw_aborts();
     n_phantom_aborts += workers[i]->get_ntxn_phantom_aborts();
     n_query_commits += workers[i]->get_ntxn_query_commits();
-    if (ermia::config::is_backup_srv() || !ermia::config::group_commit) {
+    if (!ermia::config::group_commit) {
       latency_numer_us += workers[i]->get_latency_numer_us();
     }
   }
 
-  if (!ermia::config::is_backup_srv() && ermia::config::group_commit) {
+  if (ermia::config::group_commit) {
     latency_numer_us = ermia::sm_log_alloc_mgr::commit_queue::total_latency_us;
   }
 
@@ -552,18 +400,6 @@ void bench_runner::start_measurement() {
   uint64_t agg_latency_us = 0;
   uint64_t agg_redo_batches = 0;
   uint64_t agg_redo_size = 0;
-  if (ermia::config::is_backup_srv() && ermia::config::log_ship_offset_replay) {
-    ermia::parallel_offset_replay *f = (ermia::parallel_offset_replay *)ermia::logmgr->get_backup_replay_functor();
-    if (f) {
-      for (auto &r : f->redoers) {
-        if (agg_latency_us < r->redo_latency_us) {
-          agg_latency_us = r->redo_latency_us;
-        }
-        agg_redo_batches += r->redo_batches;
-        agg_redo_size += r->redo_size;
-      }
-    }
-  }
 
   const double agg_replay_latency_ms = agg_latency_us / 1000.0;
 
@@ -610,12 +446,6 @@ void bench_runner::start_measurement() {
     std::cerr << "txn breakdown: " << util::format_list(agg_txn_counts.begin(),
                                                    agg_txn_counts.end()) << std::endl;
 #endif
-    if (ermia::config::is_backup_srv()) {
-      std::cerr << "agg_replay_time: " << agg_replay_latency_ms << " ms" << std::endl;
-      std::cerr << "agg_redo_batches: " << agg_redo_batches << std::endl;
-      std::cerr << "ms_per_redo_batch: " << agg_replay_latency_ms / (double)agg_redo_batches << std::endl;
-      std::cerr << "agg_redo_size: " << agg_redo_size << " bytes" << std::endl;
-    }
   }
 
   // output for plotting script
@@ -658,14 +488,6 @@ struct map_maxer {
 const tx_stat_map bench_worker::get_txn_counts() const {
   tx_stat_map m;
   const workload_desc_vec workload = get_workload();
-  for (size_t i = 0; i < txn_counts.size(); i++)
-    m[workload[i].name] = txn_counts[i];
-  return m;
-}
-
-const tx_stat_map bench_worker::get_cmdlog_txn_counts() const {
-  tx_stat_map m;
-  const cmdlog_redo_workload_desc_vec workload = get_cmdlog_redo_workload();
   for (size_t i = 0; i < txn_counts.size(); i++)
     m[workload[i].name] = txn_counts[i];
   return m;

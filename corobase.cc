@@ -1,7 +1,5 @@
 #include "dbcore/rcu.h"
 #include "dbcore/sm-chkpt.h"
-#include "dbcore/sm-cmd-log.h"
-#include "dbcore/sm-rep.h"
 
 #include "ermia.h"
 #include "txn.h"
@@ -83,22 +81,7 @@ void ConcurrentMasstreeIndex::amac_MultiGet(
   } else {
     t->ensure_active();
     masstree_.search_amac(requests, t->xc->begin_epoch);
-    if (config::is_backup_srv()) {
-      for (uint32_t i = 0; i < requests.size(); ++i) {
-        auto &r = requests[i];
-        if (r.out_oid != INVALID_OID) {
-          // Key-OID mapping exists, now try to get the actual tuple to be sure
-          auto *tuple = oidmgr->BackupGetVersion(
-              table_descriptor->GetTupleArray(),
-              table_descriptor->GetPersistentAddressArray(), r.out_oid, t->xc);
-          if (tuple) {
-            t->DoTupleRead(tuple, values[i]);
-          } else if (config::phantom_prot) {
-            DoNodeRead(t, sinfo.first, sinfo.second);
-          }
-        }
-      }
-    } else if (!config::index_probe_only) {
+    if (!config::index_probe_only) {
       if (config::amac_version_chain) {
         // AMAC style version chain traversal
         thread_local std::vector<OIDAMACState> version_requests;
@@ -307,7 +290,6 @@ start_over:
       {
         fat_ptr clsn = cur_obj->GetClsn();
         if (clsn == NULL_PTR) {
-          ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
           // dead tuple that was (or about to be) unlinked, start over
           goto start_over;
         }
@@ -322,7 +304,6 @@ start_over:
                    ((Object *)cur_obj->GetNextVolatile().offset())
                            ->GetClsn()
                            .asi_type() == fat_ptr::ASI_LOG);
-            ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
             goto handle_visible;
           }
           auto *holder = TXN::xid_get_context(holder_xid);
@@ -511,7 +492,6 @@ start_over:
       {
         fat_ptr clsn = cur_obj->GetClsn();
         if (clsn == NULL_PTR) {
-          ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
           // dead tuple that was (or about to be) unlinked, start over
           goto start_over;
         }
@@ -526,7 +506,6 @@ start_over:
                    ((Object *)cur_obj->GetNextVolatile().offset())
                            ->GetClsn()
                            .asi_type() == fat_ptr::ASI_LOG);
-            ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
             goto handle_visible;
           }
           auto *holder = TXN::xid_get_context(holder_xid);
@@ -1432,16 +1411,12 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
           fat_ptr tentative_next = NULL_PTR;
           // If this is a backup server, then must see persistent_next to find out
           // the **real** overwritten version.
-          if (config::is_backup_srv() && !config::command_log) {
-            //oid_get_version_backup(ptr, tentative_next, prev_obj, cur_obj, t->xc);
-          } else {
-            ASSERT(ptr.asi_type() == 0);
-            cur_obj = (Object *)ptr.offset();
-            Object::PrefetchHeader(cur_obj);
-            //co_await std::experimental::suspend_always{};
-            tentative_next = cur_obj->GetNextVolatile();
-            ASSERT(tentative_next.asi_type() == 0);
-          }
+          ASSERT(ptr.asi_type() == 0);
+          cur_obj = (Object *)ptr.offset();
+          Object::PrefetchHeader(cur_obj);
+          //co_await std::experimental::suspend_always{};
+          tentative_next = cur_obj->GetNextVolatile();
+          ASSERT(tentative_next.asi_type() == 0);
 
           bool retry = false;
           bool visible = oidmgr->TestVisibility(cur_obj, t->xc, retry);

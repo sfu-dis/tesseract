@@ -17,7 +17,7 @@
 #define SEGMENT_FILE_NAME_BUFSZ sizeof("log-01234567-0123456789ab-0123456789ab")
 
 #include "sm-log-defs.h"
-
+#include "../macros.h"
 #include <deque>
 
 namespace ermia {

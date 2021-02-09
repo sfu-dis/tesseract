@@ -1,4 +1,5 @@
 #include "sm-config.h"
+#include "sm-log.h"
 #include "sm-log-file.h"
 
 #include "rcu.h"
@@ -73,18 +74,6 @@ struct dmark_file_name {
   operator char const *() { return buf; }
   char const *operator*() { return buf; }
 };
-
-void sm_log_file_mgr::create_segment_file(segment_id *sid) {
-  ALWAYS_ASSERT(config::is_backup_srv());
-  nxt_seg_file_name oldname(sid->segnum);
-  segment_file_name newname(sid);
-  os_renameat(dfd, oldname, dfd, newname);
-  os_fsync(dfd);
-
-  nxt_seg_file_name sname(sid->segnum + 1);
-  uint64_t fd = os_openat(dfd, sname, O_CREAT | O_EXCL | O_RDONLY);
-  nxt_segment_fd = (fd << 32) | (sid->segnum + 1);
-}
 
 segment_id *sm_log_file_mgr::_oldest_segment() {
   return segments[volatile_read(oldest_segnum)];
@@ -454,9 +443,6 @@ void sm_log_file_mgr::_create_nxt_seg_file(bool force) {
 
       // The backup will create the real file after it got the
       // correct begin_offset value.
-      if (config::is_backup_srv() && !config::command_log) {
-        return;
-      }
       nxt_seg_file_name oldname(sid->segnum);
       segment_file_name newname(sid);
       os_renameat(dfd, oldname, dfd, newname);
@@ -465,7 +451,6 @@ void sm_log_file_mgr::_create_nxt_seg_file(bool force) {
     }
   }
   if (doit) {
-    ALWAYS_ASSERT(!config::is_backup_srv() || config::command_log);
     nxt_seg_file_name sname(segnum);
     uint64_t fd = os_openat(dfd, sname, O_CREAT | O_EXCL | O_RDONLY);
     nxt_segment_fd = (fd << 32) | segnum;

@@ -166,9 +166,7 @@ void Thread::IdleTask() {
   while (not volatile_read(shutdown)) {
     if (volatile_read(state) == kStateHasWork) {
       task(task_input);
-      if (!config::IsShutdown() && logmgr and not config::is_backup_srv()) {
-        // logmgr might be null during recovery and backups will flush on their
-        // own
+      if (!config::IsShutdown() && logmgr) {
         auto my_offset = logmgr->get_tls_lsn_offset();
         // Must use a while loop here instead of using
         // logmgr->wait_for_durable();

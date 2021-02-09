@@ -147,7 +147,6 @@ struct dbtuple {
 
   inline dbtuple *NextVolatile() {
     // So far this is only used by the primary
-    ALWAYS_ASSERT(!config::is_backup_srv());
     Object *myobj = GetObject();
     ASSERT(myobj->GetPayload() == (char *)this);
     Object *next_obj = (Object*)myobj->GetNextVolatile().offset();

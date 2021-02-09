@@ -117,18 +117,6 @@ class bench_worker : public ermia::thread::Runner {
   }
   ~bench_worker() {}
 
-  /* For the r/w workload using command log shipping on backups */
-  typedef rc_t (*cmdlog_redo_fn_t)(bench_worker *, void * /* parameters */);
-  struct cmdlog_redo_workload_desc {
-    cmdlog_redo_workload_desc() {}
-    cmdlog_redo_workload_desc(const std::string &name, cmdlog_redo_fn_t fn)
-      : name(name), fn(fn) {}
-    std::string name;
-    cmdlog_redo_fn_t fn;
-  };
-  typedef std::vector<cmdlog_redo_workload_desc> cmdlog_redo_workload_desc_vec;
-  cmdlog_redo_workload_desc_vec cmdlog_redo_workload;
-
   /* For 'normal' workload (r/w on primary, r/o on backups) */
   typedef rc_t (*txn_fn_t)(bench_worker *);
   typedef std::experimental::coroutine_handle<ermia::coro::generator<rc_t>::promise_type> CoroTxnHandle;
@@ -150,7 +138,6 @@ class bench_worker : public ermia::thread::Runner {
   };
   typedef std::vector<workload_desc> workload_desc_vec;
   virtual workload_desc_vec get_workload() const = 0;
-  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const = 0;
   workload_desc_vec workload;
 
   inline size_t get_ntxn_commits() const { return ntxn_commits; }
@@ -179,10 +166,8 @@ class bench_worker : public ermia::thread::Runner {
   }
 
   const tx_stat_map get_txn_counts() const;
-  const tx_stat_map get_cmdlog_txn_counts() const;
 
   void do_workload_function(uint32_t i);
-  void do_cmdlog_redo_workload_function(uint32_t i, void *param);
   uint32_t fetch_workload();
   bool finish_workload(rc_t ret, uint32_t workload_idx, util::timer t);
 
@@ -246,18 +231,12 @@ class bench_runner {
 
   static std::vector<bench_worker *> workers;
 
-  // For command log shipping only
-  static std::vector<bench_worker *> cmdlog_redoers;
-
-  static void measure_read_view_lsn();
-
  protected:
   // only called once
   virtual std::vector<bench_loader *> make_loaders() = 0;
 
   // only called once
   virtual std::vector<bench_worker *> make_workers() = 0;
-  virtual std::vector<bench_worker *> make_cmdlog_redoers() = 0;
 
   ermia::Engine *const db;
   std::map<std::string, ermia::OrderedIndex *> open_tables;

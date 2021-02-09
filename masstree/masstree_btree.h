@@ -195,12 +195,7 @@ public:
     table_descriptor_ = id;
     ALWAYS_ASSERT(tuple_array_);
     table_.set_tuple_array(tuple_array_);
-    if (config::is_backup_srv()) {
-      pdest_array_ = id->GetPersistentAddressArray();
-      ALWAYS_ASSERT(pdest_array_);
-    } else {
-      pdest_array_ = nullptr;
-    }
+    pdest_array_ = nullptr;
     table_.set_pdest_array(pdest_array_);
   }
 

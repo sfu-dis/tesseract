@@ -7,7 +7,6 @@
 
 #include "bench.h"
 #include "tpcc.h"
-#include "../dbcore/sm-cmd-log.h"
 
 // configuration flags
 extern int g_disable_xpartition_txn;
@@ -1253,10 +1252,6 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
     return static_cast<tpcc_worker *>(w)->txn_query2();
   }
 
-  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const override {
-    LOG(FATAL) << "Not applicable";
-  }
-
   virtual workload_desc_vec get_workload() const override;
 
  protected:
@@ -1323,10 +1318,6 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
 
   static ermia::coro::generator<rc_t> TxnMicroBenchRandom(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
     return static_cast<tpcc_cs_worker *>(w)->txn_microbench_random(idx, begin_epoch);
-  }
-
-  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const override {
-    LOG(FATAL) << "Not applicable";
   }
 
   virtual workload_desc_vec get_workload() const override;

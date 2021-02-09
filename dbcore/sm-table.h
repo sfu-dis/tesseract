@@ -68,19 +68,15 @@ class TableDescriptor {
   inline OrderedIndex* GetPrimaryIndex() { return primary_index; }
   inline FID GetTupleFid() { return tuple_fid; }
   inline FID GetKeyFid() {
-    ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
     return aux_fid_;
   }
   inline oid_array* GetKeyArray() {
-    ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
     return aux_array_;
   }
   inline FID GetPersistentAddressFid() {
-    ASSERT(config::is_backup_srv());
     return aux_fid_;
   }
   inline oid_array* GetPersistentAddressArray() {
-    ASSERT(config::is_backup_srv());
     return aux_array_;
   }
   inline oid_array* GetTupleArray() { return tuple_array; }

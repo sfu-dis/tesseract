@@ -1,7 +1,5 @@
 #include "rcu.h"
-#include "sm-cmd-log.h"
 #include "sm-log-alloc.h"
-#include "sm-rep.h"
 #include "stopwatch.h"
 #include "../util.h"
 
@@ -48,31 +46,26 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
       _write_daemon_should_wake(false),
       _write_daemon_should_stop(false),
       _lsn_offset(_lm.get_durable_mark().offset()) {
-  _logbuf_partition_size =
-      config::log_buffer_mb * config::MB / config::log_redo_partitions;
-  ALWAYS_ASSERT(
-      config::log_buffer_mb * config::MB % config::log_redo_partitions == 0);
   _logbuf = sm_log::get_logbuf();
   _logbuf->_head = _logbuf->_tail = get_starting_byte_offset(&_lm);
-  if (!config::is_backup_srv() || (config::command_log && config::replay_threads)) {
-    _tls_lsn_offset =
-        (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
-    memset(_tls_lsn_offset, 0, sizeof(uint64_t) * config::MAX_THREADS);
 
-    uint32_t n = config::is_backup_srv() ? config::replay_threads : config::worker_threads;
-    _commit_queue = new commit_queue[n];
-    for (uint32_t i = 0; i < n; ++i) {
-      _commit_queue[i].lm = this;
-    }
+  _tls_lsn_offset =
+      (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
+  memset(_tls_lsn_offset, 0, sizeof(uint64_t) * config::MAX_THREADS);
 
-    // fire up the log writing daemon
-    _write_daemon_mutex.lock();
-    DEFER(_write_daemon_mutex.unlock());
-
-    int err =
-        pthread_create(&_write_daemon_tid, NULL, &log_write_daemon_thunk, this);
-    THROW_IF(err, os_error, err, "Unable to start log writer daemon thread");
+  uint32_t n = config::worker_threads;
+  _commit_queue = new commit_queue[n];
+  for (uint32_t i = 0; i < n; ++i) {
+    _commit_queue[i].lm = this;
   }
+
+  // fire up the log writing daemon
+  _write_daemon_mutex.lock();
+  DEFER(_write_daemon_mutex.unlock());
+
+  int err =
+      pthread_create(&_write_daemon_tid, NULL, &log_write_daemon_thunk, this);
+  THROW_IF(err, os_error, err, "Unable to start log writer daemon thread");
 }
 
 sm_log_alloc_mgr::~sm_log_alloc_mgr() {
@@ -83,9 +76,7 @@ sm_log_alloc_mgr::~sm_log_alloc_mgr() {
 
 void sm_log_alloc_mgr::enqueue_committed_xct(uint32_t worker_id,
                                              uint64_t start_time) {
-  uint64_t lsn = config::command_log ?
-                 CommandLog::cmd_log->GetTlsOffset() :
-                 get_tls_lsn_offset() & ~kDirtyTlsLsnOffset;
+  uint64_t lsn = get_tls_lsn_offset() & ~kDirtyTlsLsnOffset;
   _commit_queue[worker_id].push_back(lsn, start_time);
 }
 
@@ -95,11 +86,7 @@ void sm_log_alloc_mgr::commit_queue::push_back(uint64_t lsn,
   bool insert = true;
 retry :
   if (flush) {
-    if (config::command_log) {
-      CommandLog::cmd_log->TryFlush();
-    } else {
-      lm->flush();
-    }
+    lm->flush();
     flush = false;
   }
   if (insert) {
@@ -123,7 +110,7 @@ retry :
 
 void sm_log_alloc_mgr::dequeue_committed_xcts(uint64_t upto,
                                               uint64_t end_time) {
-  uint32_t n = config::is_backup_srv() ? config::replay_threads : config::worker_threads;
+  uint32_t n = config::worker_threads;
   for (uint32_t i = 0; i < n; i++) {
     CRITICAL_SECTION(cs, _commit_queue[i].lock);
     uint32_t n = volatile_read(_commit_queue[i].start);
@@ -192,187 +179,10 @@ LSN sm_log_alloc_mgr::flush() {
   return _lm.get_durable_mark();
 }
 
-void sm_log_alloc_mgr::BackupFlushLog(uint64_t new_dlsn_offset) {
-  ASSERT(config::is_backup_srv());
-retry:
-  LSN dlsn = _lm.get_durable_mark();
-  ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
-  ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
-  auto *durable_sid = _lm.get_segment(dlsn.segment());
-  ALWAYS_ASSERT(durable_sid);
-  if (_durable_flushed_lsn_offset >= durable_sid->end_offset) {
-    // Crossing a dead zone, update the durable mark by hand
-    durable_sid = _lm.get_segment(dlsn.segment() + 1);
-    _durable_flushed_lsn_offset = durable_sid->start_offset;
-    _lm.update_durable_mark(
-        LSN::make(_durable_flushed_lsn_offset, durable_sid->segnum));
-    goto retry;
-  }
-  if (_durable_flushed_lsn_offset >= new_dlsn_offset) {
-    return;
-  }
-  uint64_t durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
-  int active_fd = _lm.open_for_write(durable_sid);
-  DEFER(os_close(active_fd));
-
-  /* The block list contains a fluctuating---and usually fairly
-     short---set of log_allocation objects. Releasing or
-     discarding a block marks it as dead (without removing it)
-     and removes all dead blocks that follow it. The list is
-     primed at start-up with the durable LSN (as determined by
-     startup/recovery), and so is guaranteed to always contain
-     at least one (perhaps dead) node that later requests can
-     use to acquire a proper LSN.
-
-     Our goal is to find the oldest (= last) live block in the
-     list, and write out everything before that block's offset.
-
-     Once we know the offset, we can look up the corresponding
-     segment to obtain an LSN.
-   */
-  LOG_IF(FATAL, new_dlsn_offset < durable_sid->start_offset);
-  uint64_t new_byte =
-      durable_sid->byte_offset + (new_dlsn_offset - durable_sid->start_offset);
-
-  ASSERT(durable_byte < new_byte);
-  ASSERT(new_byte <= sm_log::logbuf->write_end());
-
-  uint64_t nbytes = new_byte - durable_byte;
-  ALWAYS_ASSERT(sm_log::logbuf->available_to_read() >= nbytes);
-  THROW_IF(sm_log::logbuf->available_to_read() < nbytes, log_file_error,
-           "Not enough log bufer to read");
-
-  // perform the write
-  auto *buf = sm_log::logbuf->read_buf(durable_byte, nbytes);
-  auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
-  uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
-  THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
-  _durable_flushed_lsn_offset = new_dlsn_offset;
-
-  // Update cur_lsn_offset so read-only transactions can get fresh data
-  if (_lsn_offset < _durable_flushed_lsn_offset) {
-    THROW_IF(not config::is_backup_srv(), illegal_argument,
-             "Wrong cur_lsn_offset on primary node");
-    _lsn_offset = _durable_flushed_lsn_offset;
-  }
-
-  // Have to use LSN::make (instead of durable_sid->make_lsn which checks
-  // lsn offset ownership): Since we're on a backup server, this new durable
-  // lsn offset might end up in the deadzone which isn't contained by any sid,
-  // because we ship at log buffer flush boundaries (no info for the next
-  // segment
-  // until the next shipping).
-  _lm.update_durable_mark(
-      LSN::make(_durable_flushed_lsn_offset, durable_sid->segnum));
-}
-
-void sm_log_alloc_mgr::PrimaryShipLog(segment_id *durable_sid,
-                                      uint64_t nbytes, bool new_seg,
-                                      uint64_t new_offset, const char *buf) {
-  ASSERT(!config::command_log);
-  bool have_imm = false;
-  uint32_t imm = 0;
-  if (config::log_ship_by_rdma) {
-    // Ship first, this is async for RDMA
-    // Embed the segment's real begin_offset as the immediate: Note that we
-    // have 32-bit immmediates only, so we only store the offset off the base
-    // segment size boundaries. e.g., for the second segment (segment 2) and
-    // with a segment size of 4GB: we'd encode: begin_offset - (2-1) * 4GB.
-    // This number won't usually go beyond 32-bit; the backup when received the
-    // immediate will extract and recalculate the correct segment begin/end
-    // offsets.
-    bool seg_first_ship =
-        _durable_flushed_lsn_offset == durable_sid->start_offset;
-    DLOG(INFO) << "Will ship " << std::hex << _durable_flushed_lsn_offset
-               << " " << new_offset << " " << durable_sid->byte_offset
-               << " new_seg=" << new_seg
-               << " seg_first_ship=" << seg_first_ship << " nbytes=" << nbytes
-               << std::dec;
-    // Two cases when we cross segment boundaries:
-    // 1. We will end in the new segment;
-    // 2. We end right before the new segment (ie the end of the old segment).
-    // [new_seg] covers the first case; [seg_first_ship] covers the second.
-    have_imm = new_seg || seg_first_ship;
-    if (have_imm) {
-      imm = durable_sid->start_offset -
-            (durable_sid->segnum - 1) * config::log_segment_mb * config::MB;
-    }
-  }
-  LOG_IF(FATAL, nbytes > config::group_commit_bytes + MIN_LOG_BLOCK_SIZE)
-        << "Trying to ship too much: " << nbytes;
-  if (config::persist_policy == config::kPersistPipelined) {
-    if (config::log_ship_by_rdma) {
-      // Wait for the backup to persist (it might act fast and set
-      // ReadyToReceive too)
-      rep::primary_rdma_wait_for_message(
-          rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
-    } else {
-      // Wait for acks from backup
-      for (auto &fd : rep::backup_sockfds) {
-        tcp::expect_ack(fd);
-      }
-    }
-    {
-      util::timer t;
-      dequeue_committed_xcts(_durable_flushed_lsn_offset, t.get_start());
-    }
-    // Now send global persisted LSN (no need to wait for ack)
-    if (config::log_ship_by_rdma) {
-      rep::primary_rdma_set_global_persisted_lsn(_durable_flushed_lsn_offset);
-    } else {
-      for (auto &fd : rep::backup_sockfds) {
-        uint32_t nbytes = send(fd, (char*)&_durable_flushed_lsn_offset, sizeof(uint64_t), 0);
-        LOG_IF(FATAL, nbytes != sizeof(uint64_t)) << "Error sending global persisted lsn";
-      }
-    }
-  }
-  rep::primary_ship_log_buffer_all(buf, nbytes, have_imm, imm);
-}
-
 // Wait for persistence ack from backups (if required) and dequeue transactions
 // pending persistence. Called only after successfully persisting the log.
 void sm_log_alloc_mgr::PrimaryCommitPersistedWork(uint64_t new_offset) {
-  if (config::num_active_backups) {
-    if (!config::IsLoading() && config::persist_policy == config::kPersistSync) {
-      if (config::log_ship_by_rdma) {
-        // Wait for the backup to persist (it might act fast and set
-        // ReadyToReceive too)
-        rep::primary_rdma_wait_for_message(rep::kRdmaPersisted, false);
-        {
-          // Dequeue transactions since data is persisted everywhere
-          util::timer t;
-          dequeue_committed_xcts(new_offset, t.get_start());
-        }
-        // Now set the global persisted LSN in each node to enable querying of
-        // the shipped data.
-        // Note: this is necessary because we don't want the replicas to
-        // return results that are not yet deemed 'durable' by the primary.
-        // If this is ignored, some replicas might return result that is
-        // not yet made durable in other replicas, i.e., returning results
-        // based on uncommitted data.
-        rep::primary_rdma_set_global_persisted_lsn(new_offset);
-        // Now we need to poll to make sure the RDMA write WQEs are consumed,
-        // one for the log buffer partition bounds, the other for data
-        rep::primary_rdma_poll_send_cq(2);
-      } else {
-        for (auto &fd : rep::backup_sockfds) {
-          tcp::expect_ack(fd);
-        }
-        {
-          util::timer t;
-          dequeue_committed_xcts(new_offset, t.get_start());
-        }
-        // Set global persisted LSN
-        for (auto &fd : rep::backup_sockfds) {
-          uint32_t nbytes = send(fd, (char*)&new_offset, sizeof(uint64_t), 0);
-          LOG_IF(FATAL, nbytes != sizeof(uint64_t)) << "Error sending global persisted lsn";
-        }
-      }
-    } else if (config::persist_policy == config::kPersistAsync) {
-      util::timer t;
-      dequeue_committed_xcts(new_offset, t.get_start());
-    }
-  } else if (config::group_commit) {
+  if (config::group_commit) {
     util::timer t;
     dequeue_committed_xcts(new_offset, t.get_start());
   }
@@ -387,7 +197,6 @@ int sm_log_alloc_mgr::open_segment_for_read(segment_id *sid) {
  */
 segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
                                               bool update_dmark) {
-  ASSERT(!config::is_backup_srv() || config::command_log);
   /* The primary ships log records at log buffer flush boundaries, and log
    * flushing respects segment boundaries. Threads trying to carve out a range
    * of LSN offset also need to respect segment boundaries, boundary-crossing
@@ -473,30 +282,13 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     auto *buf = _logbuf->read_buf(durable_byte, nbytes);
     auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
 
-    // Ship the log to backups, unless we're doing async log shipping
-    if (!config::command_log &&
-        config::persist_policy != config::kPersistAsync &&
-        config::num_active_backups &&
-        !config::IsLoading()) {
-      PrimaryShipLog(durable_sid, nbytes, new_seg, new_offset, buf);
-      if (new_seg) {
-        new_seg = false;
-      }
-    }
-
     uint64_t n = 0;
-    // Note: Here we actually allow skip log writing on the primary node even in
-    // a primary/backup setting, but for benchmarking purpose only. A fully
-    // 'correct' setting is to ensure persistence at *all* nodes, including the
-    // primary.  Note(tzwang): 20170428: the only reason I added this is due to
+    // !!! For benchmarking purpose only!!! A fully 'correct' setting is
+    // to ensure persistence. 
+    // Note(tzwang): 20170428: the only reason I added this is due to
     // lack of DRAM space for storing log files in tmpfs.
-    if (config::null_log_device && (config::num_active_backups == 0 || !config::IsLoading())) {
+    if (config::null_log_device) {
       n = nbytes;
-    } else {
-      n = os_pwrite(active_fd, buf, nbytes, file_offset);
-      if (!config::command_log && config::persist_policy == config::kPersistAsync) {
-        rep::async_ship_cond.notify_all();
-      }
     }
     LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
 
@@ -649,27 +441,6 @@ start_over:
 
   LSN lsn = sid->make_lsn(lsn_offset);
 
-  // If adding my payload, we're crossing a log buffer partition boundary,
-  // make sure the flusher knows about this location (for log shipping).
-  // Still needed even for oid-parallel replay because we need it to determine
-  // how much to ship.
-  if (!config::IsLoading() && config::num_active_backups && !config::command_log) {
-    uint64_t start_partition =
-        (lsn_offset / _logbuf_partition_size) % config::log_redo_partitions;
-    uint64_t next_partition =
-        (next_lsn_offset / _logbuf_partition_size) % config::log_redo_partitions;
-    if (start_partition != next_partition) {
-      ALWAYS_ASSERT((start_partition + 1) % config::log_redo_partitions ==
-                    next_partition);
-      volatile_write(rep::log_redo_partition_bounds[start_partition],
-                     rval.next_lsn._val);
-      DLOG(INFO) << "Log buffer partition: " << start_partition << " "
-                 << std::hex << rep::log_redo_partition_bounds[start_partition] << std::dec
-                 << " "
-                 << next_lsn_offset - LSN{rep::log_redo_partition_bounds[(start_partition-1) % config::log_redo_partitions]}.offset();
-    }
-  }
-
   /* Step #3: claim buffer space (wait if it's not yet available).
 
      Save copies of the request parameters in case our block went
@@ -731,11 +502,9 @@ grab_buffer:
 void sm_log_alloc_mgr::release(log_allocation *x) {
   // Include the size of our allocation, indicated by next_lsn.
   // Otherwise we might lose committed work.
-  if (!config::is_backup_srv() || (config::command_log && config::replay_threads)) {
-    // Only need to do this for the primary server - worker threads on
-    // backups don't do updates
-    set_tls_lsn_offset(x->block->next_lsn().offset());
-  }
+  // Only need to do this for the primary server - worker threads on
+  // backups don't do updates
+  set_tls_lsn_offset(x->block->next_lsn().offset());
   free(x);
   bool should_kick = config::group_commit ?
       cur_lsn_offset() - _durable_flushed_lsn_offset >= config::group_commit_bytes :
@@ -808,28 +577,13 @@ void sm_log_alloc_mgr::_log_write_daemon() {
     uint64_t cur_offset = cur_lsn_offset();
     uint64_t min_tls = smallest_tls_lsn_offset();
     uint64_t new_dlsn_offset = min_tls;
-    if (!config::IsLoading() && config::num_active_backups > 0 && !config::command_log) {
-      uint64_t max_size = config::group_commit_bytes + MIN_LOG_BLOCK_SIZE;
-      if (new_dlsn_offset - _durable_flushed_lsn_offset > max_size) {
-        // Find the maximum that will cause us to ship at most [group_commit_size_kb]
-        uint64_t max = 0;
-        for (uint64_t i = 0; i < config::log_redo_partitions; ++i) {
-          uint64_t off = LSN{rep::log_redo_partition_bounds[i]}.offset();
-          if (off <= min_tls && off > max && (off - _durable_flushed_lsn_offset <= max_size)) {
-            max = off;
-          }
-        }
-        new_dlsn_offset = max;
-      }
-    }
     segment_id *durable_sid = nullptr;
     if (new_dlsn_offset > _durable_flushed_lsn_offset) {
       durable_sid = PrimaryFlushLog(new_dlsn_offset);
     }
-    if (!config::command_log) {
-      // Dequeue transactions pending persistence (if pipelined group commit is on)
-      PrimaryCommitPersistedWork(new_dlsn_offset);
-    }
+
+    // Dequeue transactions pending persistence (if pipelined group commit is on)
+    PrimaryCommitPersistedWork(new_dlsn_offset);
 
     /* Having completed a round of writes, notify waiting threads
        and take care of special cases
