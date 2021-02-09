@@ -1,7 +1,7 @@
 #include <vector>
 #include <algorithm>
 
-#include "sm-oid-alloc-impl.h"
+#include "sm-oid-alloc.h"
 
 namespace ermia {
 

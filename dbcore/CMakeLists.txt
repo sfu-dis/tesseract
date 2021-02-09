@@ -29,7 +29,7 @@ set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-recover.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-recover-impl.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-object.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/sm-oid-alloc-impl.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/sm-oid-alloc.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-oid.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-tx-log.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/window-buffer.cpp

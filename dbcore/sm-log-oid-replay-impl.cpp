@@ -4,7 +4,7 @@
 #include "sm-log-recover-impl.h"
 #include "sm-oid.h"
 #include "sm-oid-impl.h"
-#include "sm-oid-alloc-impl.h"
+#include "sm-oid-alloc.h"
 
 namespace ermia {
 

@@ -2,7 +2,7 @@
 
 #include "epoch.h"
 #include "sm-common.h"
-#include "sm-oid-alloc-impl.h"
+#include "sm-oid-alloc.h"
 #include "sm-log.h"
 #include "sm-coroutine.h"
 

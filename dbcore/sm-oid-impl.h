@@ -2,7 +2,7 @@
 #pragma once
 
 #include "sm-oid.h"
-#include "sm-oid-alloc-impl.h"
+#include "sm-oid-alloc.h"
 
 #include "stub-impl.h"
 

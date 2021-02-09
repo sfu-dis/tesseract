@@ -1,4 +1,4 @@
-#include "sm-oid-alloc-impl.h"
+#include "sm-oid-alloc.h"
 
 #include "dynarray.h"
 
