@@ -1,7 +1,7 @@
 #include "dbcore/rcu.h"
 #include "dbcore/sm-chkpt.h"
 
-#include "ermia.h"
+#include "engine.h"
 #include "txn.h"
 
 namespace ermia {

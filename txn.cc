@@ -2,7 +2,7 @@
 #include "txn.h"
 #include "dbcore/rcu.h"
 #include "dbcore/serial.h"
-#include "ermia.h"
+#include "engine.h"
 
 extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 

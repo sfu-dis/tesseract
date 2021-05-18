@@ -5,7 +5,7 @@
 #include <utility>
 #include <string>
 
-#include "../ermia.h"
+#include "../engine.h"
 #include "../util.h"
 #include "../dbcore/sm-log-alloc.h"
 #include "../dbcore/sm-coroutine.h"

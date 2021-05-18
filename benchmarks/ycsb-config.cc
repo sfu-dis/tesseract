@@ -1,5 +1,5 @@
 #include <getopt.h>
-#include "../ermia.h"
+#include "../engine.h"
 #include "bench.h"
 #include "ycsb.h"
 

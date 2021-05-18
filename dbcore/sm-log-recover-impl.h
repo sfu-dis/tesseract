@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../ermia.h"
+#include "../engine.h"
 #include "sm-config.h"
 #include "sm-thread.h"
 #include "sm-log-recover.h"

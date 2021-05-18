@@ -1,5 +1,5 @@
 #include "sm-table.h"
-#include "../ermia.h"
+#include "../engine.h"
 
 namespace ermia {
 
