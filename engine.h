@@ -2,7 +2,7 @@
 
 #include "txn.h"
 #include "varstr.h"
-#include "ermia_internal.h"
+#include "engine_internal.h"
 #include "../dbcore/sm-log-recover-impl.h"
 #include "../benchmarks/record/encoder.h"
 #include <experimental/coroutine>
