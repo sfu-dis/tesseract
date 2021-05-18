@@ -7,7 +7,7 @@ project(corobase)
 cmake_minimum_required(VERSION 3.1)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++14 -fcoroutines-ts -stdlib=libc++ -Woverloaded-virtual -Werror=reorder -Werror=unused-result -Wno-address-of-packed-member")
-set(LINK_FLAGS "-lc++abi -lnuma -lpthread -pthread -lrt -lglog -lgflags")
+set(LINK_FLAGS "-lc++abi -lnuma -lpthread -pthread -lrt -lglog -lgflags -luring")
 link_libraries(${LINK_FLAGS})
 
 include_directories(/opt/dis/llvm-libc++/include/c++/v1)
