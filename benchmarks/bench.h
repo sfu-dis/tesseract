@@ -7,8 +7,9 @@
 
 #include "../engine.h"
 #include "../util.h"
-#include "../dbcore/sm-log-alloc.h"
+
 #include "../dbcore/sm-coroutine.h"
+#include "../dbcore/sm-thread.h"
 
 extern void ycsb_do_test(ermia::Engine *db, int argc, char **argv);
 extern void ycsb_cs_do_test(ermia::Engine *db, int argc, char **argv);
@@ -67,8 +68,6 @@ typedef std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> tx_stat;
 typedef std::map<std::string, tx_stat> tx_stat_map;
 
 class bench_worker : public ermia::thread::Runner {
-  friend class ermia::sm_log_alloc_mgr;
-
  public:
   bench_worker(unsigned int worker_id, bool is_worker, unsigned long seed,
                ermia::Engine *db, const std::map<std::string, ermia::OrderedIndex *> &open_tables,

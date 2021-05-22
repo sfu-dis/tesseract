@@ -16,23 +16,14 @@ set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/serial.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/size-encode.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-alloc.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/sm-chkpt.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-common.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-config.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-coroutine.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-exceptions.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-table.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-alloc.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/sm-log.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-file.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-offset.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-oid-replay-impl.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-recover.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-recover-impl.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-object.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-oid-alloc.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-oid.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/sm-tx-log.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/window-buffer.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/xid.cpp
 )

@@ -7,7 +7,7 @@
 
 namespace ermia {
 
-struct sm_log_recover_impl;
+//struct sm_log_recover_impl;
 
 namespace config {
 
@@ -43,7 +43,7 @@ extern bool enable_perf;
 extern std::string perf_record_event;
 extern uint32_t replay_threads;
 
-extern sm_log_recover_impl *recover_functor;
+//extern sm_log_recover_impl *recover_functor;
 extern uint64_t node_memory_gb;
 extern bool phantom_prot;
 

@@ -1,4 +1,6 @@
+#include <atomic>
 #include <dirent.h>
+
 #include "dlog.h"
 #include "../macros.h"
 
@@ -12,7 +14,12 @@ namespace dlog {
 #define SEGMENT_FILE_NAME_FMT "tlog-%08x-%08x"
 #define SEGMENT_FILE_NAME_BUFSZ sizeof("tlog-01234567-01234567")
 
-void tls_log::initialize(const char *log_dir, int log_id, int node, uint32_t logbuf_mb) {
+std::atomic<uint64_t> current_csn(1);
+
+std::mutex tls_log_lock;
+
+void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node, uint32_t logbuf_mb) {
+  std::lock_guard<std::mutex> lock(tls_log_lock);
   id = log_id;
   numa_node = node;
   flushing = false;
@@ -35,8 +42,8 @@ void tls_log::initialize(const char *log_dir, int log_id, int node, uint32_t log
   segments.emplace_back(dirfd(logdir), buf);
 
   // Initialize io_uring
-  int ret = io_uring_queue_init(2, &ring, 0);
-  LOG_IF(FATAL, ret != 0) << "Error setting up io_uring";
+  int ret = io_uring_queue_init(16, &ring, 0);
+  LOG_IF(FATAL, ret != 0) << "Error setting up io_uring: " << strerror(ret);
 }
 
 void tls_log::uninitialize() {
@@ -97,12 +104,6 @@ void tls_log::insert(log_block *block) {
 segment::segment(int dfd, const char *segname) : size(0) {
   fd = openat(dfd, segname, O_RDWR | O_SYNC | O_CREAT | O_TRUNC, 0644);
   LOG_IF(FATAL, fd < 0);
-
-  // Test a write
-  //char BUF[16];
-  //memset(BUF, 'a', 16);
-  //write(fd, BUF, 16);
-
 }
 
 segment::~segment() {

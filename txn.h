@@ -5,10 +5,10 @@
 
 #include <vector>
 
+#include "dbcore/dlog.h"
 #include "dbcore/xid.h"
 #include "dbcore/sm-config.h"
 #include "dbcore/sm-oid.h"
-#include "dbcore/sm-log.h"
 #include "dbcore/sm-object.h"
 #include "dbcore/sm-rc.h"
 #include "masstree/masstree_btree.h"
@@ -149,7 +149,7 @@ protected:
   const uint64_t flags;
   XID xid;
   TXN::xid_context *xc;
-  sm_tx_log *log;
+  dlog::tls_log *log;
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
   write_set_t write_set;

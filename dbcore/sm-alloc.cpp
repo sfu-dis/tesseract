@@ -6,7 +6,7 @@
 #include <future>
 
 #include "sm-alloc.h"
-#include "sm-chkpt.h"
+//#include "sm-chkpt.h"
 #include "sm-common.h"
 #include "sm-object.h"
 #include "../txn.h"
@@ -90,6 +90,7 @@ void prepare_node_memory() {
 }
 
 void gc_version_chain(fat_ptr *oid_entry) {
+#if 0
   fat_ptr ptr = *oid_entry;
   Object *cur_obj = (Object *)ptr.offset();
   if (!cur_obj) {
@@ -166,6 +167,7 @@ void gc_version_chain(fat_ptr *oid_entry) {
       break;
     }
   }
+#endif
 }
 
 void *allocate(size_t size) {
@@ -223,6 +225,7 @@ void *allocate_onnode(size_t size) {
 }
 
 void deallocate(fat_ptr p) {
+#if 0
   ASSERT(p != NULL_PTR);
   ASSERT(p.size_code());
   ASSERT(p.size_code() != INVALID_SIZE_CODE);
@@ -233,6 +236,7 @@ void deallocate(fat_ptr p) {
     tls_free_object_pool = new TlsFreeObjectPool;
   }
   tls_free_object_pool->Put(p);
+#endif
 }
 
 // epoch mgr callbacks

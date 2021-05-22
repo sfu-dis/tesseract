@@ -173,28 +173,4 @@ dirent_iterator::iterator dirent_iterator::end() {
 }
 
 int dirent_iterator::dup() { return os_dup(dirfd(_d)); }
-
-tmp_dir::tmp_dir() {
-  strcpy(dname, "/tmp/test-log-XXXXXX");
-  THROW_IF(not mkdtemp(dname), os_error, errno,
-           "Unable to create temporary directory %s", dname);
-}
-
-tmp_dir::~tmp_dir() {
-  std::vector<std::string> fname_list;
-  dirent_iterator it(dname);
-  int dfd = it.dup();
-  DEFER(close(dfd));
-  for (auto *fname : it) {
-    if (fname[0] != '.') fname_list.push_back(fname);
-  }
-
-  for (auto &fname : fname_list) {
-    fprintf(stderr, "Deleting %s/%s\n", dname, fname.c_str());
-    unlinkat(dfd, fname.c_str(), 0);
-  }
-
-  fprintf(stderr, "Deleting directory %s/\n", dname);
-  rmdir(dname);
-}
 }  // namespace ermia

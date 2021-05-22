@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
 #include "sm-common.h"
 #include "sm-oid.h"
 

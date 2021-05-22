@@ -14,11 +14,8 @@
 #include "bench.h"
 
 #include "../dbcore/rcu.h"
-#include "../dbcore/sm-chkpt.h"
 #include "../dbcore/sm-config.h"
 #include "../dbcore/sm-table.h"
-#include "../dbcore/sm-log.h"
-#include "../dbcore/sm-log-recover-impl.h"
 
 volatile bool running = true;
 std::vector<bench_worker *> bench_runner::workers;
@@ -55,7 +52,7 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
     ++ntxn_commits;
     std::get<0>(txn_counts[workload_idx])++;
     if (ermia::config::group_commit) {
-      ermia::logmgr->enqueue_committed_xct(worker_id, t.get_start());
+      //ermia::logmgr->enqueue_committed_xct(worker_id, t.get_start());
     } else {
       latency_numer_us += t.lap();
     }
@@ -132,7 +129,7 @@ void bench_runner::run() {
 
   // load data, unless we recover from logs or is a backup server (recover from
   // shipped logs)
-  if (not ermia::sm_log::need_recovery) {
+  if (true) { //not ermia::sm_log::need_recovery) {
     std::vector<bench_loader *> loaders = make_loaders();
     {
       util::scoped_timer t("dataloading", ermia::config::verbose);
@@ -177,20 +174,22 @@ void bench_runner::run() {
         }
       }
     }
-    ermia::volatile_write(ermia::MM::safesnap_lsn, ermia::logmgr->cur_lsn().offset());
+    ermia::volatile_write(ermia::MM::safesnap_lsn, ermia::dlog::current_csn);
     ALWAYS_ASSERT(ermia::MM::safesnap_lsn);
 
     // Persist the database
-    ermia::logmgr->flush();
-    if (ermia::config::enable_chkpt) {
-      ermia::chkptmgr->do_chkpt();  // this is synchronous
-    }
+    //ermia::dlog->flush();
+    //if (ermia::config::enable_chkpt) {
+    //  ermia::chkptmgr->do_chkpt();  // this is synchronous
+    //}
   }
 
+/*
   // Start checkpointer after database is ready
   if (ermia::config::enable_chkpt) {
     ermia::chkptmgr->start_chkpt_thread();
   }
+  */
   ermia::volatile_write(ermia::config::state, ermia::config::kStateForwardProcessing);
 
   if (ermia::config::worker_threads) {
@@ -363,7 +362,7 @@ void bench_runner::start_measurement() {
   }
 
   if (ermia::config::group_commit) {
-    latency_numer_us = ermia::sm_log_alloc_mgr::commit_queue::total_latency_us;
+    //latency_numer_us = ermia::sm_log_alloc_mgr::commit_queue::total_latency_us;
   }
 
   const unsigned long elapsed = t.lap();
@@ -410,7 +409,9 @@ void bench_runner::start_measurement() {
     }
   }
 
-  if (ermia::config::enable_chkpt) delete ermia::chkptmgr;
+  //if (ermia::config::enable_chkpt) {
+  //  delete ermia::chkptmgr;
+  //}
 
   if (ermia::config::verbose) {
     std::cerr << "--- table statistics ---" << std::endl;

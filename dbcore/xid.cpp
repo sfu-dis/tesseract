@@ -1,5 +1,4 @@
 #include "xid.h"
-#include "sm-log.h"
 #include "epoch.h"
 #include "serial.h"
 #include "../txn.h"

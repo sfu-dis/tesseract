@@ -8,7 +8,6 @@
 
 #include "bench.h"
 #include "../dbcore/rcu.h"
-#include "../dbcore/sm-log-recover-impl.h"
 
 #if defined(SSI) && defined(SSN)
 #error "SSI + SSN?"
@@ -129,7 +128,7 @@ int main(int argc, char **argv) {
   ermia::config::log_segment_mb = FLAGS_log_segment_mb;
   ermia::config::log_buffer_mb = FLAGS_log_buffer_mb;
   ermia::config::phantom_prot = FLAGS_phantom_prot;
-  ermia::config::recover_functor = new ermia::parallel_oid_replay(FLAGS_threads);
+  //ermia::config::recover_functor = new ermia::parallel_oid_replay(FLAGS_threads);
 
   ermia::config::amac_version_chain = FLAGS_amac_version_chain;
 

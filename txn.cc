@@ -69,9 +69,10 @@ void transaction::initialize_read_write() {
   if (flags & TXN_FLAG_READ_ONLY) {
     log = nullptr;
   } else {
-    log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log))->data());
+    log = GetLog(); //logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log))->data());
   }
-  xc->begin = logmgr->cur_lsn().offset() + 1;
+
+  xc->begin = dlog::current_csn.load(std::memory_order_relaxed); // logmgr->cur_lsn().offset() + 1;
 #endif
 }
 
@@ -130,16 +131,11 @@ void transaction::Abort() {
 #endif
 
     Object *obj = w.get_object();
-  fat_ptr entry = *w.entry;
-  oidmgr->UnlinkTuple(w.entry);
-  obj->SetClsn(NULL_PTR);
-  ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
-  MM::deallocate(entry);
-  }
-
-  // Read-only tx on a safesnap won't have log
-  if (log) {
-    log->discard();
+    fat_ptr entry = *w.entry;
+    oidmgr->UnlinkTuple(w.entry);
+    obj->SetCSN(NULL_PTR);
+    ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
+    MM::deallocate(entry);
   }
 }
 
@@ -1082,20 +1078,27 @@ rc_t transaction::si_commit() {
   }
 
   ASSERT(log);
-  // get clsn, abort if failed
-  xc->end = log->pre_commit().offset();
-  if (xc->end == 0) return rc_t{RC_ABORT_INTERNAL};
+  // Obtain a CSN
+  xc->end = dlog::current_csn.fetch_add(1);  
 
   if (config::phantom_prot && !MasstreeCheckPhantom()) {
     return rc_t{RC_ABORT_PHANTOM};
   }
 
-  log->commit(NULL);  // will populate log block
+  // Generate a log block
+  thread_local dlog::log_block *block = nullptr;
+  static const uint32_t kMaxLogBlockSize = 32768;
+  if (!block) {
+    block = (dlog::log_block *)malloc(sizeof(dlog::log_block) + kMaxLogBlockSize);
+  }
+  new (block) dlog::log_block;
+  block->csn = xc->end;
 
-  // post-commit cleanup: install clsn to tuples
-  // (traverse write-tuple)
-  // stuff clsn in tuples in write-set
-  auto clsn = xc->end;
+  // Normally, we'd generate it along the way or here first before toggling the
+  // CSN's "committed" bit. But we can actually do it first, and generate the
+  // log block as we scan the write set once, leveraging pipelined commit!
+
+  // post-commit cleanup: install CSN to tuples (traverse write-tuple)
   for (uint32_t i = 0; i < write_set.size(); ++i) {
     auto &w = write_set[i];
     Object *object = w.get_object();
@@ -1104,16 +1107,27 @@ rc_t transaction::si_commit() {
     ASSERT(w.entry);
     tuple->DoWrite();
 
-    fat_ptr clsn_ptr = object->GenerateClsnPtr(clsn);
-    object->SetClsn(clsn_ptr);
-    ASSERT(tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_LOG);
+    // FIXME(tzwang): Fake an address to get sm-oid to proceed
+    object->SetPersistentAddress({xc->end});
+
+    fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
+    object->SetCSN(csn_ptr);
+    ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
 #ifndef NDEBUG
+    /*
     Object *obj = tuple->GetObject();
     fat_ptr pdest = obj->GetPersistentAddress();
     ASSERT((pdest == NULL_PTR and not tuple->size) or
            (pdest.asi_type() == fat_ptr::ASI_LOG));
+    */
 #endif
+    // TODO(tzwang): Add payload to the log block
+    // TODO(tzwang): Use accurate size
+    block->payload_size += tuple->size;
+    ALWAYS_ASSERT(block->payload_size <= kMaxLogBlockSize);
   }
+
+  log->insert(block);
 
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!
@@ -1223,13 +1237,13 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
     volatile_write(tuple->xstamp, prev->xstamp);
 #endif
 
-    // read prev's clsn first, in case it's a committing XID, the clsn's state
-    // might change to ASI_LOG anytime
+    // read prev's CSN first, in case it's a committing XID, the CSN's state
+    // might change to ASI_CSN anytime
     ASSERT((uint64_t)prev->GetObject() == prev_obj_ptr.offset());
-    fat_ptr prev_clsn = prev->GetObject()->GetClsn();
+    fat_ptr prev_csn = prev->GetObject()->GetCSN();
     fat_ptr prev_persistent_ptr = NULL_PTR;
-    if (prev_clsn.asi_type() == fat_ptr::ASI_XID and
-        XID::from_ptr(prev_clsn) == xid) {
+    if (prev_csn.asi_type() == fat_ptr::ASI_XID and
+        XID::from_ptr(prev_csn) == xid) {
       // updating my own updates!
       // prev's prev: previous *committed* version
       ASSERT(((Object *)prev_obj_ptr.offset())->GetAllocateEpoch() ==
@@ -1251,7 +1265,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
     }
 
     ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
-    ASSERT(tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_XID);
+    ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_XID);
     ASSERT(sync_wait_coro(oidmgr->oid_get_version(tuple_fid, oid, xc)) == tuple);
     ASSERT(log);
 
@@ -1260,6 +1274,8 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
     // The varstr also encodes the pdest of the overwritten version.
     // FIXME(tzwang): the pdest of the overwritten version doesn't belong to
     // varstr.
+
+/*
     bool is_delete = !v;
     if (!v) {
       // Get an empty varstr just to store the overwritten tuple's
@@ -1276,6 +1292,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
     // of the tuple, instead of using the decoded (larger-than-real) size.
     size_t data_size = v->size() + sizeof(varstr);
     auto size_code = encode_size_aligned(data_size);
+
     if (is_delete) {
       log->log_enhanced_delete(tuple_fid, oid,
                                  fat_ptr::make((void *)v, size_code),
@@ -1294,6 +1311,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
                               DEFAULT_ALIGNMENT_BITS);
       }
     }
+    */
     return rc_t{RC_TRUE};
   } else {  // somebody else acted faster than we did
     return rc_t{RC_ABORT_SI_CONFLICT};
@@ -1309,7 +1327,7 @@ OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple)
   ASSERT(new_head.asi_type() == 0);
   auto *tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
   ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
-  tuple->GetObject()->SetClsn(xid.to_ptr());
+  tuple->GetObject()->SetCSN(xid.to_ptr());
   OID oid = oidmgr->alloc_oid(tuple_fid);
   ALWAYS_ASSERT(oid != INVALID_OID);
   oidmgr->oid_put_new(tuple_array, oid, new_head);
@@ -1323,9 +1341,9 @@ OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple)
   ASSERT(tuple->size);
   // log the whole varstr so that recovery can figure out the real size
   // of the tuple, instead of using the decoded (larger-than-real) size.
-  log->log_insert(tuple_fid, oid, fat_ptr::make((void *)value, size_code),
-                  DEFAULT_ALIGNMENT_BITS,
-                  tuple->GetObject()->GetPersistentAddressPtr());
+  //log->log_insert(tuple_fid, oid, fat_ptr::make((void *)value, size_code),
+  //                DEFAULT_ALIGNMENT_BITS,
+  //                tuple->GetObject()->GetPersistentAddressPtr());
 
   add_to_write_set(tuple_array->get(oid));
 
@@ -1336,6 +1354,7 @@ OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple)
 }
 
 void transaction::LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key) {
+  /*
   // Note: here we log the whole key varstr so that recovery can figure out the
   // real key length with key->size(), otherwise it'll have to use the decoded
   // (inaccurate) size (and so will build a different index).
@@ -1345,17 +1364,18 @@ void transaction::LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key
   log->log_insert_index(index->GetIndexFid(), oid,
                         fat_ptr::make((void *)key, size_code),
                         DEFAULT_ALIGNMENT_BITS, NULL);
+  */
 }
 
 rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
   ASSERT(tuple);
   ASSERT(xc);
   bool read_my_own =
-      (tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_XID);
-  ASSERT(not read_my_own or
-         (read_my_own and
-          XID::from_ptr(tuple->GetObject()->GetClsn()) == xc->owner));
-  ASSERT(not read_my_own or not(flags & TXN_FLAG_READ_ONLY));
+      (tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_XID);
+  ASSERT(!read_my_own ||
+         (read_my_own &&
+          XID::from_ptr(tuple->GetObject()->GetCSN()) == xc->owner));
+  ASSERT(!read_my_own || !(flags & TXN_FLAG_READ_ONLY));
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
   if (not read_my_own) {
