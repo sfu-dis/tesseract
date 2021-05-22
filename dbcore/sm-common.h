@@ -457,15 +457,6 @@ void os_close(int fd);
 
 int os_dup(int fd);
 
-/* like POSIX snprintf, but throws on error (return what-if size on overflow).
-
-   WARNING: unlike snprintf, this function sets the last byte of [buf]
-   to NUL. Callers who forget to test the return value will find a
-   truncated string rather instead of going into la-la land.
- */
-size_t os_snprintf(char *buf, size_t size, char const *fmt, ...)
-    __attribute__((format(printf, 3, 4)));
-
 /* A class for iterating over file name entries in a directory using a
    range-based for loop.
 

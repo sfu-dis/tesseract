@@ -128,17 +128,6 @@ int os_dup(int fd) {
   return rval;
 }
 
-size_t os_snprintf(char *dest, size_t size, char const *fmt, ...) {
-  va_list ap;
-  va_start(ap, fmt);
-  DEFER(va_end(ap));
-
-  int n = vsnprintf(dest, size, fmt, ap);
-  THROW_IF(n < 0, os_error, errno, "Unable to format string template: %s", fmt);
-  if (size) dest[size - 1] = 0;  // in case user doesn't test return value!
-  return n;
-}
-
 dirent_iterator::dirent_iterator(char const *dname)
     : _d(opendir(dname)), used(false) {
   THROW_IF(not _d, os_error, errno, "Unable to open/create directory: %s",
