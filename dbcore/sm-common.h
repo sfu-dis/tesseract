@@ -15,7 +15,6 @@
 #include <pthread.h>
 
 #include <dirent.h>
-#include <sys/stat.h>
 #include <cerrno>
 
 namespace ermia {
@@ -395,66 +394,7 @@ struct os_mutex : os_mutex_pod {
   }
 };
 
-struct os_condvar_pod {
-  static constexpr os_condvar_pod static_init() {
-    return os_condvar_pod{PTHREAD_COND_INITIALIZER};
-  }
-
-  void wait(os_mutex_pod &mutex) {
-    int err = pthread_cond_wait(&_cond, &mutex._mutex);
-    DIE_IF(err, "pthread_cond_wait returned %d", err);
-  }
-
-  int timedwait(os_mutex_pod &mutex, struct timespec *abstime) {
-    return pthread_cond_timedwait(&_cond, &mutex._mutex, abstime);
-  }
-
-  void signal() {
-    int err = pthread_cond_signal(&_cond);
-    DIE_IF(err, "pthread_cond_signal returned %d", err);
-  }
-
-  void broadcast() {
-    int err = pthread_cond_broadcast(&_cond);
-    DIE_IF(err, "pthread_cond_broadcast returned %d", err);
-  }
-
-  pthread_cond_t _cond;
-};
-
-struct os_condvar : os_condvar_pod {
-  os_condvar() : os_condvar_pod(static_init()) {}
-
-  ~os_condvar() {
-    int err = pthread_cond_destroy(&_cond);
-    DIE_IF(err, "pthread_cond_destroy returned %d", err);
-  }
-};
-
-/* Like the normal asprintf, but either return the new string or
-   throws the error that prevented creating it.
- */
-char *os_asprintf(char const *msg, ...) __attribute__((format(printf, 1, 2)));
-
-int os_open(char const *path, int flags);
-
-int os_openat(int dfd, char const *fname, int flags);
-
-void os_write(int fd, void const *buf, size_t bufsz);
-size_t os_pwrite(int fd, char const *buf, size_t bufsz, off_t offset);
 size_t os_pread(int fd, char *buf, size_t bufsz, off_t offset);
-
-void os_truncate(char const *path, size_t size = 0);
-void os_truncateat(int dfd, char const *path, size_t size = 0);
-
-void os_renameat(int tofd, char const *from, int fromfd, char const *to);
-
-void os_unlinkat(int dfd, char const *fname, int flags = 0);
-
-void os_fsync(int fd);
-
-void os_close(int fd);
-
 int os_dup(int fd);
 
 /* A class for iterating over file name entries in a directory using a
