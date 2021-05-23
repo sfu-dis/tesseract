@@ -44,11 +44,14 @@ struct log_block {
   // Size of this log block in bytes
   uint32_t payload_size;
 
+  // Total capacity of this log block (could be greater than payload_size)
+  uint32_t capacity;
+
   // Actual data, which in turn is an array of log records;
   // must be the last element
   char payload[0];
 
-  log_block() : csn(INVALID_TLOG_CSN), payload_size(0) {}
+  log_block(uint32_t cap) : csn(INVALID_TLOG_CSN), payload_size(0), capacity(cap) {}
   ~log_block() {}
 
   // Size of this whole log block

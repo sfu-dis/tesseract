@@ -101,11 +101,16 @@ public:
   void initialize(const char *log_dir, uint32_t log_id, uint32_t node, uint32_t logbuf_mb);
   void uninitialize();
 
-  // Get a tls-log instance (used by transaction commit)
-  tls_log *get_tls_log();
+  inline uint32_t get_id() { return id; }
 
-  // Commit (insert) a log block to the log
-  void insert(log_block *block);
+  // Commit (insert) a log block to the log - [block] must *not* be allocated
+  // using allocate_log_block.
+  //void insert(log_block *block);
+
+  // Allocate a log block in-place on the log buffer
+  log_block *allocate_log_block(uint32_t payload_size, uint64_t *out_cur_lsn = nullptr);
+
+  void commit_log_block(log_block *block);
 };
 
 }  // namespace dlog

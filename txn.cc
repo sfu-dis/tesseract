@@ -9,7 +9,7 @@ extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 namespace ermia {
 
 transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
-    : flags(flags), sa(&sa), coro_batch_idx(coro_batch_idx) {
+    : flags(flags), log_size(0), sa(&sa), coro_batch_idx(coro_batch_idx) {
   initialize_read_write();
 }
 
@@ -1085,14 +1085,13 @@ rc_t transaction::si_commit() {
     return rc_t{RC_ABORT_PHANTOM};
   }
 
-  // Generate a log block
-  thread_local dlog::log_block *block = nullptr;
-  static const uint32_t kMaxLogBlockSize = 32768;
-  if (!block) {
-    block = (dlog::log_block *)malloc(sizeof(dlog::log_block) + kMaxLogBlockSize);
+  dlog::log_block *lb = nullptr;
+  dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
+  // Generate a log block if not read-only
+  if (write_set.size()) {
+    lb = log->allocate_log_block(log_size, &lb_lsn);
+    lb->csn = xc->end;
   }
-  new (block) dlog::log_block;
-  block->csn = xc->end;
 
   // Normally, we'd generate it along the way or here first before toggling the
   // CSN's "committed" bit. But we can actually do it first, and generate the
@@ -1107,27 +1106,21 @@ rc_t transaction::si_commit() {
     ASSERT(w.entry);
     tuple->DoWrite();
 
-    // FIXME(tzwang): Fake an address to get sm-oid to proceed
-    object->SetPersistentAddress({xc->end});
+    // Populate log block and obtain persistent address
+    uint32_t off = dlog::log_update(lb, w.fid, w.oid, (char *)tuple, tuple->size);
+    ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
 
+    // Set persistent address
+    fat_ptr pdest = LSN::make(log->get_id(), lb_lsn + off, 0).to_ptr();
+    object->SetPersistentAddress(pdest);
+    ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
+
+    // Set CSN
     fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
     object->SetCSN(csn_ptr);
     ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
-#ifndef NDEBUG
-    /*
-    Object *obj = tuple->GetObject();
-    fat_ptr pdest = obj->GetPersistentAddress();
-    ASSERT((pdest == NULL_PTR and not tuple->size) or
-           (pdest.asi_type() == fat_ptr::ASI_LOG));
-    */
-#endif
-    // TODO(tzwang): Add payload to the log block
-    // TODO(tzwang): Use accurate size
-    block->payload_size += tuple->size;
-    ALWAYS_ASSERT(block->payload_size <= kMaxLogBlockSize);
   }
-
-  log->insert(block);
+  ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
 
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!
@@ -1260,7 +1253,8 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
       ASSERT(XID::from_ptr(prev->sstamp) == xc->owner);
       ASSERT(tuple->NextVolatile() == prev);
 #endif
-      add_to_write_set(tuple_array->get(oid));
+      record_log_request(tuple->size);
+      add_to_write_set(tuple_array->get(oid), tuple_fid, oid);
       prev_persistent_ptr = prev_obj->GetPersistentAddress();
     }
 
@@ -1344,8 +1338,8 @@ OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple)
   //log->log_insert(tuple_fid, oid, fat_ptr::make((void *)value, size_code),
   //                DEFAULT_ALIGNMENT_BITS,
   //                tuple->GetObject()->GetPersistentAddressPtr());
-
-  add_to_write_set(tuple_array->get(oid));
+  record_log_request(tuple->size);
+  add_to_write_set(tuple_array->get(oid), tuple_fid, oid);
 
   if (out_tuple) {
     *out_tuple = tuple;

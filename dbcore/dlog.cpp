@@ -90,6 +90,7 @@ void tls_log::poll_flush() {
   printf("DLSN %lu\n", durable_lsn);
 }
 
+/*
 void tls_log::insert(log_block *block) {
   if (block->total_size() + logbuf_offset > logbuf_size) {
     issue_flush(active_logbuf, logbuf_offset);
@@ -99,6 +100,33 @@ void tls_log::insert(log_block *block) {
   memcpy(active_logbuf + logbuf_offset, block, block->total_size());
   logbuf_offset += block->total_size();
   current_lsn += block->total_size();
+}
+*/
+
+log_block *tls_log::allocate_log_block(uint32_t payload_size, uint64_t *out_cur_lsn) {
+  if (payload_size == 0) {
+    return nullptr;
+  }
+
+  uint32_t alloc_size = payload_size + sizeof(log_block);
+  LOG_IF(FATAL, alloc_size > logbuf_size) << "Total size too big";
+  if (alloc_size + logbuf_offset > logbuf_size) {
+    issue_flush(active_logbuf, logbuf_offset);
+    active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
+    logbuf_offset = 0;
+  }
+  log_block *lb = (log_block *)(active_logbuf + logbuf_offset);
+  logbuf_offset += alloc_size;
+  if (out_cur_lsn) {
+    *out_cur_lsn = current_lsn;
+  }
+  current_lsn += alloc_size;
+
+  new (lb) log_block(payload_size);
+  return lb;
+}
+
+void tls_log::commit_log_block(log_block *block) {
 }
 
 segment::segment(int dfd, const char *segname) : size(0) {

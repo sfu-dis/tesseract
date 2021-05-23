@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "dbcore/dlog.h"
+#include "dbcore/dlog-tx.h"
 #include "dbcore/xid.h"
 #include "dbcore/sm-config.h"
 #include "dbcore/sm-oid.h"
@@ -27,8 +28,10 @@ namespace ermia {
 // the entry pointer results a fat_ptr to the new object.
 struct write_record_t {
   fat_ptr *entry;
-  write_record_t(fat_ptr *entry) : entry(entry) {}
-  write_record_t() : entry(nullptr) {}
+  FID fid;
+  OID oid;
+  write_record_t(fat_ptr *entry, FID fid, OID oid) : entry(entry), fid(fid), oid(oid) {}
+  write_record_t() : entry(nullptr), fid(0), oid(0) {}
   inline Object *get_object() { return (Object *)entry->offset(); }
 };
 
@@ -37,9 +40,9 @@ struct write_set_t {
   uint32_t num_entries;
   write_record_t entries[kMaxEntries];
   write_set_t() : num_entries(0) {}
-  inline void emplace_back(fat_ptr *oe) {
+  inline void emplace_back(fat_ptr *oe, FID fid, OID oid) {
     ALWAYS_ASSERT(num_entries < kMaxEntries);
-    new (&entries[num_entries]) write_record_t(oe);
+    new (&entries[num_entries]) write_record_t(oe, fid, oid);
     ++num_entries;
     ASSERT(entries[num_entries - 1].entry == oe);
   }
@@ -132,7 +135,11 @@ protected:
 
   inline str_arena &string_allocator() { return *sa; }
 
-  inline void add_to_write_set(fat_ptr *entry) {
+  inline void record_log_request(uint32_t payload_size) {
+    log_size += (sizeof(dlog::log_record) + payload_size);
+  }
+
+  inline void add_to_write_set(fat_ptr *entry, FID fid, OID oid) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto &w = write_set[i];
@@ -140,7 +147,7 @@ protected:
       ASSERT(w.entry != entry);
     }
 #endif
-    write_set.emplace_back(entry);
+    write_set.emplace_back(entry, fid, oid);
   }
 
   inline TXN::xid_context *GetXIDContext() { return xc; }
@@ -150,6 +157,7 @@ protected:
   XID xid;
   TXN::xid_context *xc;
   dlog::tls_log *log;
+  uint32_t log_size;
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
   write_set_t write_set;
