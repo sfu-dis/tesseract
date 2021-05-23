@@ -222,15 +222,15 @@ static fat_ptr const NULL_PTR = {0};
 struct LSN {
   static const uint64_t LOG_ID_BITS = 8;
   static const uint64_t LOFFSET_BITS = 40;
-  static const uint64_t LOG_ID_MASK = (1UL << LOFFSET_BITS) - 1;
-  static const uint64_t LOFFSET_MASK = ~LOG_ID_MASK;
+  static const uint64_t LOFFSET_MASK = (1UL << LOFFSET_BITS) - 1;
+  static const uint64_t LOG_ID_MASK = ~LOFFSET_MASK;
 
   static LSN make(uint64_t logid, uint64_t loff, int segnum,
                   uint8_t size_code = INVALID_SIZE_CODE) {
     ASSERT(!(segnum & ~fat_ptr::ASI_SEGMENT_MASK));
     ASSERT(!(loff & LOG_ID_MASK));
     uintptr_t flags = segnum << fat_ptr::ASI_START_BIT;
-    return (LSN){(logid << LOFFSET_BITS) | loff | flags | size_code};
+    return (LSN){(logid << (fat_ptr::VALUE_START_BIT + LOFFSET_BITS)) | (loff << fat_ptr::VALUE_START_BIT) | flags | size_code};
   }
 
   static LSN from_ptr(fat_ptr const &p) {
@@ -240,7 +240,7 @@ struct LSN {
     return LSN::make(off >> LOFFSET_BITS, off & LOFFSET_MASK, p.asi_segment());
   }
 
-  fat_ptr to_ptr() const { return fat_ptr{_val}; }
+  fat_ptr to_ptr() const { return fat_ptr{_val | fat_ptr::ASI_LOG_FLAG}; }
 
   uint64_t _val;
 
