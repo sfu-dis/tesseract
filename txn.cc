@@ -185,9 +185,10 @@ rc_t transaction::si_commit() {
 
   dlog::log_block *lb = nullptr;
   dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
+  uint64_t segnum = -1;
   // Generate a log block if not read-only
   if (write_set.size()) {
-    lb = log->allocate_log_block(log_size, &lb_lsn);
+    lb = log->allocate_log_block(log_size, &lb_lsn, &segnum);
     lb->csn = xc->end;
   }
 
@@ -208,8 +209,7 @@ rc_t transaction::si_commit() {
     ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
 
     // Set persistent address
-    // TODO(tzwang): fill in proper segment #
-    fat_ptr pdest = LSN::make(log->get_id(), lb_lsn + off, 0).to_ptr();
+    fat_ptr pdest = LSN::make(log->get_id(), lb_lsn + off, segnum).to_ptr();
     object->SetPersistentAddress(pdest);
     ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
 

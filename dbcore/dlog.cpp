@@ -101,7 +101,7 @@ void tls_log::insert(log_block *block) {
 }
 */
 
-log_block *tls_log::allocate_log_block(uint32_t payload_size, uint64_t *out_cur_lsn) {
+log_block *tls_log::allocate_log_block(uint32_t payload_size, uint64_t *out_cur_lsn, uint64_t *out_seg_num) {
   if (payload_size == 0) {
     return nullptr;
   }
@@ -119,6 +119,10 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size, uint64_t *out_cur_
     *out_cur_lsn = current_lsn;
   }
   current_lsn += alloc_size;
+
+  if (out_seg_num) {
+    *out_seg_num = segments.size() - 1;
+  }
 
   new (lb) log_block(payload_size);
   return lb;
