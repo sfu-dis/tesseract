@@ -7,8 +7,6 @@
 
 namespace ermia {
 
-//struct sm_log_recover_impl;
-
 namespace config {
 
 static const uint32_t MAX_THREADS = 96;
@@ -33,17 +31,13 @@ extern uint32_t state;
 extern bool enable_chkpt;
 extern uint64_t chkpt_interval;
 extern uint64_t log_buffer_mb;
-extern uint64_t log_segment_mb;
 extern std::string log_dir;
-extern bool command_log;
-extern uint32_t command_log_buffer_mb;
 extern bool print_cpu_util;
 extern uint32_t arena_size_mb;
 extern bool enable_perf;
 extern std::string perf_record_event;
 extern uint32_t replay_threads;
 
-//extern sm_log_recover_impl *recover_functor;
 extern uint64_t node_memory_gb;
 extern bool phantom_prot;
 
