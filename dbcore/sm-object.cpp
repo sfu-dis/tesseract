@@ -27,8 +27,7 @@ void Object::Pin() {
   if (val == kStatusMemory) {
     return;
   } else if (val == kStatusLoading) {
-    while (volatile_read(status_) != kStatusMemory) {
-    }
+    while (volatile_read(status_) != kStatusMemory) {}
     return;
   } else {
     ASSERT(val == kStatusStorage);

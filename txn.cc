@@ -69,10 +69,10 @@ void transaction::initialize_read_write() {
   if (flags & TXN_FLAG_READ_ONLY) {
     log = nullptr;
   } else {
-    log = GetLog(); //logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log))->data());
+    log = GetLog();
   }
 
-  xc->begin = dlog::current_csn.load(std::memory_order_relaxed); // logmgr->cur_lsn().offset() + 1;
+  xc->begin = dlog::current_csn.load(std::memory_order_relaxed) + 1;
 #endif
 }
 
@@ -1101,9 +1101,7 @@ rc_t transaction::si_commit() {
   for (uint32_t i = 0; i < write_set.size(); ++i) {
     auto &w = write_set[i];
     Object *object = w.get_object();
-    ASSERT(object);
     dbtuple *tuple = (dbtuple *)object->GetPayload();
-    ASSERT(w.entry);
     tuple->DoWrite();
 
     // Populate log block and obtain persistent address
@@ -1111,6 +1109,7 @@ rc_t transaction::si_commit() {
     ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
 
     // Set persistent address
+    // TODO(tzwang): fill in proper segment #
     fat_ptr pdest = LSN::make(log->get_id(), lb_lsn + off, 0).to_ptr();
     object->SetPersistentAddress(pdest);
     ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
@@ -1124,7 +1123,7 @@ rc_t transaction::si_commit() {
 
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!
-  // This is where (committed) tuple data are made visible to readers
+  // This is when (committed) tuple data are made visible to readers
   volatile_write(xc->state, TXN::TXN_CMMTD);
   return rc_t{RC_TRUE};
 }
