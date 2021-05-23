@@ -10,10 +10,6 @@ namespace ermia {
 
 transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     : flags(flags), log_size(0), sa(&sa), coro_batch_idx(coro_batch_idx) {
-  initialize_read_write();
-}
-
-void transaction::initialize_read_write() {
   if (config::phantom_prot) {
     masstree_absent_set.set_empty_key(NULL);  // google dense map
     masstree_absent_set.clear();

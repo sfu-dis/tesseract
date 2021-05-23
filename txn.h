@@ -91,7 +91,6 @@ protected:
  public:
   transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx);
   ~transaction();
-  void initialize_read_write();
 
   inline void ensure_active() {
     volatile_write(xc->state, TXN::TXN_ACTIVE);
