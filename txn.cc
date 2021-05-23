@@ -22,9 +22,10 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   xc = TXN::xid_get_context(xid);
   xc->xct = this;
   
-  if (!(flags & TXN_FLAG_CSWITCH))
+  if (!(flags & TXN_FLAG_CSWITCH)) {
     // "Normal" transactions
     xc->begin_epoch = config::tls_alloc ? MM::epoch_enter() : 0;
+  }
 #if defined(SSN) || defined(SSI)
   // If there's a safesnap, then SSN treats the snapshot as a transaction
   // that has read all the versions, which means every update transaction
@@ -142,8 +143,8 @@ rc_t transaction::commit() {
   // Safe snapshot optimization for read-only transactions:
   // Use the begin ts as cstamp if it's a read-only transaction
   // This is the same for both SSN and SSI.
-  if (config::enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
-    ASSERT(not log);
+  if (config::enable_safesnap && (flags & TXN_FLAG_READ_ONLY)) {
+    ASSERT(!log);
     ASSERT(write_set.size() == 0);
     xc->end = xc->begin;
     volatile_write(xc->state, TXN::TXN_CMMTD);
@@ -167,17 +168,6 @@ rc_t transaction::commit() {
 #endif
 }
 
-#if defined(SSN) || defined(SSI)
-#define set_tuple_xstamp(tuple, s)                                    \
-  {                                                                   \
-    uint64_t x;                                                       \
-    do {                                                              \
-      x = volatile_read(tuple->xstamp);                               \
-    } while (x < s and                                                \
-             not __sync_bool_compare_and_swap(&tuple->xstamp, x, s)); \
-  }
-#endif
-
 #if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
 rc_t transaction::si_commit() {
   if (flags & TXN_FLAG_READ_ONLY) {
@@ -185,13 +175,13 @@ rc_t transaction::si_commit() {
     return rc_t{RC_TRUE};
   }
 
-  ASSERT(log);
-  // Obtain a CSN
-  xc->end = dlog::current_csn.fetch_add(1);  
-
   if (config::phantom_prot && !MasstreeCheckPhantom()) {
     return rc_t{RC_ABORT_PHANTOM};
   }
+
+  ASSERT(log);
+  // Precommit: obtain a CSN
+  xc->end = dlog::current_csn.fetch_add(1);  
 
   dlog::log_block *lb = nullptr;
   dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
@@ -205,7 +195,8 @@ rc_t transaction::si_commit() {
   // CSN's "committed" bit. But we can actually do it first, and generate the
   // log block as we scan the write set once, leveraging pipelined commit!
 
-  // post-commit cleanup: install CSN to tuples (traverse write-tuple)
+  // Post-commit: install CSN to tuples (traverse write-tuple), generate log
+  // records, etc.
   for (uint32_t i = 0; i < write_set.size(); ++i) {
     auto &w = write_set[i];
     Object *object = w.get_object();

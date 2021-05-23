@@ -22,6 +22,18 @@ using google::dense_hash_map;
 
 namespace ermia {
 
+
+#if defined(SSN) || defined(SSI)
+#define set_tuple_xstamp(tuple, s)                                    \
+  {                                                                   \
+    uint64_t x;                                                       \
+    do {                                                              \
+      x = volatile_read(tuple->xstamp);                               \
+    } while (x < s and                                                \
+             not __sync_bool_compare_and_swap(&tuple->xstamp, x, s)); \
+  }
+#endif
+
 // A write-set entry is essentially a pointer to the OID array entry
 // begin updated. The write-set is naturally de-duplicated: repetitive
 // updates will leave only one entry by the first update. Dereferencing
