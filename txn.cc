@@ -205,11 +205,12 @@ rc_t transaction::si_commit() {
     tuple->DoWrite();
 
     // Populate log block and obtain persistent address
-    uint32_t off = dlog::log_update(lb, w.fid, w.oid, (char *)tuple, tuple->size);
+    uint32_t off = dlog::log_update(lb, w.fid, w.oid, (char *)tuple, sizeof(dbtuple) + tuple->size);
     ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
 
     // Set persistent address
-    fat_ptr pdest = LSN::make(log->get_id(), lb_lsn + off, segnum).to_ptr();
+    auto size_code = encode_size_aligned(w.size);
+    fat_ptr pdest = LSN::make(log->get_id(), lb_lsn + off, segnum, size_code).to_ptr();
     object->SetPersistentAddress(pdest);
     ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
 
@@ -351,8 +352,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
       ASSERT(XID::from_ptr(prev->sstamp) == xc->owner);
       ASSERT(tuple->NextVolatile() == prev);
 #endif
-      record_log_request(tuple->size);
-      add_to_write_set(tuple_array->get(oid), tuple_fid, oid);
+      add_to_write_set(tuple_array->get(oid), tuple_fid, oid, tuple->size);
       prev_persistent_ptr = prev_obj->GetPersistentAddress();
     }
 
@@ -426,18 +426,10 @@ OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple)
 
   // Log the insert
   ASSERT(tuple->size == value->size());
-  value->ptr = NULL_PTR;
-  auto record_size = align_up((size_t)tuple->size) + sizeof(varstr);
-  auto size_code = encode_size_aligned(record_size);
-  ASSERT(not((uint64_t)value & ((uint64_t)0xf)));
-  ASSERT(tuple->size);
-  // log the whole varstr so that recovery can figure out the real size
-  // of the tuple, instead of using the decoded (larger-than-real) size.
   //log->log_insert(tuple_fid, oid, fat_ptr::make((void *)value, size_code),
   //                DEFAULT_ALIGNMENT_BITS,
   //                tuple->GetObject()->GetPersistentAddressPtr());
-  record_log_request(tuple->size);
-  add_to_write_set(tuple_array->get(oid), tuple_fid, oid);
+  add_to_write_set(tuple_array->get(oid), tuple_fid, oid, tuple->size);
 
   if (out_tuple) {
     *out_tuple = tuple;

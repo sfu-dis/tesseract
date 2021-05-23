@@ -39,7 +39,7 @@ static uint32_t log_update(log_block *block, FID fid, OID oid, const char *after
   memcpy(logrec->data + block->payload_size, after_image, size);
 
   // Account for the occupied space
-  block->payload_size += (size + sizeof(log_record));
+  block->payload_size += align_up(size + sizeof(log_record));
 
   return off;
 }
