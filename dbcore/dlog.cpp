@@ -71,8 +71,7 @@ void tls_log::issue_flush(const char *buf, uint32_t size) {
 
   // Encode data size which is useful upon completion (to add to durable_lsn)
   // Must be set after io_uring_prep_write (which sets user_data to 0)
-  io_uring_sqe_set_data(sqe, (void *)size);
-  //sqe->user_data = size;
+  sqe->user_data = size;
 
   int nsubmitted = io_uring_submit(&ring);
   LOG_IF(FATAL, nsubmitted != 1);
@@ -87,7 +86,6 @@ void tls_log::poll_flush() {
   io_uring_cqe_seen(&ring, cqe);
   durable_lsn += size;
   current_segment()->size += size;
-  printf("DLSN %lu\n", durable_lsn);
 }
 
 /*
