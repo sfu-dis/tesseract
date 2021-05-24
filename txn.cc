@@ -69,7 +69,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     log = GetLog();
   }
 
-  xc->begin = dlog::current_csn.load(std::memory_order_relaxed) + 1;
+  xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
 #endif
 }
 

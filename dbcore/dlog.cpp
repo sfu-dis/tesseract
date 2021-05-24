@@ -14,7 +14,7 @@ namespace dlog {
 #define SEGMENT_FILE_NAME_FMT "tlog-%08x-%08x"
 #define SEGMENT_FILE_NAME_BUFSZ sizeof("tlog-01234567-01234567")
 
-std::atomic<uint64_t> current_csn(1);
+std::atomic<uint64_t> current_csn(0);
 
 std::mutex tls_log_lock;
 
