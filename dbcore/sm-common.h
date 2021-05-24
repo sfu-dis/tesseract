@@ -356,44 +356,6 @@ static inline CSN volatile_read(CSN volatile &x) {
 
 static CSN const INVALID_CSN = {fat_ptr::ASI_CSN_FLAG};
 
-/* Wrapper for pthread mutex lock/unlock functions. It is still POD.
- */
-struct os_mutex_pod {
-  static constexpr os_mutex_pod static_init() {
-    return os_mutex_pod{PTHREAD_MUTEX_INITIALIZER};
-  }
-
-  void lock() {
-    int err = pthread_mutex_lock(&_mutex);
-    DIE_IF(err, "pthread_mutex_lock returned %d", err);
-  }
-
-  // return true if the mutex was uncontended
-  bool try_lock() {
-    int err = pthread_mutex_trylock(&_mutex);
-    if (err) {
-      DIE_IF(err != EBUSY, "pthread_mutex_trylock returned %d", err);
-      return false;
-    }
-    return true;
-  }
-
-  void unlock() {
-    int err = pthread_mutex_unlock(&_mutex);
-    DIE_IF(err, "pthread_mutex_unlock returned %d", err);
-  }
-
-  pthread_mutex_t _mutex;
-};
-
-struct os_mutex : os_mutex_pod {
-  os_mutex() : os_mutex_pod(static_init()) {}
-  ~os_mutex() {
-    int err = pthread_mutex_destroy(&_mutex);
-    DIE_IF(err, "pthread_mutex_destroy returned %d", err);
-  }
-};
-
 size_t os_pread(int fd, char *buf, size_t bufsz, off_t offset);
 int os_dup(int fd);
 

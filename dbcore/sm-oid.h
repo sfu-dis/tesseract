@@ -327,7 +327,7 @@ private:
      allocator, but we do want enough that false sharing is
      unlikely.
    */
-  os_mutex mutexen[MUTEX_COUNT];
+  std::mutex mutexen[MUTEX_COUNT];
 
 public:
   sm_oid_mgr();

@@ -59,13 +59,13 @@ struct thread_data {
      checkpoint scan misses it. Or an eviction freeing a pile of
      OIDs that the checkpoint thread never learns about.
   */
-  os_mutex mutex;
+  std::mutex mutex;
 };
 
 thread_local thread_data *tls = nullptr;
 
 /* Used to make sure threads give back their caches on exit */
-os_mutex_pod oid_mutex = os_mutex_pod::static_init();
+std::mutex oid_mutex;
 sm_oid_mgr *master;
 std::map<pthread_t, thread_data *> *threads;
 pthread_key_t pthread_key;
