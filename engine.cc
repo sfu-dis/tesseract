@@ -295,7 +295,9 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr
   AWAIT GetOID(key, rc, t->xc, oid);
 
   if (rc._val == RC_TRUE) {
-		RETURN t->Update(table_descriptor, oid, &key, nullptr);
+    // Allocate an empty record version as the "new" version
+		varstr *null_val = t->string_allocator().next(0);
+    RETURN t->Update(table_descriptor, oid, &key, null_val);
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};
   }

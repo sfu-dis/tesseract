@@ -424,11 +424,7 @@ OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple)
   ALWAYS_ASSERT(oid != INVALID_OID);
   oidmgr->oid_put_new(tuple_array, oid, new_head);
 
-  // Log the insert
   ASSERT(tuple->size == value->size());
-  //log->log_insert(tuple_fid, oid, fat_ptr::make((void *)value, size_code),
-  //                DEFAULT_ALIGNMENT_BITS,
-  //                tuple->GetObject()->GetPersistentAddressPtr());
   add_to_write_set(tuple_array->get(oid), tuple_fid, oid, tuple->size);
 
   if (out_tuple) {
