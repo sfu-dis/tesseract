@@ -226,6 +226,7 @@ int main(int argc, char **argv) {
   std::cerr << "  masstree_internal_node_size: " << ermia::ConcurrentMasstree::InternalNodeSize() << std::endl;
   std::cerr << "  masstree_leaf_node_size    : " << ermia::ConcurrentMasstree::LeafNodeSize() << std::endl;
   std::cerr << "  node-memory       : " << ermia::config::node_memory_gb << "GB" << std::endl;
+  std::cerr << "  null-log-device   : " << ermia::config::null_log_device << std::endl;
   std::cerr << "  num-threads       : " << ermia::config::threads << std::endl;
   std::cerr << "  numa-nodes        : " << ermia::config::numa_nodes << std::endl;
   std::cerr << "  numa-mode         : " << (ermia::config::numa_spread ? "spread" : "compact") << std::endl;

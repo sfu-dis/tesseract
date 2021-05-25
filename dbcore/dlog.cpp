@@ -2,6 +2,7 @@
 #include <dirent.h>
 
 #include "dlog.h"
+#include "sm-config.h"
 #include "../macros.h"
 
 // io_uring code based off of examples from https://unixism.net/loti/tutorial/index.html
@@ -55,6 +56,11 @@ void tls_log::uninitialize() {
 }
 
 void tls_log::issue_flush(const char *buf, uint32_t size) {
+  if (config::null_log_device) {
+    durable_lsn += size;
+    return;
+  }
+
   if (flushing) {
     poll_flush();
     flushing = false;
@@ -78,6 +84,10 @@ void tls_log::issue_flush(const char *buf, uint32_t size) {
 }
 
 void tls_log::poll_flush() {
+  if (config::null_log_device) {
+    return;
+  }
+
   struct io_uring_cqe *cqe = nullptr;
   int ret = io_uring_wait_cqe(&ring, &cqe);
   LOG_IF(FATAL, ret < 0) << "Error waiting for completion: " << strerror(-ret);
