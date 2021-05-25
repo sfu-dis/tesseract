@@ -43,9 +43,10 @@ struct write_record_t {
   FID fid;
   OID oid;
   uint64_t size;
-  write_record_t(fat_ptr *entry, FID fid, OID oid, uint64_t size)
-    : entry(entry), fid(fid), oid(oid), size(size) {}
-  write_record_t() : entry(nullptr), fid(0), oid(0), size(0) {}
+  bool is_insert;
+  write_record_t(fat_ptr *entry, FID fid, OID oid, uint64_t size, bool insert)
+    : entry(entry), fid(fid), oid(oid), size(size), is_insert(insert) {}
+  write_record_t() : entry(nullptr), fid(0), oid(0), size(0), is_insert(false) {}
   inline Object *get_object() { return (Object *)entry->offset(); }
 };
 
@@ -54,9 +55,9 @@ struct write_set_t {
   uint32_t num_entries;
   write_record_t entries[kMaxEntries];
   write_set_t() : num_entries(0) {}
-  inline void emplace_back(fat_ptr *oe, FID fid, OID oid, uint32_t size) {
+  inline void emplace_back(fat_ptr *oe, FID fid, OID oid, uint32_t size, bool insert) {
     ALWAYS_ASSERT(num_entries < kMaxEntries);
-    new (&entries[num_entries]) write_record_t(oe, fid, oid, size);
+    new (&entries[num_entries]) write_record_t(oe, fid, oid, size, insert);
     ++num_entries;
     ASSERT(entries[num_entries - 1].entry == oe);
   }
@@ -148,7 +149,7 @@ protected:
 
   inline str_arena &string_allocator() { return *sa; }
 
-  inline void add_to_write_set(fat_ptr *entry, FID fid, OID oid, uint64_t size) {
+  inline void add_to_write_set(fat_ptr *entry, FID fid, OID oid, uint64_t size, bool insert) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto &w = write_set[i];
@@ -160,7 +161,7 @@ protected:
     // Work out the encoded size to be added to the log block later
     auto logrec_size = align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
     log_size += logrec_size;
-    write_set.emplace_back(entry, fid, oid, logrec_size);
+    write_set.emplace_back(entry, fid, oid, logrec_size, insert);
   }
 
   inline TXN::xid_context *GetXIDContext() { return xc; }

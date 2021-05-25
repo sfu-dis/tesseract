@@ -205,7 +205,12 @@ rc_t transaction::si_commit() {
     tuple->DoWrite();
 
     // Populate log block and obtain persistent address
-    uint32_t off = dlog::log_update(lb, w.fid, w.oid, (char *)tuple, sizeof(dbtuple) + tuple->size);
+    uint32_t off = 0;
+    if (w.is_insert) {
+      dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, sizeof(dbtuple) + tuple->size);
+    } else {
+      dlog::log_update(lb, w.fid, w.oid, (char *)tuple, sizeof(dbtuple) + tuple->size);
+    }
     ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
 
     // Set persistent address
@@ -352,7 +357,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
       ASSERT(XID::from_ptr(prev->sstamp) == xc->owner);
       ASSERT(tuple->NextVolatile() == prev);
 #endif
-      add_to_write_set(tuple_array->get(oid), tuple_fid, oid, tuple->size);
+      add_to_write_set(tuple_array->get(oid), tuple_fid, oid, tuple->size, false);
       prev_persistent_ptr = prev_obj->GetPersistentAddress();
     }
 
@@ -425,7 +430,7 @@ OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple)
   oidmgr->oid_put_new(tuple_array, oid, new_head);
 
   ASSERT(tuple->size == value->size());
-  add_to_write_set(tuple_array->get(oid), tuple_fid, oid, tuple->size);
+  add_to_write_set(tuple_array->get(oid), tuple_fid, oid, tuple->size, true);
 
   if (out_tuple) {
     *out_tuple = tuple;
