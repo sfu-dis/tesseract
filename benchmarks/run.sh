@@ -30,14 +30,14 @@ if [[ "$bench" != "tpce" && "$bench" != "ycsb" && "$bench" != "tpcc" ]]; then
 fi
 
 if [ -z ${logbuf_mb+x} ]; then
-  logbuf_mb=128
+  logbuf_mb=8
   echo "logbuf_mb is unset, using $logbuf_mb";
 else
   echo "logbuf_mb is set to $logbuf_mb";
 fi
 
 options="$exe $1 -verbose=1 -benchmark $bench -threads $threads -scale_factor $sf -seconds $runtime \
-  -log_data_dir $LOGDIR -log_buffer_mb=$logbuf_mb -log_segment_mb=16384 -parallel_loading"
+  -log_data_dir $LOGDIR -log_buffer_mb=$logbuf_mb -parallel_loading"
 echo $options
 if [ "$bench" == "tpcc" ]; then
   btype=${workload:4:1}

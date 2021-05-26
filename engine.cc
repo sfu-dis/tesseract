@@ -1,57 +1,56 @@
 #include "dbcore/rcu.h"
-#include "dbcore/sm-chkpt.h"
-
-#include "ermia.h"
+#include "dbcore/sm-thread.h"
+#include "engine.h"
 #include "txn.h"
 
 namespace ermia {
+
+thread_local dlog::tls_log tlog;
+dlog::tls_log *GetLog() {
+  thread_local bool initialized = false;
+  if (!initialized) {
+    tlog.initialize(config::log_dir.c_str(),
+                    thread::MyId(),
+                    numa_node_of_cpu(sched_getcpu()),
+                    config::log_buffer_mb);
+    initialized = true;
+  }
+  return &tlog;
+}
 
 // Engine initialization, including creating the OID, log, and checkpoint
 // managers and recovery if needed.
 Engine::Engine() {
   config::sanity_check();
-
   ALWAYS_ASSERT(config::log_dir.size());
-  ALWAYS_ASSERT(not logmgr);
-  ALWAYS_ASSERT(not oidmgr);
-  sm_log::allocate_log_buffer();
-  logmgr = sm_log::new_log(config::recover_functor, nullptr);
+  ALWAYS_ASSERT(!oidmgr);
   sm_oid_mgr::create();
-  ALWAYS_ASSERT(logmgr);
   ALWAYS_ASSERT(oidmgr);
-
-  LSN chkpt_lsn = logmgr->get_chkpt_start();
-  if (config::enable_chkpt) {
-    chkptmgr = new sm_chkpt_mgr(chkpt_lsn);
-  }
-
-  if (sm_log::need_recovery) {
-    logmgr->recover();
-  }
 }
 
 TableDescriptor *Engine::CreateTable(const char *name) {
   auto *td = TableDescriptor::New(name);
 
-  if (!sm_log::need_recovery) {
+  if (true) { //!sm_log::need_recovery) {
     // Note: this will insert to the log and therefore affect min_flush_lsn,
     // so must be done in an sm-thread which must be created by the user
     // application (not here in ERMIA library).
-    ASSERT(ermia::logmgr);
+    //ASSERT(ermia::logmgr);
 
     // TODO(tzwang): perhaps make this transactional to allocate it from
     // transaction string arena to avoid malloc-ing memory (~10k size).
-    char *log_space = (char *)malloc(sizeof(sm_tx_log));
-    ermia::sm_tx_log *log = ermia::logmgr->new_tx_log(log_space);
+    //char *log_space = (char *)malloc(sizeof(sm_tx_log));
+    //ermia::sm_tx_log *log = ermia::logmgr->new_tx_log(log_space);
     td->Initialize();
-    log->log_table(td->GetTupleFid(), td->GetKeyFid(), td->GetName());
-    log->commit(nullptr);
-    free(log_space);
+    //log->log_table(td->GetTupleFid(), td->GetKeyFid(), td->GetName());
+    //log->commit(nullptr);
+    //free(log_space);
   }
   return td;
 }
 
 void Engine::LogIndexCreation(bool primary, FID table_fid, FID index_fid, const std::string &index_name) {
+  /*
   if (!sm_log::need_recovery) {
     // Note: this will insert to the log and therefore affect min_flush_lsn,
     // so must be done in an sm-thread which must be created by the user
@@ -66,6 +65,7 @@ void Engine::LogIndexCreation(bool primary, FID table_fid, FID index_fid, const 
     log->commit(nullptr);
     free(log_space);
   }
+  */
 }
 
 void Engine::CreateIndex(const char *table_name, const std::string &index_name, bool is_primary) {
@@ -295,7 +295,9 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr
   AWAIT GetOID(key, rc, t->xc, oid);
 
   if (rc._val == RC_TRUE) {
-		RETURN t->Update(table_descriptor, oid, &key, nullptr);
+    // Allocate an empty record version as the "new" version
+		varstr *null_val = t->string_allocator().next(0);
+    RETURN t->Update(table_descriptor, oid, &key, null_val);
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};
   }

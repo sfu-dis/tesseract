@@ -1,7 +1,6 @@
 #include "dbcore/rcu.h"
-#include "dbcore/sm-chkpt.h"
 
-#include "ermia.h"
+#include "engine.h"
 #include "txn.h"
 
 #include "masstree/masstree_scan.hh"
@@ -286,22 +285,22 @@ start_over:
       //bool visible = oidmgr->TestVisibility(cur_obj, visitor_xc, retry);
       // TestVisibility
       {
-        fat_ptr clsn = cur_obj->GetClsn();
-        if (clsn == NULL_PTR) {
+        fat_ptr csn = cur_obj->GetCSN();
+        if (csn == NULL_PTR) {
           // dead tuple that was (or about to be) unlinked, start over
           goto start_over;
         }
-        uint16_t asi_type = clsn.asi_type();
-        ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_LOG);
+        uint16_t asi_type = csn.asi_type();
+        ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_CSN);
 
         if (asi_type == fat_ptr::ASI_XID) {  // in-flight
-          XID holder_xid = XID::from_ptr(clsn);
+          XID holder_xid = XID::from_ptr(csn);
           // Dirty data made by me is visible!
           if (holder_xid == t->xc->owner) {
             ASSERT(!cur_obj->GetNextVolatile().offset() ||
                    ((Object *)cur_obj->GetNextVolatile().offset())
-                           ->GetClsn()
-                           .asi_type() == fat_ptr::ASI_LOG);
+                           ->GetCSN()
+                           .asi_type() == fat_ptr::ASI_CSN);
             goto handle_visible;
           }
           auto *holder = TXN::xid_get_context(holder_xid);
@@ -330,8 +329,8 @@ start_over:
           ASSERT(cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG ||
                  cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_CHK ||
                  cur_obj->GetPersistentAddress() == NULL_PTR);  // Delete
-          uint64_t lsn_offset = LSN::from_ptr(clsn).offset();
-          if (lsn_offset <= t->xc->begin) {
+          uint64_t csn_value = CSN::from_ptr(csn).offset();
+          if (csn_value <= t->xc->begin) {
             goto handle_visible;
           }
         }
@@ -486,22 +485,22 @@ start_over:
       //bool retry = false;
       //bool visible = oidmgr->TestVisibility(cur_obj, visitor_xc, retry);
       {
-        fat_ptr clsn = cur_obj->GetClsn();
-        if (clsn == NULL_PTR) {
+        fat_ptr csn = cur_obj->GetCSN();
+        if (csn == NULL_PTR) {
           // dead tuple that was (or about to be) unlinked, start over
           goto start_over;
         }
-        uint16_t asi_type = clsn.asi_type();
-        ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_LOG);
+        uint16_t asi_type = csn.asi_type();
+        ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_CSN);
 
         if (asi_type == fat_ptr::ASI_XID) {  // in-flight
-          XID holder_xid = XID::from_ptr(clsn);
+          XID holder_xid = XID::from_ptr(csn);
           // Dirty data made by me is visible!
           if (holder_xid == t->xc->owner) {
             ASSERT(!cur_obj->GetNextVolatile().offset() ||
                    ((Object *)cur_obj->GetNextVolatile().offset())
-                           ->GetClsn()
-                           .asi_type() == fat_ptr::ASI_LOG);
+                           ->GetCSN()
+                           .asi_type() == fat_ptr::ASI_CSN);
             goto handle_visible;
           }
           auto *holder = TXN::xid_get_context(holder_xid);
@@ -530,8 +529,8 @@ start_over:
           ASSERT(cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG ||
                  cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_CHK ||
                  cur_obj->GetPersistentAddress() == NULL_PTR);  // Delete
-          uint64_t lsn_offset = LSN::from_ptr(clsn).offset();
-          if (lsn_offset <= t->xc->begin) {
+          uint64_t csn_value = CSN::from_ptr(csn).offset();
+          if (csn_value <= t->xc->begin) {
             goto handle_visible;
           }
         }
@@ -673,11 +672,11 @@ forward:
     dbtuple *version = (dbtuple *)old_desc->GetPayload();
     bool overwrite = false;
 
-    auto clsn = old_desc->GetClsn();
-    if (clsn == NULL_PTR) {
+    auto csn = old_desc->GetCSN();
+    if (csn == NULL_PTR) {
       // stepping on an unlinked version?
       goto start_over;
-    } else if (clsn.asi_type() == fat_ptr::ASI_XID) {
+    } else if (csn.asi_type() == fat_ptr::ASI_XID) {
       /* Grab the context for this XID. If we're too slow,
          the context might be recycled for a different XID,
          perhaps even *while* we are reading the
@@ -687,7 +686,7 @@ forward:
          occurs, just start over---the version we cared
          about is guaranteed to have a LSN now.
        */
-      auto holder_xid = XID::from_ptr(clsn);
+      auto holder_xid = XID::from_ptr(csn);
       XID updater_xid = volatile_read(t->xid);
 
       // in-place update case (multiple updates on the same record  by same
@@ -700,8 +699,8 @@ forward:
       TXN::xid_context *holder = TXN::xid_get_context(holder_xid);
       if (not holder) {
 #ifndef NDEBUG
-        auto t = old_desc->GetClsn().asi_type();
-        ASSERT(t == fat_ptr::ASI_LOG or oid_get(oa, o) != head);
+        auto t = old_desc->GetCSN().asi_type();
+        ASSERT(t == fat_ptr::ASI_CSN || oid_get(oa, o) != head);
 #endif
         goto start_over;
       }
@@ -729,12 +728,12 @@ forward:
     }
     // check dirty writes
     else {
-      ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
+      ASSERT(csn.asi_type() == fat_ptr::ASI_CSN);
 #ifndef RC
       // First updater wins: if some concurrent tx committed first,
       // I have to abort. Same as in Oracle. Otherwise it's an isolation
       // failure: I can modify concurrent transaction's writes.
-      if (LSN::from_ptr(clsn).offset() >= t->xc->begin) {
+      if (CSN::from_ptr(csn).offset() >= t->xc->begin) {
         prev_obj_ptr = NULL_PTR;
         goto check_prev;
       }
@@ -751,7 +750,7 @@ forward:
     new_obj_ptr = Object::Create(&value, false, t->xc->begin_epoch);
     ASSERT(new_obj_ptr.asi_type() == 0);
     new_object = (Object *)new_obj_ptr.offset();
-    new_object->SetClsn(t->xc->owner.to_ptr());
+    new_object->SetCSN(t->xc->owner.to_ptr());
     if (overwrite) {
       new_object->SetNextPersistent(old_desc->GetNextPersistent());
       new_object->SetNextVolatile(old_desc->GetNextVolatile());
@@ -803,10 +802,10 @@ forward:
       // read prev's clsn first, in case it's a committing XID, the clsn's state
       // might change to ASI_LOG anytime
       ASSERT((uint64_t)prev->GetObject() == prev_obj_ptr.offset());
-      fat_ptr prev_clsn = prev->GetObject()->GetClsn();
+      fat_ptr prev_csn = prev->GetObject()->GetCSN();
       fat_ptr prev_persistent_ptr = NULL_PTR;
-      if (prev_clsn.asi_type() == fat_ptr::ASI_XID and
-          XID::from_ptr(prev_clsn) == t->xid) {
+      if (prev_csn.asi_type() == fat_ptr::ASI_XID and
+          XID::from_ptr(prev_csn) == t->xid) {
         // updating my own updates!
         // prev's prev: previous *committed* version
         ASSERT(((Object *)prev_obj_ptr.offset())->GetAllocateEpoch() ==
@@ -825,7 +824,7 @@ forward:
       }
 
       ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
-      ASSERT(tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_XID);
+      ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_XID);
       ASSERT(oidmgr->oid_get_version(tuple_fid, oid, xc) == tuple);
       ASSERT(log);
 

@@ -337,7 +337,7 @@ class tpcc_worker_mixin : private _dummy {
       ASSERT(g_wh_spread >= 0 and g_wh_spread <= 1);
       // wh_spread = 0: always use home wh
       // wh_spread = 1: always use random wh
-      if (ermia::config::command_log || g_wh_spread == 0 || r.next_uniform() >= g_wh_spread)
+      if (g_wh_spread == 0 || r.next_uniform() >= g_wh_spread)
         return home_wh;
       return r.next() % NumWarehouses() + 1;
     }

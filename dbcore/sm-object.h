@@ -2,6 +2,7 @@
 
 #include <list>
 
+#include "dlog-defs.h"
 #include "epoch.h"
 #include "sm-common.h"
 #include "../varstr.h"
@@ -39,9 +40,9 @@ class Object {
   // and next_volatile_.
   fat_ptr next_volatile_;
 
-  // Commit timestamp of this version. Type is XID (LOG) before (after)
-  // commit. size_code refers to the whole object including header
-  fat_ptr clsn_;
+  // Commit timestamp of this version. Type is XID (CSN) before (after)
+  // commit. 
+  fat_ptr csn_;
 
  public:
   static fat_ptr Create(const varstr* tuple_value, bool do_write,
@@ -52,33 +53,28 @@ class Object {
         status_(kStatusMemory),
         pdest_(NULL_PTR),
         next_pdest_(NULL_PTR),
-        next_volatile_(NULL_PTR),
-        clsn_(NULL_PTR) {}
+        next_volatile_(NULL_PTR) {}
 
   Object(fat_ptr pdest, fat_ptr next, epoch_num e, bool in_memory)
       : alloc_epoch_(e),
         status_(in_memory ? kStatusMemory : kStatusStorage),
         pdest_(pdest),
         next_pdest_(next),
-        next_volatile_(NULL_PTR),
-        clsn_(NULL_PTR) {}
+        next_volatile_(NULL_PTR) {}
 
   inline bool IsDeleted() { return status_ == kStatusDeleted; }
   inline bool IsInMemory() { return status_ == kStatusMemory; }
   inline fat_ptr* GetPersistentAddressPtr() { return &pdest_; }
   inline fat_ptr GetPersistentAddress() { return pdest_; }
-  inline fat_ptr GetClsn() { return volatile_read(clsn_); }
-  inline void SetClsn(fat_ptr clsn) { volatile_write(clsn_, clsn); }
+  inline void SetPersistentAddress(fat_ptr ptr) { pdest_._ptr = ptr._ptr; }
+  inline fat_ptr GetCSN() { return csn_; }
+  inline void SetCSN(fat_ptr csnptr) { volatile_write(csn_._ptr, csnptr._ptr); }
   inline fat_ptr GetNextPersistent() { return volatile_read(next_pdest_); }
   inline fat_ptr* GetNextPersistentPtr() { return &next_pdest_; }
   inline fat_ptr GetNextVolatile() { return volatile_read(next_volatile_); }
   inline fat_ptr* GetNextVolatilePtr() { return &next_volatile_; }
-  inline void SetNextPersistent(fat_ptr next) {
-    volatile_write(next_pdest_, next);
-  }
-  inline void SetNextVolatile(fat_ptr next) {
-    volatile_write(next_volatile_, next);
-  }
+  inline void SetNextPersistent(fat_ptr next) { volatile_write(next_pdest_, next); }
+  inline void SetNextVolatile(fat_ptr next) { volatile_write(next_volatile_, next); }
   inline epoch_num GetAllocateEpoch() { return alloc_epoch_; }
   inline void SetAllocateEpoch(epoch_num e) { alloc_epoch_ = e; }
   inline char* GetPayload() { return (char*)((char*)this + sizeof(Object)); }
@@ -92,7 +88,7 @@ class Object {
     }
     return (dbtuple*)GetPayload();
   }
-  fat_ptr GenerateClsnPtr(uint64_t clsn);
+  fat_ptr GenerateCsnPtr(uint64_t csn);
   void Pin();  // Make sure the payload is in memory
 
   static inline void PrefetchHeader(Object *p) {

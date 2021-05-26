@@ -7,7 +7,7 @@ project(corobase)
 cmake_minimum_required(VERSION 3.1)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++14 -fcoroutines-ts -stdlib=libc++ -Woverloaded-virtual -Werror=reorder -Werror=unused-result -Wno-address-of-packed-member")
-set(LINK_FLAGS "-lc++abi -lnuma -lpthread -pthread -lrt -lglog -lgflags")
+set(LINK_FLAGS "-lc++abi -lnuma -lpthread -pthread -lrt -lglog -lgflags -luring")
 link_libraries(${LINK_FLAGS})
 
 include_directories(/opt/dis/llvm-libc++/include/c++/v1)
@@ -49,10 +49,13 @@ add_subdirectory(dbcore)
 add_subdirectory(masstree)
 
 set_property(GLOBAL APPEND PROPERTY ALL_SRC
-  ${CMAKE_CURRENT_SOURCE_DIR}/ermia.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/corobase.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/tuple.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/txn.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/txn-ssn.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/txn-ssi.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/txn-mvocc.cc
 )
 
 get_property(LIB_SRC GLOBAL PROPERTY ALL_SRC)
@@ -78,32 +81,32 @@ set_target_properties(corobase_SI PROPERTIES COMPILE_FLAGS "")
 target_link_libraries(corobase_SI corobase_si thread_pool)
 
 # SI with fully nested coroutine
-add_library(corobase_adv_coro_si SHARED ${LIB_SRC})
-set_target_properties(corobase_adv_coro_si PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
+#add_library(corobase_adv_coro_si SHARED ${LIB_SRC})
+#set_target_properties(corobase_adv_coro_si PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
 
-add_executable(corobase_adv_coro_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_adv_coro_SI PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
-target_link_libraries(corobase_adv_coro_SI corobase_adv_coro_si thread_pool)
+#add_executable(corobase_adv_coro_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+#set_target_properties(corobase_adv_coro_SI PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
+#target_link_libraries(corobase_adv_coro_SI corobase_adv_coro_si thread_pool)
 
 # Thread pool library with SSN enabled
 add_library(thread_pool_ssn SHARED ${THREAD_POOL_SRC})
 set_target_properties(thread_pool_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
 
 # SI+SSN
-add_library(corobase_si_ssn SHARED ${LIB_SRC})
-set_target_properties(corobase_si_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
+#add_library(corobase_si_ssn SHARED ${LIB_SRC})
+#set_target_properties(corobase_si_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
 
-add_executable(corobase_SI_SSN ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
-target_link_libraries(corobase_SI_SSN corobase_si_ssn thread_pool_ssn)
+#add_executable(corobase_SI_SSN ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+#set_target_properties(corobase_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
+#target_link_libraries(corobase_SI_SSN corobase_si_ssn thread_pool_ssn)
 
 # SI+SSN with fully nested coroutine
-add_library(corobase_adv_coro_si_ssn SHARED ${LIB_SRC})
-set_target_properties(corobase_adv_coro_si_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK -DADV_COROUTINE")
+#add_library(corobase_adv_coro_si_ssn SHARED ${LIB_SRC})
+#set_target_properties(corobase_adv_coro_si_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK -DADV_COROUTINE")
 
-add_executable(corobase_adv_coro_SI_SSN ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_adv_coro_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK -DADV_COROUTINE")
-target_link_libraries(corobase_adv_coro_SI_SSN corobase_adv_coro_si_ssn thread_pool_ssn)
+#add_executable(corobase_adv_coro_SI_SSN ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+#set_target_properties(corobase_adv_coro_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK -DADV_COROUTINE")
+#target_link_libraries(corobase_adv_coro_SI_SSN corobase_adv_coro_si_ssn thread_pool_ssn)
 
 # SSI
 #add_library(ermia_ssi SHARED ${LIB_SRC})
@@ -129,14 +132,12 @@ enable_testing()
 if(BUILD_TESTS)
     set(BUILD_GMOCK OFF CACHE BOOL "Gmock Not Used")
     set(INSTALL_GTEST OFF CACHE BOOL "Static Link Gtest")
-    add_subdirectory(third-party/googletest)
 
     set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "No Testing For GoogleBenchmark Itself")
     set(BENCHMARK_ENABLE_EXECEPTIONS OFF CACHE BOOL "No Exception For GoogleBenchmark")
     set(BENCHMARK_ENABLE_LTO OFF CACHE BOOL "FIXME: Link Time Optimization leads to linking error")
     set(BENCHMARK_USE_LIBCXX ON CACHE BOOL "Build GoogleBenchmark With libc++")
     set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Static Link GoogleBenchmark")
-    add_subdirectory(third-party/benchmark)
 
     add_subdirectory(tests)
 endif()

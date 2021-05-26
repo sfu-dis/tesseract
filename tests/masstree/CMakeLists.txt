@@ -16,37 +16,26 @@ set(DBCORE_SRCS
   ${CMAKE_SOURCE_DIR}/dbcore/epoch.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/mcs_lock.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/rcu.cpp
-  ${CMAKE_SOURCE_DIR}/dbcore/rdma.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/serial.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/size-encode.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-alloc.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-chkpt.cpp
-  ${CMAKE_SOURCE_DIR}/dbcore/sm-cmd-log.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-common.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-config.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-coroutine.cpp
-  #${CMAKE_SOURCE_DIR}/dbcore/sm-dia.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-exceptions.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-table.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-log-alloc.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-log.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-log-file.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-log-offset.cpp
-  ${CMAKE_SOURCE_DIR}/dbcore/sm-log-offset-replay-impl.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-log-oid-replay-impl.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-log-recover.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-log-recover-impl.cpp
-  #${CMAKE_SOURCE_DIR}/dbcore/sm-oid-alloc.cpp     # belongs to test cases only
   ${CMAKE_SOURCE_DIR}/dbcore/sm-object.cpp
-  ${CMAKE_SOURCE_DIR}/dbcore/sm-oid-alloc-impl.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-oid.cpp
-  ${CMAKE_SOURCE_DIR}/dbcore/sm-rep.cpp
-  ${CMAKE_SOURCE_DIR}/dbcore/sm-rep-tcp.cpp
-  ${CMAKE_SOURCE_DIR}/dbcore/sm-rep-rdma.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/sm-tx-log.cpp
-  ${CMAKE_SOURCE_DIR}/dbcore/tcp.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/window-buffer.cpp
-  ${CMAKE_SOURCE_DIR}/dbcore/w_rand.cpp
   ${CMAKE_SOURCE_DIR}/dbcore/xid.cpp
 )
 

@@ -1,7 +1,6 @@
 #include "rcu.h"
 #include "serial.h"
 #include "sm-alloc.h"
-#include "sm-log.h"
 #include "sm-thread.h"
 
 namespace ermia {
@@ -166,21 +165,6 @@ void Thread::IdleTask() {
   while (not volatile_read(shutdown)) {
     if (volatile_read(state) == kStateHasWork) {
       task(task_input);
-      if (!config::IsShutdown() && logmgr) {
-        auto my_offset = logmgr->get_tls_lsn_offset();
-        // Must use a while loop here instead of using
-        // logmgr->wait_for_durable();
-        // otherwise the N-1 out of N threads reached here at the same time will
-        // stuck - only the first guy can return from wait_for_durable() and the
-        // rest will wait indefinitely because flush() always flushes up to the
-        // smallest tls_lsn_offset. Invoking flush at the same time results in
-        // the
-        // same smallest offset and stuck at wait_for_durable.
-        while (logmgr->durable_flushed_lsn().offset() < my_offset) {
-          logmgr->flush();
-        }
-        logmgr->set_tls_lsn_offset(0);  // clear thread as if did nothing!
-      }
       COMPILER_MEMORY_FENCE;
       volatile_write(state, kStateNoWork);
     }

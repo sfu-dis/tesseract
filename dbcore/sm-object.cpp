@@ -1,7 +1,4 @@
 #include "sm-alloc.h"
-#include "sm-chkpt.h"
-#include "sm-log.h"
-#include "sm-log-recover.h"
 #include "sm-object.h"
 #include "../tuple.h"
 
@@ -30,8 +27,7 @@ void Object::Pin() {
   if (val == kStatusMemory) {
     return;
   } else if (val == kStatusLoading) {
-    while (volatile_read(status_) != kStatusMemory) {
-    }
+    while (volatile_read(status_) != kStatusMemory) {}
     return;
   } else {
     ASSERT(val == kStatusStorage);
@@ -51,7 +47,8 @@ void Object::Pin() {
 
   size_t data_sz = decode_size_aligned(pdest_.size_code());
   if (where == fat_ptr::ASI_LOG) {
-    ASSERT(logmgr);
+    ALWAYS_ASSERT(0);
+    /*
     logmgr->load_object((char *)tuple->get_value_start(), data_sz, pdest_);
 
     // Strip out the varstr stuff
@@ -65,9 +62,13 @@ void Object::Pin() {
     }
     memmove(tuple->get_value_start(),
             (char *)tuple->get_value_start() + sizeof(varstr), tuple->size);
-    SetClsn(LSN::make(pdest_.offset(), 0).to_log_ptr());
-    ALWAYS_ASSERT(pdest_.offset() == clsn_.offset());
+    LOG(FATAL) << "SET CSN";
+    //SetCsn(LSN::make(pdest_.offset(), 0).to_log_ptr());
+    //ALWAYS_ASSERT(pdest_.offset() == csn_.offset());
+    */
   } else {
+    ALWAYS_ASSERT(0);
+    /*
     // Load tuple data form the chkpt file
     ASSERT(sm_chkpt_mgr::base_chkpt_fd);
     ALWAYS_ASSERT(pdest_.offset());
@@ -80,10 +81,11 @@ void Object::Pin() {
     ALWAYS_ASSERT(n == read_size);
     ASSERT(tuple->size <= read_size - sizeof(dbtuple));
     next_pdest_ = NULL_PTR;
+    */
   }
-  ASSERT(clsn_.asi_type() == fat_ptr::ASI_LOG);
+  ASSERT(csn_.asi_type() == fat_ptr::ASI_LOG);
   ALWAYS_ASSERT(pdest_.offset());
-  ALWAYS_ASSERT(clsn_.offset());
+  ALWAYS_ASSERT(csn_.offset());
   ASSERT(volatile_read(status_) == kStatusLoading);
   SetStatus(final_status);
 }
@@ -118,21 +120,12 @@ fat_ptr Object::Create(const varstr *tuple_value, bool do_write,
   return fat_ptr::make(obj, size_code, 0 /* 0: in-memory */);
 }
 
-// Make sure the object has a valid clsn/pdest
-fat_ptr Object::GenerateClsnPtr(uint64_t clsn) {
-  fat_ptr clsn_ptr = NULL_PTR;
-  uint64_t tuple_off = GetPersistentAddress().offset();
-  if (tuple_off == 0) {
-    // Must be a delete record
-    ASSERT(GetPinnedTuple()->size == 0);
-    ASSERT(GetPersistentAddress() == NULL_PTR);
-    tuple_off = clsn;
-    clsn_ptr = LSN::make(tuple_off, 0).to_log_ptr();
-    // Set pdest here which wasn't set by log_delete
-    pdest_ = clsn_ptr;
-  } else {
-    clsn_ptr = LSN::make(tuple_off, 0).to_log_ptr();
-  }
-  return clsn_ptr;
+// Make sure the object has a valid csn/pdest
+fat_ptr Object::GenerateCsnPtr(uint64_t csn) {
+  fat_ptr csn_ptr = CSN::make(csn).to_ptr();
+  uint16_t s = csn_ptr.asi_type();
+  ASSERT(s == fat_ptr::ASI_CSN);
+  return csn_ptr;
 }
+
 }  // namespace ermia

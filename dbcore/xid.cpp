@@ -1,9 +1,9 @@
 #include "xid.h"
-#include "sm-log.h"
 #include "epoch.h"
 #include "serial.h"
 #include "../txn.h"
 #include <atomic>
+#include <mutex>
 #include <unistd.h>
 
 namespace ermia {
@@ -105,7 +105,7 @@ epoch_mgr xid_epochs{{nullptr, &global_init, &get_tls, &thread_registered,
                       &thread_deregistered, &epoch_ended, &epoch_ended_thread,
                       &epoch_reclaimed}};
 
-os_mutex_pod xid_mutex = os_mutex_pod::static_init();
+std::mutex xid_mutex;
 
 #if 0
 { // disable autoindent

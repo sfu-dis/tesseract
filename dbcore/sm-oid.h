@@ -3,7 +3,6 @@
 #include "epoch.h"
 #include "sm-common.h"
 #include "sm-oid-alloc.h"
-#include "sm-log.h"
 #include "sm-coroutine.h"
 
 #include "dynarray.h"
@@ -104,7 +103,6 @@ struct OIDAMACState {
 class sm_oid_mgr {
 public:
   friend class sm_chkpt_mgr;
-  using log_tx_scan = sm_log_scan_mgr::record_scan;
 
   /* The object array for each file resides in the OID array for
      file 0; allocators go in file 1 (including the file allocator,
@@ -329,7 +327,7 @@ private:
      allocator, but we do want enough that false sharing is
      unlikely.
    */
-  os_mutex mutexen[MUTEX_COUNT];
+  std::mutex mutexen[MUTEX_COUNT];
 
 public:
   sm_oid_mgr();

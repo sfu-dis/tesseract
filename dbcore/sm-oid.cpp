@@ -1,19 +1,17 @@
+#include <thread>
+
 #include <fcntl.h>
 #include <unistd.h>
 
-#include <map>
-
-#include "../ermia.h"
+#include "../engine.h"
 #include "../txn.h"
 #include "../util.h"
 
 #include "burt-hash.h"
 #include "sc-hash.h"
 #include "sm-alloc.h"
-#include "sm-chkpt.h"
 #include "sm-config.h"
 #include "sm-table.h"
-#include "sm-log-recover-impl.h"
 #include "sm-object.h"
 
 namespace ermia {
@@ -61,13 +59,13 @@ struct thread_data {
      checkpoint scan misses it. Or an eviction freeing a pile of
      OIDs that the checkpoint thread never learns about.
   */
-  os_mutex mutex;
+  std::mutex mutex;
 };
 
 thread_local thread_data *tls = nullptr;
 
 /* Used to make sure threads give back their caches on exit */
-os_mutex_pod oid_mutex = os_mutex_pod::static_init();
+std::mutex oid_mutex;
 sm_oid_mgr *master;
 std::map<pthread_t, thread_data *> *threads;
 pthread_key_t pthread_key;
@@ -630,11 +628,11 @@ start_over:
   dbtuple *version = (dbtuple *)old_desc->GetPayload();
   bool overwrite = false;
 
-  auto clsn = old_desc->GetClsn();
-  if (clsn == NULL_PTR) {
+  auto csn = old_desc->GetCSN();
+  if (csn == NULL_PTR) {
     // stepping on an unlinked version?
     goto start_over;
-  } else if (clsn.asi_type() == fat_ptr::ASI_XID) {
+  } else if (csn.asi_type() == fat_ptr::ASI_XID) {
     /* Grab the context for this XID. If we're too slow,
        the context might be recycled for a different XID,
        perhaps even *while* we are reading the
@@ -644,7 +642,7 @@ start_over:
        occurs, just start over---the version we cared
        about is guaranteed to have a LSN now.
      */
-    auto holder_xid = XID::from_ptr(clsn);
+    auto holder_xid = XID::from_ptr(csn);
     XID updater_xid = volatile_read(updater_xc->owner);
 
     // in-place update case (multiple updates on the same record  by same
@@ -657,8 +655,8 @@ start_over:
     TXN::xid_context *holder = TXN::xid_get_context(holder_xid);
     if (not holder) {
 #ifndef NDEBUG
-      auto t = old_desc->GetClsn().asi_type();
-      ASSERT(t == fat_ptr::ASI_LOG or oid_get(oa, o) != head);
+      auto t = old_desc->GetCSN().asi_type();
+      ASSERT(t == fat_ptr::ASI_CSN || oid_get(oa, o) != head);
 #endif
       goto start_over;
     }
@@ -691,12 +689,14 @@ start_over:
   }
   // check dirty writes
   else {
-    ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
+    ASSERT(csn.asi_type() == fat_ptr::ASI_CSN);
 #ifndef RC
     // First updater wins: if some concurrent tx committed first,
     // I have to abort. Same as in Oracle. Otherwise it's an isolation
     // failure: I can modify concurrent transaction's writes.
-    if (LSN::from_ptr(clsn).offset() >= updater_xc->begin) return NULL_PTR;
+    if (CSN::from_ptr(csn).offset() >= updater_xc->begin) {
+      return NULL_PTR;
+    }
 #endif
     goto install;
   }
@@ -710,7 +710,7 @@ install:
   *new_obj_ptr = Object::Create(value, false, updater_xc->begin_epoch);
   ASSERT(new_obj_ptr->asi_type() == 0);
   Object *new_object = (Object *)new_obj_ptr->offset();
-  new_object->SetClsn(updater_xc->owner.to_ptr());
+  new_object->SetCSN(updater_xc->owner.to_ptr());
   if (overwrite) {
     new_object->SetNextPersistent(old_desc->GetNextPersistent());
     new_object->SetNextVolatile(old_desc->GetNextVolatile());
@@ -848,24 +848,24 @@ start_over:
 }
 
 bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retry) {
-  fat_ptr clsn = object->GetClsn();
-  uint16_t asi_type = clsn.asi_type();
-  if (clsn == NULL_PTR) {
+  fat_ptr csn = object->GetCSN();
+  uint16_t asi_type = csn.asi_type();
+  if (csn == NULL_PTR) {
     // dead tuple that was (or about to be) unlinked, start over
     retry = true;
     return false;
   }
 
-  ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_LOG);
+  ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_CSN);
   if (asi_type == fat_ptr::ASI_XID) {  // in-flight
 
-    XID holder_xid = XID::from_ptr(clsn);
+    XID holder_xid = XID::from_ptr(csn);
     // Dirty data made by me is visible!
     if (holder_xid == xc->owner) {
       ASSERT(!object->GetNextVolatile().offset() ||
              ((Object *)object->GetNextVolatile().offset())
-                     ->GetClsn()
-                     .asi_type() == fat_ptr::ASI_LOG);
+                     ->GetCSN()
+                     .asi_type() == fat_ptr::ASI_CSN);
       return true;
     }
     auto *holder = TXN::xid_get_context(holder_xid);
@@ -910,10 +910,10 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
     }
   } else {
     // Already committed, now do visibility test
-    ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG ||
-           object->GetPersistentAddress().asi_type() == fat_ptr::ASI_CHK ||
-           object->GetPersistentAddress() == NULL_PTR);  // Delete
-    uint64_t lsn_offset = LSN::from_ptr(clsn).offset();
+    //ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG ||
+    //       object->GetPersistentAddress().asi_type() == fat_ptr::ASI_CHK ||
+    //       object->GetPersistentAddress() == NULL_PTR);  // Delete
+    uint64_t csn_offset = CSN::from_ptr(csn).offset();
 #if defined(RC) || defined(RC_SPIN)
 #if defined(SSN)
     if (config::enable_safesnap &&
@@ -921,7 +921,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
       if (lsn_offset <= xc->begin) {
         return true;
       } else {
-        oid_check_phantom(xc, clsn.offset());
+        oid_check_phantom(xc, csn.offset());
       }
     } else {
       return true;
@@ -930,10 +930,10 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
     return true;
 #endif
 #else  // Not RC
-    if (lsn_offset <= xc->begin) {
+    if (csn_offset <= xc->begin) {
       return true;
     } else {
-      oid_check_phantom(xc, clsn.offset());
+      oid_check_phantom(xc, csn.offset());
     }
 #endif
   }

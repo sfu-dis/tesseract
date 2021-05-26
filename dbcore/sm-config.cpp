@@ -2,7 +2,6 @@
 #include <numa.h>
 #include "../macros.h"
 #include "sm-config.h"
-#include "sm-log-recover-impl.h"
 #include "sm-thread.h"
 #include <iostream>
 
@@ -32,7 +31,6 @@ int enable_safesnap = 0;
 int enable_ssi_read_only_opt = 0;
 uint64_t ssn_read_opt_threshold = SSN_READ_OPT_DISABLED;
 uint64_t log_buffer_mb = 512;
-uint64_t log_segment_mb = 8192;
 std::string log_dir("");
 bool null_log_device = false;
 bool truncate_at_bench_start = false;
@@ -48,7 +46,6 @@ uint32_t group_commit_queue_length = 25000;
 uint32_t group_commit_timeout = 5;
 uint64_t group_commit_size_kb = 4096;
 uint64_t group_commit_bytes = 4096 * 1024;
-sm_log_recover_impl *recover_functor = nullptr;
 bool log_key_for_update = false;
 bool enable_chkpt = 0;
 uint64_t chkpt_interval = 50;
@@ -58,8 +55,6 @@ uint32_t state = kStateLoading;
 bool full_replay = false;
 uint32_t replay_threads = 0;
 uint32_t threads = 0;
-bool command_log = false;
-uint32_t command_log_buffer_mb = 16;
 bool index_probe_only = false;
 bool amac_version_chain = false;
 bool numa_spread = false;
@@ -81,7 +76,7 @@ void init() {
 
 void sanity_check() {
   LOG_IF(FATAL, tls_alloc && !threadpool) << "Cannot use TLS allocator without threadpool";
-  ALWAYS_ASSERT(recover_functor);
+  //ALWAYS_ASSERT(recover_functor);
   ALWAYS_ASSERT(numa_nodes || !threadpool);
   ALWAYS_ASSERT(not group_commit or group_commit_queue_length);
 }

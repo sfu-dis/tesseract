@@ -15,7 +15,6 @@
 #include <pthread.h>
 
 #include <dirent.h>
-#include <sys/stat.h>
 #include <cerrno>
 
 namespace ermia {
@@ -77,8 +76,7 @@ struct fat_ptr {
 
      0x01...0x0f -- currently unused
 
-     0x10...0x1f -- LSN; low 4 bits give phsyical log segment file
-
+     0x10...0x1f -- <LogID, TLog LSN>; low 4 bits give phsyical log segment file
 
      0x20...0x2f -- heap file; low 4 bits give heap segment file
 
@@ -88,7 +86,7 @@ struct fat_ptr {
 
      0x50...0x5f -- pointer to some location in the chkpt file.
 
-     0x60...0x7f -- currently unused.
+     0x60...0x7f -- a CSN encoded as a fat_ptr.
    */
   static uint64_t const VALUE_START_BIT = 16;
 
@@ -112,18 +110,18 @@ struct fat_ptr {
   static uint64_t const ASI_EXT = 0x30;
   static uint64_t const ASI_XID = 0x40;
   static uint64_t const ASI_CHK = 0x50;
+  static uint64_t const ASI_CSN = 0x60;
 
   static uint64_t const ASI_LOG_FLAG = ASI_LOG << ASI_START_BIT;
   static uint64_t const ASI_HEAP_FLAG = ASI_HEAP << ASI_START_BIT;
   static uint64_t const ASI_EXT_FLAG = ASI_EXT << ASI_START_BIT;
   static uint64_t const ASI_XID_FLAG = ASI_XID << ASI_START_BIT;
   static uint64_t const ASI_CHK_FLAG = ASI_CHK << ASI_START_BIT;
+  static uint64_t const ASI_CSN_FLAG = ASI_CSN << ASI_START_BIT;
 
   static uint64_t const ASI_SEGMENT_MASK = 0x0f;
 
-  static_assert(not((ASI_LOG | ASI_HEAP | ASI_EXT | ASI_XID | ASI_CHK) &
-                    ~ASI_MASK),
-                "Go fix ASI_MASK");
+  static_assert(!((ASI_LOG | ASI_CSN | ASI_HEAP | ASI_EXT | ASI_XID | ASI_CHK) & ~ASI_MASK), "Go fix ASI_MASK");
   static_assert(NUM_LOG_SEGMENTS == 16, "The constant above is out of sync");
   static_assert(FLAG_BITS >= 1 + 1 + NUM_LOG_SEGMENT_BITS, "Need more bits");
 
@@ -200,77 +198,73 @@ static inline void volatile_write(fat_ptr volatile &x, fat_ptr const &y) {
 // The equivalent of a NULL pointer
 static fat_ptr const NULL_PTR = {0};
 
-/* Log sequence numbers are strange beasts. They increase
-   monotonically, in order to give a total order to all logged events
-   in the system, but they must also identify the location of a log
-   record on disk. We accomplish this in a similar fashion to fat_ptr,
-   exploiting the fact that we have to be able to embed an LSN in a
-   fat_ptr. That means each LSN can only have 48 significant bits, but
-   it also means we can embed the physical segment number. As long as
-   we know the starting LSN of each segment, an LSN can be converted
-   to a fat_ptr and vice-versa in constant time.
-
-   LSN embeds a size_code, just like fat_ptr does, but it is not
-   directly used by the log. Instead, the LSN size_code is used when
-   converting between LSN and fat_ptr, and corresponds to a size for
-   the object that was encoded (identified by its FID, with associated
-   scaling factor). An LSN that is not associated with any FID will
-   use INVALID_SIZE_CODE as its size_code.
-
-   For comparison purposes, we can leave all the extra bits in place:
-   if two LSN differ, they do so in the most significant bits and the
-   trailing extras won't matter. If two LSN are the same, they should
-   have the same trailing bits as well (if they do not, undefined
-   behaviour should be expected).
+/* An LSN consists of two parts: log ID and local offset (loffset) within the
+ * log. Within a log, the loffset increases monotonically and represents
+ * ordering of events recorded by the same log. Across logs, however, loffsets
+ * are not comparable. LSNs also identify the location of a log record on disk.
+ * We accomplish this in a similar fashion to fat_ptr, exploiting the fact that
+ * we have to be able to embed an LSN in a fat_ptr. That means each LSN can only
+ * have 48 significant bits, but it also means we can embed the physical segment
+ * number. As long as we know the starting LSN of each segment, an LSN can be
+ * converted to a fat_ptr and vice-versa in constant time.
+ *
+ * LSN embeds a size_code, just like fat_ptr does, but it is not directly used
+ * by the log. Instead, the LSN size_code is used when converting between LSN
+ * and fat_ptr, and corresponds to a size for the object that was encoded
+ * (identified by its FID, with associated scaling factor). An LSN that is not
+ * associated with any FID will use INVALID_SIZE_CODE as its size_code.
+ *
+ * For comparison purposes, we can leave all the extra bits in place: if two LSN
+ * differ, they do so in the most significant bits and the trailing extras won't
+ * matter. If two LSN are the same, they should have the same trailing bits as
+ * well (if they do not, undefined behaviour should be expected).
  */
 struct LSN {
-  static LSN make(uintptr_t val, int segnum,
+  static const uint64_t LOG_ID_BITS = 8;
+  static const uint64_t LOFFSET_BITS = 40;
+  static const uint64_t LOFFSET_MASK = (1UL << LOFFSET_BITS) - 1;
+  static const uint64_t LOG_ID_MASK = ~LOFFSET_MASK;
+
+  static LSN make(uint64_t logid, uint64_t loff, int segnum,
                   uint8_t size_code = INVALID_SIZE_CODE) {
-    ASSERT(not(segnum & ~fat_ptr::ASI_SEGMENT_MASK));
+    ASSERT(!(segnum & ~fat_ptr::ASI_SEGMENT_MASK));
+    ASSERT(!(loff & LOG_ID_MASK));
     uintptr_t flags = segnum << fat_ptr::ASI_START_BIT;
-    return (LSN){(val << fat_ptr::VALUE_START_BIT) | flags | size_code};
+    return (LSN){(logid << (fat_ptr::VALUE_START_BIT + LOFFSET_BITS)) | (loff << fat_ptr::VALUE_START_BIT) | flags | size_code};
   }
 
   static LSN from_ptr(fat_ptr const &p) {
-    THROW_IF(
-        p.asi_type() != fat_ptr::ASI_LOG and p.asi_type() != fat_ptr::ASI_EXT,
-        illegal_argument, "Attempt to convert non-LSN fat_ptr to LSN");
-
-    return LSN::make(p.offset(), p.asi_segment());
+    LOG_IF(FATAL, p.asi_type() != fat_ptr::ASI_LOG) <<
+        "Attempt to convert non-LSN fat_ptr to LSN";
+    uint64_t off = p.offset();
+    return LSN::make(off >> LOFFSET_BITS, off & LOFFSET_MASK, p.asi_segment());
   }
 
-  fat_ptr to_ptr() const { return fat_ptr{_val}; }
+  fat_ptr to_ptr() const { return fat_ptr{_val | fat_ptr::ASI_LOG_FLAG}; }
 
   uint64_t _val;
 
   fat_ptr to_log_ptr() const { return fat_ptr{_val | fat_ptr::ASI_LOG_FLAG}; }
-  fat_ptr to_ext_ptr() const { return fat_ptr{_val | fat_ptr::ASI_EXT_FLAG}; }
-
-  uintptr_t offset() const { return _val >> fat_ptr::VALUE_START_BIT; }
-  uint16_t flags() const { return _val & fat_ptr::ASI_FLAG_MASK; }
-  uint32_t segment() const {
+  inline uint64_t logid() const { return (_val >> fat_ptr::VALUE_START_BIT) & LOG_ID_MASK; }
+  inline uint64_t loffset() const { return (_val >> fat_ptr::VALUE_START_BIT) & LOFFSET_MASK; }
+  inline uint16_t flags() const { return _val & fat_ptr::ASI_FLAG_MASK; }
+  inline uint32_t segment() const {
     return (_val >> fat_ptr::ASI_START_BIT) & fat_ptr::ASI_SEGMENT_MASK;
   }
   uint8_t size_code() const { return _val & fat_ptr::SIZE_MASK; }
 
-  /* Create a new LSN that has advanced by [delta] bytes in the
-     current segment. The caller is responsible to deal with the
-     case where advancing [delta] bytes would overflow the segment.
-   */
-  LSN advance_within_segment(uint64_t delta) {
-    delta <<= fat_ptr::VALUE_START_BIT;
-    return (LSN){_val + delta};
-  }
-
   // true comparison operators
-  bool operator<(LSN const &other) const { return _val < other._val; }
+  bool operator<(LSN const &other) const {
+    LOG_IF(FATAL, logid() != other.logid()) << "Cannot compare two LSNs globally"; 
+    return _val < other._val;
+  }
   bool operator==(LSN const &other) const { return _val == other._val; }
 
   // synthesized comparison operators
   bool operator>(LSN const &other) const { return other < *this; }
-  bool operator<=(LSN const &other) const { return not(*this > other); }
+  bool operator<=(LSN const &other) const { return !(*this > other); }
   bool operator>=(LSN const &other) const { return other <= *this; }
-  bool operator!=(LSN const &other) const { return not(*this == other); }
+  bool operator!=(LSN const &other) const { return !(*this == other); }
 };
 
 static inline LSN volatile_read(LSN volatile &x) {
@@ -328,146 +322,42 @@ static inline XID volatile_read(XID volatile &x) {
 
 static XID const INVALID_XID = {fat_ptr::ASI_XID_FLAG};
 
-/* All memory associated with an OID uses this standard
-   header. Standardizing allows garbage collection and other
-   background tasks to work with minimal domain-specific knowledge.
- */
-struct version {
-  /* the address of this version on disk, if durable.
+struct CSN {
+  static CSN make(uint64_t c) {
+    uint64_t x = c;
+    x <<= fat_ptr::VALUE_START_BIT;
+    x |= fat_ptr::ASI_CSN_FLAG;
+    x |= INVALID_SIZE_CODE;
+    return CSN{x};
+  }
 
-     Durable versions can be evicted and their memory reclaimed for
-     other uses;
-   */
-  fat_ptr disk_addr;
+  static CSN from_ptr(fat_ptr const &p) {
+    LOG_IF(FATAL, p.asi_type() != fat_ptr::ASI_CSN)
+      << "Attempt to convert non-CSN fat_ptr to CSN";
+    return CSN{p._ptr};
+  }
 
-  // the previous version of this object, if any.
-  fat_ptr prev;
+  uint64_t _val;
 
-  // commit LSN of the transaction that created this version
-  LSN begin;
+  fat_ptr to_ptr() const { return fat_ptr{_val | INVALID_SIZE_CODE}; }
+  uint32_t offset() const { return _val >> fat_ptr::VALUE_START_BIT; }
+  uint16_t flags() const { return _val & fat_ptr::FLAG_MASK; }
 
-  /* Commit LSN of the transaction that destroyed this version
+  // true comparison operators
+  bool operator==(CSN const &other) const { return _val == other._val; }
 
-     Updating a record sets [end] and links the version as [prev] to
-     its replacement.
-
-     Deleting a record sets [end] without creating a newer
-     version. The object is officially dead at that point, and no
-     more versions can be created until the OID is recycled.
-   */
-  LSN end;
-
-  char data[];
+  // synthesized comparison operators
+  bool operator!=(CSN const &other) const { return !(*this == other); }
 };
 
-/* Wrapper for pthread mutex lock/unlock functions. It is still POD.
- */
-struct os_mutex_pod {
-  static constexpr os_mutex_pod static_init() {
-    return os_mutex_pod{PTHREAD_MUTEX_INITIALIZER};
-  }
+static inline CSN volatile_read(CSN volatile &x) {
+  return CSN{volatile_read(x._val)};
+}
 
-  void lock() {
-    int err = pthread_mutex_lock(&_mutex);
-    DIE_IF(err, "pthread_mutex_lock returned %d", err);
-  }
+static CSN const INVALID_CSN = {fat_ptr::ASI_CSN_FLAG};
 
-  // return true if the mutex was uncontended
-  bool try_lock() {
-    int err = pthread_mutex_trylock(&_mutex);
-    if (err) {
-      DIE_IF(err != EBUSY, "pthread_mutex_trylock returned %d", err);
-      return false;
-    }
-    return true;
-  }
-
-  void unlock() {
-    int err = pthread_mutex_unlock(&_mutex);
-    DIE_IF(err, "pthread_mutex_unlock returned %d", err);
-  }
-
-  pthread_mutex_t _mutex;
-};
-
-struct os_mutex : os_mutex_pod {
-  os_mutex() : os_mutex_pod(static_init()) {}
-  ~os_mutex() {
-    int err = pthread_mutex_destroy(&_mutex);
-    DIE_IF(err, "pthread_mutex_destroy returned %d", err);
-  }
-};
-
-struct os_condvar_pod {
-  static constexpr os_condvar_pod static_init() {
-    return os_condvar_pod{PTHREAD_COND_INITIALIZER};
-  }
-
-  void wait(os_mutex_pod &mutex) {
-    int err = pthread_cond_wait(&_cond, &mutex._mutex);
-    DIE_IF(err, "pthread_cond_wait returned %d", err);
-  }
-
-  int timedwait(os_mutex_pod &mutex, struct timespec *abstime) {
-    return pthread_cond_timedwait(&_cond, &mutex._mutex, abstime);
-  }
-
-  void signal() {
-    int err = pthread_cond_signal(&_cond);
-    DIE_IF(err, "pthread_cond_signal returned %d", err);
-  }
-
-  void broadcast() {
-    int err = pthread_cond_broadcast(&_cond);
-    DIE_IF(err, "pthread_cond_broadcast returned %d", err);
-  }
-
-  pthread_cond_t _cond;
-};
-
-struct os_condvar : os_condvar_pod {
-  os_condvar() : os_condvar_pod(static_init()) {}
-
-  ~os_condvar() {
-    int err = pthread_cond_destroy(&_cond);
-    DIE_IF(err, "pthread_cond_destroy returned %d", err);
-  }
-};
-
-/* Like the normal asprintf, but either return the new string or
-   throws the error that prevented creating it.
- */
-char *os_asprintf(char const *msg, ...) __attribute__((format(printf, 1, 2)));
-
-int os_open(char const *path, int flags);
-
-int os_openat(int dfd, char const *fname, int flags);
-
-void os_write(int fd, void const *buf, size_t bufsz);
-size_t os_pwrite(int fd, char const *buf, size_t bufsz, off_t offset);
 size_t os_pread(int fd, char *buf, size_t bufsz, off_t offset);
-
-void os_truncate(char const *path, size_t size = 0);
-void os_truncateat(int dfd, char const *path, size_t size = 0);
-
-void os_renameat(int tofd, char const *from, int fromfd, char const *to);
-
-void os_unlinkat(int dfd, char const *fname, int flags = 0);
-
-void os_fsync(int fd);
-
-void os_close(int fd);
-
 int os_dup(int fd);
-
-/* like POSIX snprintf, but throws on error (return what-if size on overflow).
-
-   WARNING: unlike snprintf, this function sets the last byte of [buf]
-   to NUL. Callers who forget to test the return value will find a
-   truncated string rather instead of going into la-la land.
- */
-size_t os_snprintf(char *buf, size_t size, char const *fmt, ...)
-    __attribute__((format(printf, 3, 4)));
 
 /* A class for iterating over file name entries in a directory using a
    range-based for loop.
@@ -502,14 +392,6 @@ struct dirent_iterator {
 
   DIR *_d;
   bool used;
-};
-
-struct tmp_dir {
-  char dname[24];
-  tmp_dir();
-  ~tmp_dir();
-  operator char const *() { return dname; }
-  char const *operator*() { return *this; }
 };
 
 }  // namespace ermia

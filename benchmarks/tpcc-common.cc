@@ -32,9 +32,9 @@ unsigned g_txn_workload_mix[8] = {
 
 // how much % of time a worker should use a random home wh
 // 0 - always use home wh
-// 50 - 50% of time use random wh
-// 100 - always use a random wh
-double g_wh_spread = 100;
+// 0.5 - 50% of time use random wh
+// 1 - always use a random wh
+double g_wh_spread = 1;
 
 util::aligned_padded_elem<std::atomic<uint64_t>> *g_district_ids = nullptr;
 

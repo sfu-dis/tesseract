@@ -5,10 +5,11 @@
 
 #include <vector>
 
+#include "dbcore/dlog.h"
+#include "dbcore/dlog-tx.h"
 #include "dbcore/xid.h"
 #include "dbcore/sm-config.h"
 #include "dbcore/sm-oid.h"
-#include "dbcore/sm-log.h"
 #include "dbcore/sm-object.h"
 #include "dbcore/sm-rc.h"
 #include "masstree/masstree_btree.h"
@@ -21,14 +22,31 @@ using google::dense_hash_map;
 
 namespace ermia {
 
+
+#if defined(SSN) || defined(SSI)
+#define set_tuple_xstamp(tuple, s)                                    \
+  {                                                                   \
+    uint64_t x;                                                       \
+    do {                                                              \
+      x = volatile_read(tuple->xstamp);                               \
+    } while (x < s and                                                \
+             not __sync_bool_compare_and_swap(&tuple->xstamp, x, s)); \
+  }
+#endif
+
 // A write-set entry is essentially a pointer to the OID array entry
 // begin updated. The write-set is naturally de-duplicated: repetitive
 // updates will leave only one entry by the first update. Dereferencing
 // the entry pointer results a fat_ptr to the new object.
 struct write_record_t {
   fat_ptr *entry;
-  write_record_t(fat_ptr *entry) : entry(entry) {}
-  write_record_t() : entry(nullptr) {}
+  FID fid;
+  OID oid;
+  uint64_t size;
+  bool is_insert;
+  write_record_t(fat_ptr *entry, FID fid, OID oid, uint64_t size, bool insert)
+    : entry(entry), fid(fid), oid(oid), size(size), is_insert(insert) {}
+  write_record_t() : entry(nullptr), fid(0), oid(0), size(0), is_insert(false) {}
   inline Object *get_object() { return (Object *)entry->offset(); }
 };
 
@@ -37,9 +55,9 @@ struct write_set_t {
   uint32_t num_entries;
   write_record_t entries[kMaxEntries];
   write_set_t() : num_entries(0) {}
-  inline void emplace_back(fat_ptr *oe) {
+  inline void emplace_back(fat_ptr *oe, FID fid, OID oid, uint32_t size, bool insert) {
     ALWAYS_ASSERT(num_entries < kMaxEntries);
-    new (&entries[num_entries]) write_record_t(oe);
+    new (&entries[num_entries]) write_record_t(oe, fid, oid, size, insert);
     ++num_entries;
     ASSERT(entries[num_entries - 1].entry == oe);
   }
@@ -88,7 +106,6 @@ protected:
  public:
   transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx);
   ~transaction();
-  void initialize_read_write();
 
   inline void ensure_active() {
     volatile_write(xc->state, TXN::TXN_ACTIVE);
@@ -132,7 +149,7 @@ protected:
 
   inline str_arena &string_allocator() { return *sa; }
 
-  inline void add_to_write_set(fat_ptr *entry) {
+  inline void add_to_write_set(fat_ptr *entry, FID fid, OID oid, uint64_t size, bool insert) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto &w = write_set[i];
@@ -140,7 +157,11 @@ protected:
       ASSERT(w.entry != entry);
     }
 #endif
-    write_set.emplace_back(entry);
+
+    // Work out the encoded size to be added to the log block later
+    auto logrec_size = align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
+    log_size += logrec_size;
+    write_set.emplace_back(entry, fid, oid, logrec_size, insert);
   }
 
   inline TXN::xid_context *GetXIDContext() { return xc; }
@@ -149,7 +170,8 @@ protected:
   const uint64_t flags;
   XID xid;
   TXN::xid_context *xc;
-  sm_tx_log *log;
+  dlog::tls_log *log;
+  uint32_t log_size;
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
   write_set_t write_set;
