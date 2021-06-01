@@ -26,6 +26,7 @@ static OID const INVALID_OID = ~uint32_t{0};
 
 static size_t const NUM_LOG_SEGMENT_BITS = 4;
 static size_t const NUM_LOG_SEGMENTS = 1 << NUM_LOG_SEGMENT_BITS;
+static size_t const SEGMENT_MAX_SIZE = 1UL << 40;
 
 /* A "fat" pointer that carries an address, augmented with encoded
    allocation size information, plus 8 bits for implementations to use

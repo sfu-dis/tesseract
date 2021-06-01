@@ -2,6 +2,7 @@
 #include <dirent.h>
 
 #include "dlog.h"
+#include "sm-common.h"
 #include "sm-config.h"
 #include "../macros.h"
 
@@ -21,6 +22,7 @@ std::mutex tls_log_lock;
 
 void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node, uint32_t logbuf_mb) {
   std::lock_guard<std::mutex> lock(tls_log_lock);
+  dir = log_dir;
   id = log_id;
   numa_node = node;
   flushing = false;
@@ -36,11 +38,7 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node, ui
   current_lsn = 0;
 
   // Create a new segment
-  char buf[SEGMENT_FILE_NAME_BUFSZ];
-  size_t n = snprintf(buf, sizeof(buf), SEGMENT_FILE_NAME_FMT, id, (unsigned int)segments.size());
-  DIR *logdir = opendir(log_dir);
-  ALWAYS_ASSERT(logdir);
-  segments.emplace_back(dirfd(logdir), buf);
+  create_segment();
 
   // Initialize io_uring
   int ret = io_uring_queue_init(16, &ring, 0);
@@ -55,7 +53,7 @@ void tls_log::uninitialize() {
   io_uring_queue_exit(&ring);
 }
 
-void tls_log::issue_flush(const char *buf, uint32_t size) {
+void tls_log::issue_flush(const char *buf, uint64_t size) {
   if (config::null_log_device) {
     durable_lsn += size;
     return;
@@ -69,6 +67,10 @@ void tls_log::issue_flush(const char *buf, uint32_t size) {
   // Issue an async I/O to flush the buffer into the current open segment
   flushing = true;
 
+  if (size + current_segment()->size > SEGMENT_MAX_SIZE) {
+    create_segment();
+  }
+  
   struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
   LOG_IF(FATAL, !sqe);
 
@@ -96,6 +98,14 @@ void tls_log::poll_flush() {
   io_uring_cqe_seen(&ring, cqe);
   durable_lsn += size;
   current_segment()->size += size;
+}
+
+void tls_log::create_segment() { 
+  char buf[SEGMENT_FILE_NAME_BUFSZ];
+  size_t n = snprintf(buf, sizeof(buf), SEGMENT_FILE_NAME_FMT, id, (unsigned int)segments.size());
+  DIR *logdir = opendir(dir);
+  ALWAYS_ASSERT(logdir);
+  segments.emplace_back(dirfd(logdir), buf);
 }
 
 /*
