@@ -10,11 +10,11 @@ namespace dlog {
 // id, lsn> pair uniquely identifies a log record. 
 //
 // Note that out of the 64 bits, an LSN only uses 40 bits out of it, limiting
-// the max size of each tlog to 1TB. The reationle is to still be able to fit
+// the max size of each tlog to 1TB. The rationale is to still be able to fit
 // the <log id, LSN> pair in 48 bits---which is the number of bits available in
 // a fat_ptr---so that we can encode a <log id, lsn> pair in a single fat_ptr.
-// Then log ids are 8-bit integers. This allows us to support up to 2^8=512
-// tlogs, i.e., 512 cores maximum. Should these limitations become a problem, we
+// Then log ids are 8-bit integers. This allows us to support up to 2^8=256
+// tlogs, i.e., 256 cores maximum. Should these limitations become a problem, we
 // could expand fat_ptrs to 16B.
 typedef uint64_t tlog_csn;
 typedef uint64_t tlog_lsn;
