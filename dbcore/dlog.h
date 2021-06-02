@@ -31,7 +31,10 @@ struct segment {
   int fd;
 
   // Amount of data that has been written
-  uint32_t size;
+  uint64_t size;
+
+  // Amount of data that has been written and pending for flush
+  uint64_t expected_size;
 
   // ctor and dtor
   segment(int dfd, const char *segname);
@@ -43,6 +46,9 @@ struct segment {
 // transaction will be using the log at the same time.
 class tls_log {
 private:
+  // Directory where the segment files should be created.
+  const char *dir;
+  
   // ID of this log; can be seen as 'partition ID' -
   // caller/user should make sure this is unique
   uint32_t id;
@@ -84,11 +90,14 @@ private:
   inline segment *current_segment() { return &segments[segments.size() - 1]; }
 
   // Issue an async I/O to flush the current active log buffer
-  void issue_flush(const char *buf, uint32_t size);
+  void issue_flush(const char *buf, uint64_t size);
 
   // Poll for log I/O completion. We only allow one active I/O at any time
   // (io_uring requests may come back out of order).
   void poll_flush();
+
+  // Create a new segment when the current segment is about to exceed the max segment size.
+  void create_segment();
 
 public:
   // Dummy ctor and dtor. The user must use initialize/uninitialize() to make

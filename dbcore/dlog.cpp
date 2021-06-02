@@ -2,6 +2,7 @@
 #include <dirent.h>
 
 #include "dlog.h"
+#include "sm-common.h"
 #include "sm-config.h"
 #include "../macros.h"
 
@@ -21,6 +22,7 @@ std::mutex tls_log_lock;
 
 void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node, uint32_t logbuf_mb) {
   std::lock_guard<std::mutex> lock(tls_log_lock);
+  dir = log_dir;
   id = log_id;
   numa_node = node;
   flushing = false;
@@ -36,11 +38,7 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node, ui
   current_lsn = 0;
 
   // Create a new segment
-  char buf[SEGMENT_FILE_NAME_BUFSZ];
-  size_t n = snprintf(buf, sizeof(buf), SEGMENT_FILE_NAME_FMT, id, (unsigned int)segments.size());
-  DIR *logdir = opendir(log_dir);
-  ALWAYS_ASSERT(logdir);
-  segments.emplace_back(dirfd(logdir), buf);
+  create_segment();
 
   // Initialize io_uring
   int ret = io_uring_queue_init(16, &ring, 0);
@@ -55,7 +53,7 @@ void tls_log::uninitialize() {
   io_uring_queue_exit(&ring);
 }
 
-void tls_log::issue_flush(const char *buf, uint32_t size) {
+void tls_log::issue_flush(const char *buf, uint64_t size) {
   if (config::null_log_device) {
     durable_lsn += size;
     return;
@@ -78,6 +76,7 @@ void tls_log::issue_flush(const char *buf, uint32_t size) {
   // Encode data size which is useful upon completion (to add to durable_lsn)
   // Must be set after io_uring_prep_write (which sets user_data to 0)
   sqe->user_data = size;
+  current_segment()->expected_size += size;
 
   int nsubmitted = io_uring_submit(&ring);
   LOG_IF(FATAL, nsubmitted != 1);
@@ -96,6 +95,14 @@ void tls_log::poll_flush() {
   io_uring_cqe_seen(&ring, cqe);
   durable_lsn += size;
   current_segment()->size += size;
+}
+
+void tls_log::create_segment() { 
+  char buf[SEGMENT_FILE_NAME_BUFSZ];
+  size_t n = snprintf(buf, sizeof(buf), SEGMENT_FILE_NAME_FMT, id, (unsigned int)segments.size());
+  DIR *logdir = opendir(dir);
+  ALWAYS_ASSERT(logdir);
+  segments.emplace_back(dirfd(logdir), buf);
 }
 
 /*
@@ -118,11 +125,27 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size, uint64_t *out_cur_
 
   uint32_t alloc_size = payload_size + sizeof(log_block);
   LOG_IF(FATAL, alloc_size > logbuf_size) << "Total size too big";
-  if (alloc_size + logbuf_offset > logbuf_size) {
+
+  
+  // If this allocated log block would span across segments, we need a new segment.
+  bool create_new_segment = false;
+  if (alloc_size + logbuf_offset + current_segment()->expected_size > SEGMENT_MAX_SIZE) {
+    create_new_segment = true; 
+  } 
+
+  // If the allocated size exceeds the available space in the active logbuf,
+  // or we need to create a new segment for this log block,
+  // flush the active logbuf, and switch to the other logbuf.
+  if (alloc_size + logbuf_offset > logbuf_size || create_new_segment) {
     issue_flush(active_logbuf, logbuf_offset);
     active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
     logbuf_offset = 0;
+
+    if (create_new_segment) {
+      create_segment();
+    }
   }
+
   log_block *lb = (log_block *)(active_logbuf + logbuf_offset);
   logbuf_offset += alloc_size;
   if (out_cur_lsn) {
@@ -141,7 +164,7 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size, uint64_t *out_cur_
 void tls_log::commit_log_block(log_block *block) {
 }
 
-segment::segment(int dfd, const char *segname) : size(0) {
+segment::segment(int dfd, const char *segname) : size(0), expected_size(0) {
   fd = openat(dfd, segname, O_RDWR | O_SYNC | O_CREAT | O_TRUNC, 0644);
   LOG_IF(FATAL, fd < 0);
 }
