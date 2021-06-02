@@ -33,6 +33,9 @@ struct segment {
   // Amount of data that has been written
   uint64_t size;
 
+  // Amount of data that has been written and pending for flush
+  uint64_t expected_size;
+
   // ctor and dtor
   segment(int dfd, const char *segname);
   ~segment();

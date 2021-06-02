@@ -67,10 +67,6 @@ void tls_log::issue_flush(const char *buf, uint64_t size) {
   // Issue an async I/O to flush the buffer into the current open segment
   flushing = true;
 
-  if (size + current_segment()->size > SEGMENT_MAX_SIZE) {
-    create_segment();
-  }
-  
   struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
   LOG_IF(FATAL, !sqe);
 
@@ -80,6 +76,7 @@ void tls_log::issue_flush(const char *buf, uint64_t size) {
   // Encode data size which is useful upon completion (to add to durable_lsn)
   // Must be set after io_uring_prep_write (which sets user_data to 0)
   sqe->user_data = size;
+  current_segment()->expected_size += size;
 
   int nsubmitted = io_uring_submit(&ring);
   LOG_IF(FATAL, nsubmitted != 1);
@@ -128,11 +125,27 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size, uint64_t *out_cur_
 
   uint32_t alloc_size = payload_size + sizeof(log_block);
   LOG_IF(FATAL, alloc_size > logbuf_size) << "Total size too big";
-  if (alloc_size + logbuf_offset > logbuf_size) {
+
+  
+  // If this allocated log block would span across segments, we need a new segment.
+  bool create_new_segment = false;
+  if (alloc_size + logbuf_offset + current_segment()->expected_size > SEGMENT_MAX_SIZE) {
+    create_new_segment = true; 
+  } 
+
+  // If the allocated size exceeds the available space in the active logbuf,
+  // or we need to create a new segment for this log block,
+  // flush the active logbuf, and switch to the other logbuf.
+  if (alloc_size + logbuf_offset > logbuf_size || create_new_segment) {
     issue_flush(active_logbuf, logbuf_offset);
     active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
     logbuf_offset = 0;
+
+    if (create_new_segment) {
+      create_segment();
+    }
   }
+
   log_block *lb = (log_block *)(active_logbuf + logbuf_offset);
   logbuf_offset += alloc_size;
   if (out_cur_lsn) {
@@ -151,7 +164,7 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size, uint64_t *out_cur_
 void tls_log::commit_log_block(log_block *block) {
 }
 
-segment::segment(int dfd, const char *segname) : size(0) {
+segment::segment(int dfd, const char *segname) : size(0), expected_size(0) {
   fd = openat(dfd, segname, O_RDWR | O_SYNC | O_CREAT | O_TRUNC, 0644);
   LOG_IF(FATAL, fd < 0);
 }
