@@ -20,7 +20,8 @@ std::atomic<uint64_t> current_csn(0);
 
 std::mutex tls_log_lock;
 
-void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node, uint32_t logbuf_mb) {
+void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
+                         uint32_t logbuf_mb, uint32_t max_segment_mb) {
   std::lock_guard<std::mutex> lock(tls_log_lock);
   dir = log_dir;
   id = log_id;
@@ -31,6 +32,8 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node, ui
   LOG_IF(FATAL, !logbuf[0]) << "Unable to allocate log buffer";
   logbuf[1] = (char *)numa_alloc_onnode(logbuf_size, numa_node);
   LOG_IF(FATAL, !logbuf[1]) << "Unable to allocate log buffer";
+  segment_size = max_segment_mb * uint32_t{1024 * 1024};
+  LOG_IF(FATAL, segment_size > SEGMENT_MAX_SIZE) << "Unable to allocate log buffer";
 
   logbuf_offset = 0;
   active_logbuf = logbuf[0];
@@ -150,7 +153,7 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size, uint64_t *out_cur_
   
   // If this allocated log block would span across segments, we need a new segment.
   bool create_new_segment = false;
-  if (alloc_size + logbuf_offset + current_segment()->expected_size > SEGMENT_MAX_SIZE) {
+  if (alloc_size + logbuf_offset + current_segment()->expected_size > segment_size) {
     create_new_segment = true; 
   } 
 
