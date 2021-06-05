@@ -78,6 +78,9 @@ private:
   // Current LSN for this log
   tlog_lsn current_lsn;
 
+  // Segment size
+  uint64_t segment_size;
+
   // All segments belonging to this partition. The last one
   // segments[segments.size()-1] is the currently open segment
   std::vector<segment> segments;
@@ -107,7 +110,7 @@ public:
   ~tls_log() {}
 
   // Initialize/uninitialize this tls-log object
-  void initialize(const char *log_dir, uint32_t log_id, uint32_t node, uint32_t logbuf_mb);
+  void initialize(const char *log_dir, uint32_t log_id, uint32_t node, uint32_t logbuf_mb, uint32_t max_segment_mb);
   void uninitialize();
 
   inline uint32_t get_id() { return id; }

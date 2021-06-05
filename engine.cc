@@ -12,7 +12,8 @@ dlog::tls_log *GetLog() {
     tlog.initialize(config::log_dir.c_str(),
                     thread::MyId(),
                     numa_node_of_cpu(sched_getcpu()),
-                    config::log_buffer_mb);
+                    config::log_buffer_mb,
+                    config::log_segment_mb);
     initialized = true;
   }
   return &tlog;
