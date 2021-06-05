@@ -33,7 +33,7 @@ DEFINE_uint64(node_memory_gb, 12, "GBs of memory to allocate per node.");
 DEFINE_bool(numa_spread, false, "Whether to pin threads in spread mode (compact if false)");
 DEFINE_string(tmpfs_dir, "/dev/shm",
               "Path to a tmpfs location. Used by log buffer.");
-DEFINE_string(log_dir, "/tmpfs/ermia-log", "Log directory.");
+DEFINE_string(log_data_dir, "/tmpfs/ermia-log", "Log directory.");
 DEFINE_uint64(log_buffer_mb, 16, "Log buffer size in MB.");
 DEFINE_uint64(log_segment_mb, 16384, "Log segment size in MB.");
 DEFINE_bool(phantom_prot, false, "Whether to enable phantom protection.");
@@ -124,7 +124,7 @@ int main(int argc, char **argv) {
   ermia::config::node_memory_gb = FLAGS_node_memory_gb;
   ermia::config::numa_spread = FLAGS_numa_spread;
   ermia::config::tmpfs_dir = FLAGS_tmpfs_dir;
-  ermia::config::log_dir = FLAGS_log_dir;
+  ermia::config::log_dir = FLAGS_log_data_dir;
   ermia::config::log_buffer_mb = FLAGS_log_buffer_mb;
   ermia::config::log_segment_mb = FLAGS_log_segment_mb;
   ermia::config::phantom_prot = FLAGS_phantom_prot;
