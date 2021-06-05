@@ -11,6 +11,7 @@ set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/dynarray.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/epoch.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mcs_lock.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/pcommit.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/rcu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/serial.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/size-encode.cpp

@@ -18,6 +18,7 @@
 #include <glog/logging.h>
 
 #include "dlog-defs.h"
+#include "pcommit.h"
 
 namespace ermia {
 
@@ -66,6 +67,9 @@ private:
   // Two log buffers (double buffering)
   char *logbuf[2];
 
+  // Two latest csns of these two log buffers
+  uint64_t latest_logbuf_csns[2];
+  
   // The log buffer accepting new writes
   char *active_logbuf;
 
@@ -84,6 +88,9 @@ private:
 
   // io_uring structures
   struct io_uring ring;
+
+  // Committer
+  pcommit::tls_committer tcommitter;
 
 private:
   // Get the currently open segment
@@ -112,6 +119,8 @@ public:
 
   inline uint32_t get_id() { return id; }
 
+  inline pcommit::tls_committer *get_committer() { return &tcommitter; }
+
   // Commit (insert) a log block to the log - [block] must *not* be allocated
   // using allocate_log_block.
   //void insert(log_block *block);
@@ -119,9 +128,12 @@ public:
   // Allocate a log block in-place on the log buffer
   log_block *allocate_log_block(uint32_t payload_size,
                                 uint64_t *out_cur_lsn,
-                                uint64_t *out_seg_num);
+                                uint64_t *out_seg_num,
+				uint64_t block_csn);
 
   void commit_log_block(log_block *block);
+
+  void enqueue_committed_xct(uint64_t csn, uint64_t start_time);
 };
 
 }  // namespace dlog

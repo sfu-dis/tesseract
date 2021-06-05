@@ -188,8 +188,7 @@ rc_t transaction::si_commit() {
   uint64_t segnum = -1;
   // Generate a log block if not read-only
   if (write_set.size()) {
-    lb = log->allocate_log_block(log_size, &lb_lsn, &segnum);
-    lb->csn = xc->end;
+    lb = log->allocate_log_block(log_size, &lb_lsn, &segnum, xc->end);
   }
 
   // Normally, we'd generate it along the way or here first before toggling the
@@ -230,6 +229,9 @@ rc_t transaction::si_commit() {
   // otherwise readers will see inconsistent data!
   // This is when (committed) tuple data are made visible to readers
   volatile_write(xc->state, TXN::TXN_CMMTD);
+  
+  log->enqueue_committed_xct(xc->end, 0);
+
   return rc_t{RC_TRUE};
 }
 #endif
