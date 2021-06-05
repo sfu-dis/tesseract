@@ -205,7 +205,7 @@ rc_t transaction::si_commit() {
     tuple->DoWrite();
 
     // Populate log block and obtain persistent address
-    uint32_t off = 0;
+    uint32_t off = lb->payload_size;
     if (w.is_insert) {
       dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, sizeof(dbtuple) + tuple->size);
     } else {
