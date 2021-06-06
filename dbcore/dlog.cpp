@@ -21,7 +21,7 @@ std::atomic<uint64_t> current_csn(0);
 std::mutex tls_log_lock;
 
 void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
-                         uint32_t logbuf_mb, uint32_t max_segment_mb) {
+                         uint64_t logbuf_mb, uint64_t max_segment_mb) {
   std::lock_guard<std::mutex> lock(tls_log_lock);
   dir = log_dir;
   id = log_id;

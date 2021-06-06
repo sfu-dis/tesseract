@@ -110,7 +110,7 @@ public:
   ~tls_log() {}
 
   // Initialize/uninitialize this tls-log object
-  void initialize(const char *log_dir, uint32_t log_id, uint32_t node, uint32_t logbuf_mb, uint32_t max_segment_mb);
+  void initialize(const char *log_dir, uint32_t log_id, uint32_t node, uint64_t logbuf_mb, uint64_t max_segment_mb);
   void uninitialize();
 
   inline uint32_t get_id() { return id; }
