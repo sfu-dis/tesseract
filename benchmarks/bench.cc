@@ -52,7 +52,8 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
     ++ntxn_commits;
     std::get<0>(txn_counts[workload_idx])++;
     if (ermia::config::group_commit) {
-      //ermia::logmgr->enqueue_committed_xct(worker_id, t.get_start());
+      ermia::dlog::tls_log *tlog = ermia::GetLog();
+      tlog->enqueue_committed_xct(tlog->get_latest_csn(), t.get_start());
     } else {
       latency_numer_us += t.lap();
     }
@@ -105,6 +106,9 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
 
 void bench_worker::MyWork(char *) {
   if (is_worker) {
+    // Start the tls committer
+    ermia::dlog::tls_log *tlog = ermia::GetLog();
+    tlog->start_committer();
     workload = get_workload();
     txn_counts.resize(workload.size());
     barrier_a->count_down();

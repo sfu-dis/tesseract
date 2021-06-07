@@ -229,8 +229,6 @@ rc_t transaction::si_commit() {
   // otherwise readers will see inconsistent data!
   // This is when (committed) tuple data are made visible to readers
   volatile_write(xc->state, TXN::TXN_CMMTD);
-  
-  log->enqueue_committed_xct(xc->end, 0);
 
   return rc_t{RC_TRUE};
 }

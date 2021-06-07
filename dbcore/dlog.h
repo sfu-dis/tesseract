@@ -67,8 +67,8 @@ private:
   // Two log buffers (double buffering)
   char *logbuf[2];
 
-  // Two latest csns of these two log buffers
-  uint64_t latest_logbuf_csns[2];
+  // Latest csn
+  uint64_t latest_csn;
   
   // The log buffer accepting new writes
   char *active_logbuf;
@@ -122,7 +122,12 @@ public:
 
   inline uint32_t get_id() { return id; }
 
+  inline uint64_t get_latest_csn() { return latest_csn; }
+
   inline pcommit::tls_committer *get_committer() { return &tcommitter; }
+
+  // start this committer
+  inline void start_committer() { tcommitter.start(); }
 
   // Commit (insert) a log block to the log - [block] must *not* be allocated
   // using allocate_log_block.
@@ -136,6 +141,7 @@ public:
 
   void commit_log_block(log_block *block);
 
+  // Enqueue commit queue
   void enqueue_committed_xct(uint64_t csn, uint64_t start_time);
 };
 

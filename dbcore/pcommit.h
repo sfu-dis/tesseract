@@ -9,6 +9,10 @@ namespace ermia {
 namespace pcommit {
 
 extern uint64_t *_tls_durable_csn;
+extern bool *_running_committer;
+extern std::atomic<uint32_t> _running_committer_num;
+extern std::atomic<uint64_t> _durable_csn;
+extern mcs_lock _durable_csn_lock;
 
 struct commit_queue {
   struct Entry {
@@ -32,23 +36,39 @@ struct commit_queue {
 
 class tls_committer {
 private:
+  // Same as log id and thread id
   uint32_t commit_id;
   commit_queue *_commit_queue;
+  bool running;
 
 public:
   tls_committer() {}
   ~tls_committer() {}
 
+  inline bool is_running() { return volatile_read(running); }
+
+  // Initialize a tls_committer object
   void initialize(uint32_t id);
 
+  // Start a tls_committer
+  void start();
+
+  // Get the lowest tls durable csn among all threads
   uint64_t get_lowest_tls_durable_csn();
 
-  uint64_t get_tls_durable_csn(uint32_t id);
+  // Get tls durable csn of this thread
+  uint64_t get_tls_durable_csn();
   
+  // Set tls durable csn of this thread
   void set_tls_durable_csn(uint64_t csn);
 
+  // Mark committer as ongoing: some log blocks have not been durable
+  void set_dirty_flag();
+
+  // Enqueue commit queue of this thread
   void enqueue_committed_xct(uint64_t csn, uint64_t start_time, bool *flush, bool *insert);
 
+  // Dequeue commit queue of this thread
   void dequeue_committed_xcts(uint64_t upto_csn, uint64_t end_time);
 };
 
