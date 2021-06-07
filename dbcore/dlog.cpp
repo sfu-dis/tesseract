@@ -108,14 +108,14 @@ void tls_log::poll_flush() {
     
     // set tls durable csn
     tcommitter.set_tls_durable_csn(latest_tls_durable_csn);
-    // printf("id: %u, tls_durable_csn: %lu\n", id, tcommitter.get_tls_durable_csn(id));
+    // printf("id: %u, tls_durable_csn: %lu\n", id, tcommitter.get_tls_durable_csn());
     ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == latest_tls_durable_csn);
     
     // get the lowest tls durable csn
     uint64_t lowest_tls_durable_csn = tcommitter.get_lowest_tls_durable_csn();
     // printf("id: %u, lowest_tls_durable_csn: %lu\n", id, lowest_tls_durable_csn);
     
-    // dequeue some committted txns
+    // dequeue some committed txns
     util::timer t;
     tcommitter.dequeue_committed_xcts(lowest_tls_durable_csn, t.get_start());
   }
