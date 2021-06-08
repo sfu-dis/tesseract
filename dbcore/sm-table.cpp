@@ -3,9 +3,9 @@
 
 namespace ermia {
 
-std::unordered_map<std::string, TableDescriptor*> TableDescriptor::name_map;
-std::unordered_map<FID, TableDescriptor*> TableDescriptor::fid_map;
-std::unordered_map<std::string, OrderedIndex*> TableDescriptor::index_map;
+std::unordered_map<std::string, TableDescriptor*> Catalog::name_map;
+std::unordered_map<FID, TableDescriptor*> Catalog::fid_map;
+std::unordered_map<std::string, OrderedIndex*> Catalog::index_map;
 
 TableDescriptor::TableDescriptor(std::string& name)
     : name(name),
@@ -18,7 +18,7 @@ TableDescriptor::TableDescriptor(std::string& name)
 
 void TableDescriptor::Initialize() {
   tuple_fid = oidmgr->create_file(true);
-  fid_map[tuple_fid] = this;
+  Catalog::fid_map[tuple_fid] = this;
   tuple_array = oidmgr->get_array(tuple_fid);
 
   // Dedicated array for keys
@@ -30,14 +30,14 @@ void TableDescriptor::SetPrimaryIndex(OrderedIndex *index, const std::string &na
   ALWAYS_ASSERT(index);
   ALWAYS_ASSERT(!primary_index);
   primary_index = index;
-  index_map[name] = index;
+  Catalog::index_map[name] = index;
   index->SetArrays(true);
 }
 
 void TableDescriptor::AddSecondaryIndex(OrderedIndex *index, const std::string &name) {
   ALWAYS_ASSERT(index);
   sec_indexes.push_back(index);
-  index_map[name] = index;
+  Catalog::index_map[name] = index;
   index->SetArrays(false);
 }
 
@@ -47,13 +47,13 @@ void TableDescriptor::Recover(FID tuple_fid, FID aux_fid, OID himark) {
   aux_fid_ = aux_fid;
 
   // Both primary and secondary indexes point to the same descriptor
-  if (!FidExists(tuple_fid)) {
+  if (!Catalog::FidExists(tuple_fid)) {
     // Primary index
     oidmgr->recreate_file(tuple_fid);
-    fid_map[tuple_fid] = this;
+    Catalog::fid_map[tuple_fid] = this;
   }
   oidmgr->recreate_file(aux_fid_);
-  fid_map[aux_fid_] = this;
+  Catalog::fid_map[aux_fid_] = this;
 
   ALWAYS_ASSERT(oidmgr->file_exists(tuple_fid));
   tuple_array = oidmgr->get_array(tuple_fid);

@@ -5,6 +5,8 @@
 
 namespace ermia {
 
+TableDescriptor *schema_td = NULL;
+
 thread_local dlog::tls_log tlog;
 dlog::tls_log *GetLog() {
   thread_local bool initialized = false;
@@ -13,10 +15,164 @@ dlog::tls_log *GetLog() {
                     thread::MyId(),
                     numa_node_of_cpu(sched_getcpu()),
                     config::log_buffer_mb,
-                    config::log_segment_mb);
+		    config::log_segment_mb);
     initialized = true;
   }
   return &tlog;
+}
+
+class ddl_add_column_scan_callback : public OrderedIndex::ScanCallback {
+ public:
+  ddl_add_column_scan_callback(OrderedIndex *index, transaction *t, 
+		  uint64_t schema_version, ermia::str_arena *arena)
+	  : _index(index), _txn(t), _version(schema_version) {}
+  virtual bool Invoke(const char *keyp, size_t keylen, const varstr &value) {
+    // MARK_REFERENCED(value);
+    // _arena->reset();
+
+    varstr *k = _arena->next(keylen);
+    if (!k) {
+      _arena = new ermia::str_arena(ermia::config::arena_size_mb);
+      k = _arena->next(keylen);
+    }
+    ASSERT(k);
+    k->copy_from(keyp, keylen);
+
+    char str2[sizeof(Schema2)];
+    struct Schema2 record2;
+    record2.v = _version;
+    record2.a = _version;
+    record2.b = _version;
+    record2.c = _version;
+    memcpy(str2, &record2, sizeof(str2));
+    varstr *d_v = _arena->next(sizeof(str2));
+    if (!d_v) {
+      _arena = new ermia::str_arena(ermia::config::arena_size_mb);
+      d_v = _arena->next(sizeof(str2));
+    }
+    d_v->copy_from(str2, sizeof(str2));
+
+#if defined(BLOCKDDL) || defined(SIDDL)
+    invoke_status = _index->UpdateRecord(_txn, *k, *d_v);
+    if (invoke_status._val != RC_TRUE) {
+      printf("DDL normal record update false\n");
+      return false;
+    }
+#elif defined(COPYDDL)
+    invoke_status = _index->InsertRecord(_txn, *k, *d_v);
+    if (invoke_status._val != RC_TRUE) {
+      printf("DDL normal record insert false\n");
+      return false;
+    }
+#endif
+    return true;
+  }
+  std::vector<varstr *> output;
+  OrderedIndex *_index;
+  transaction *_txn;
+  uint64_t _version;
+  ermia::str_arena *_arena = new ermia::str_arena(ermia::config::arena_size_mb);
+  rc_t invoke_status = rc_t{RC_TRUE};
+};
+
+rc_t ConcurrentMasstreeIndex::WriteSchemaTable(transaction *t, rc_t &rc, const varstr &key, varstr &value) {
+  rc = UpdateRecord(t, key, value);
+  if (rc._val != RC_TRUE) {
+    printf("DDL schema update false\n");
+    return rc;
+  }
+
+  // printf("Update schema table ok\n");
+  return rc;
+}
+
+void ConcurrentMasstreeIndex::ReadSchemaTable(transaction *t, rc_t &rc, const varstr &key,
+                                        varstr &value, OID *out_oid) {
+  GetRecord(t, rc, key, value, out_oid);
+  if (rc._val != RC_TRUE) printf("Read schema table failed\n");
+  ALWAYS_ASSERT(rc._val == RC_TRUE);
+
+#ifdef COPYDDL
+  if (t->is_dml()) {
+    struct Schema_record schema;
+    memcpy(&schema, (char *)value.data(), sizeof(schema));
+    t->schema_read_map[schema.td] = *out_oid;
+  }
+#endif
+}
+
+rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena, OrderedIndex *index, transaction *t, varstr &value) {
+  rc_t r;
+#ifdef COPYDDL
+  struct Schema_record schema;
+#else
+  struct Schema_base schema;
+#endif
+  memcpy(&schema, (char *)value.data(), sizeof(schema));
+  uint64_t schema_version = schema.v;
+
+  ddl_add_column_scan_callback c_add_column(this, t, schema_version, arena);
+
+  // Here we assume we can get table and index information
+  // such as statistical info (MIN, MAX, AVG, etc.) and index key type
+  char str1[sizeof(uint64_t)];
+  uint64_t start = 0;
+  memcpy(str1, &start, sizeof(str1));
+  varstr *const start_key = arena->next(sizeof(str1));
+  start_key->copy_from(str1, sizeof(str1));
+
+  r = index->Scan(t, *start_key, nullptr, c_add_column, arena);
+  if (r._val != RC_TRUE) {
+    printf("DDL scan false\n");
+    return r;
+  }
+
+  // printf("scan invoke status: %hu\n", c_add_column.invoke_status._val);
+
+  return c_add_column.invoke_status;
+}
+
+class ddl_add_constraint_scan_callback : public OrderedIndex::ScanCallback {
+ public:
+  ddl_add_constraint_scan_callback(OrderedIndex *index, transaction *t, ermia::str_arena *arena)
+          : _index(index), _txn(t), _arena(arena) {}
+  virtual bool Invoke(const char *keyp, size_t keylen, const varstr &value) {
+    MARK_REFERENCED(value);
+    /*
+    _arena->reset();
+
+    varstr *k = _arena->next(keylen);
+    ASSERT(k);
+    k->copy_from(keyp, keylen);
+    */
+
+    return true;
+  }
+  std::vector<varstr *> output;
+  OrderedIndex *_index;
+  transaction *_txn;
+  ermia::str_arena *_arena;
+  rc_t invoke_status = rc_t{RC_TRUE};
+};
+
+rc_t ConcurrentMasstreeIndex::CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t) {
+  rc_t r;
+
+  ddl_add_constraint_scan_callback c_add_constraint(this, t, arena);
+
+  char str1[sizeof(uint64_t)];
+  uint64_t start = 0;
+  memcpy(str1, &start, sizeof(str1));
+  varstr *const start_key = arena->next(sizeof(str1));
+  start_key->copy_from(str1, sizeof(str1));
+
+  r = index->Scan(t, *start_key, nullptr, c_add_constraint, arena);
+  if (r._val != RC_TRUE) {
+    printf("DDL scan false\n");
+    return r;
+  }
+
+  return c_add_constraint.invoke_status;
 }
 
 // Engine initialization, including creating the OID, log, and checkpoint
@@ -30,7 +186,7 @@ Engine::Engine() {
 }
 
 TableDescriptor *Engine::CreateTable(const char *name) {
-  auto *td = TableDescriptor::New(name);
+  auto *td = Catalog::NewTable(name);
 
   if (true) { //!sm_log::need_recovery) {
     // Note: this will insert to the log and therefore affect min_flush_lsn,
@@ -70,7 +226,7 @@ void Engine::LogIndexCreation(bool primary, FID table_fid, FID index_fid, const 
 }
 
 void Engine::CreateIndex(const char *table_name, const std::string &index_name, bool is_primary) {
-  auto *td = TableDescriptor::Get(table_name);
+  auto *td = Catalog::GetTable(table_name);
   ALWAYS_ASSERT(td);
   auto *index = new ConcurrentMasstreeIndex(table_name, is_primary);
   if (is_primary) {
@@ -83,7 +239,7 @@ void Engine::CreateIndex(const char *table_name, const std::string &index_name, 
 }
 
 PROMISE(rc_t) ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
-                                   const varstr *end_key, ScanCallback &callback) {
+                                   const varstr *end_key, ScanCallback &callback, str_arena *arena) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 
@@ -108,7 +264,8 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_
 PROMISE(rc_t) ConcurrentMasstreeIndex::ReverseScan(transaction *t,
                                           const varstr &start_key,
                                           const varstr *end_key,
-                                          ScanCallback &callback) {
+                                          ScanCallback &callback,
+					  str_arena *arena) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 
@@ -297,7 +454,7 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr
 
   if (rc._val == RC_TRUE) {
     // Allocate an empty record version as the "new" version
-		varstr *null_val = t->string_allocator().next(0);
+    varstr *null_val = t->string_allocator().next(0);
     RETURN t->Update(table_descriptor, oid, &key, null_val);
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};
@@ -399,7 +556,7 @@ rc_t Table::Remove(transaction &t, OID oid) {
 ////////////////// End of Table interfaces //////////
 
 OrderedIndex::OrderedIndex(std::string table_name, bool is_primary) : is_primary(is_primary) {
-  table_descriptor = TableDescriptor::Get(table_name);
+  table_descriptor = Catalog::GetTable(table_name);
   self_fid = oidmgr->create_file(true);
 }
 

@@ -183,6 +183,13 @@ rc_t transaction::si_commit() {
   // Precommit: obtain a CSN
   xc->end = dlog::current_csn.fetch_add(1);  
 
+#ifdef COPYDDL
+  if (is_dml() && DMLConsistencyHandler()) {
+    printf("DML failed\n\n");
+    return rc_t{RC_ABORT_SI_CONFLICT};
+  }
+#endif
+
   dlog::log_block *lb = nullptr;
   dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
   uint64_t segnum = -1;
@@ -233,6 +240,33 @@ rc_t transaction::si_commit() {
   return rc_t{RC_TRUE};
 }
 #endif
+
+bool transaction::DMLConsistencyHandler() {
+  TXN::xid_context *tmp_xc = TXN::xid_get_context(xid);
+  tmp_xc->begin_epoch = xc->begin_epoch;
+  tmp_xc->xct = this;
+  tmp_xc->begin = xc->end;
+
+  for (auto& v : schema_read_map) {
+    dbtuple *tuple =
+            oidmgr->oid_get_version(schema_td->GetTupleArray(), v.second, tmp_xc);
+    if (!tuple) {
+      return true;
+    } else {
+      varstr tuple_v;
+      if (DoTupleRead(tuple, &tuple_v)._val != RC_TRUE) {
+        return true;
+      }
+      struct Schema_record schema;
+      memcpy(&schema, (char *)tuple_v.data(), sizeof(schema));
+      if (schema.td != v.first) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
 
 // returns true if btree versions have changed, ie there's phantom
 bool transaction::MasstreeCheckPhantom() {

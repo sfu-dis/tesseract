@@ -5,6 +5,8 @@
 #include "engine_internal.h"
 #include "../benchmarks/record/encoder.h"
 #include <experimental/coroutine>
+#include "../benchmarks/ddl-schemas.h"
+#include "rwlatch.h"
 
 namespace ermia {
 
@@ -12,7 +14,13 @@ dlog::tls_log *GetLog();
 
 class Table;
 
+extern TableDescriptor *schema_td;
+
 class Engine {
+private:
+  std::unordered_map<std::string, ReaderWriterLatch*> lock_map;
+  ReaderWriterLatch *map_rw_latch = new ReaderWriterLatch(); 
+
 private:
   void LogIndexCreation(bool primary, FID table_fid, FID index_fid, const std::string &index_name);
   void CreateIndex(const char *table_name, const std::string &index_name, bool is_primary);
@@ -55,6 +63,34 @@ public:
   inline void Abort(transaction *t) {
     t->Abort();
     t->~transaction();
+  }
+
+  inline bool BuildIndexMap(std::string table_name) {
+    map_rw_latch->WLock();
+    if (lock_map.find(table_name) != lock_map.end()) {
+      map_rw_latch->WUnlock();
+      return false; 
+    } else {
+      lock_map[table_name] = new ReaderWriterLatch();
+      map_rw_latch->WUnlock();
+      return true;
+    }
+  }
+
+  inline void ReadLock(std::string table_name) {
+    lock_map[table_name]->RLock();
+  }
+
+  inline void ReadUnlock(std::string table_name) {
+    lock_map[table_name]->RUnlock();
+  }
+
+  inline void WriteLock(std::string table_name) {
+    lock_map[table_name]->WLock();
+  }
+
+  inline void WriteUnlock(std::string table_name) {
+    lock_map[table_name]->WUnlock();
   }
 };
 
@@ -162,6 +198,15 @@ public:
   ermia::coro::generator<rc_t> coro_Scan(transaction *t, const varstr &start_key, const varstr *end_key,
                               ScanCallback &callback, uint32_t max_keys = ~uint32_t{0});
 
+  PROMISE(rc_t) WriteSchemaTable(transaction *t, rc_t &rc, const varstr &key, varstr &value) override;
+
+  PROMISE(void) ReadSchemaTable(transaction *t, rc_t &rc, const varstr &key, varstr &value, 
+		  OID *out_oid = nullptr) override;
+
+  PROMISE(rc_t) WriteNormalTable(str_arena *arena, OrderedIndex *index, transaction *t, varstr &value) override;
+
+  PROMISE(rc_t) CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t) override;
+
   PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   PROMISE(rc_t) UpdateRecord(transaction *t, const varstr &key, varstr &value) override;
   PROMISE(rc_t) InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
@@ -169,9 +214,9 @@ public:
   PROMISE(bool) InsertOID(transaction *t, const varstr &key, OID oid) override;
 
   PROMISE(rc_t) Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-                     ScanCallback &callback) override;
+                     ScanCallback &callback, str_arena *arena = nullptr) override;
   PROMISE(rc_t) ReverseScan(transaction *t, const varstr &start_key,
-                            const varstr *end_key, ScanCallback &callback) override;
+                            const varstr *end_key, ScanCallback &callback, str_arena *arena = nullptr) override;
 
   inline size_t Size() override { return masstree_.size(); }
   std::map<std::string, uint64_t> Clear() override;

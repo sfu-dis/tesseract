@@ -91,10 +91,16 @@ public:
 
     // A context-switch transaction doesn't enter/exit thread during construct/destruct.
     TXN_FLAG_CSWITCH = 0x8,
+
+    TXN_FLAG_DML = 0x10,
+
+    TXN_FLAG_DDL = 0x20,
   };
 
   inline bool is_read_mostly() { return flags & TXN_FLAG_READ_MOSTLY; }
   inline bool is_read_only() { return flags & TXN_FLAG_READ_ONLY; }
+  inline bool is_dml() { return flags & TXN_FLAG_DML; }
+  inline bool is_ddl() { return flags & TXN_FLAG_DDL; }
 
 protected:
   inline txn_state state() const { return xc->state; }
@@ -126,6 +132,7 @@ protected:
   rc_t si_commit();
 #endif
 
+  bool DMLConsistencyHandler();
   bool MasstreeCheckPhantom();
   void Abort();
 
@@ -174,6 +181,7 @@ protected:
   uint32_t log_size;
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
+  std::unordered_map<TableDescriptor*, OID> schema_read_map;
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t read_set;

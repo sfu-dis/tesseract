@@ -28,6 +28,15 @@ public:
                         const varstr &value) = 0;
   };
 
+  virtual PROMISE(rc_t) WriteSchemaTable(transaction *t, rc_t &rc, const varstr &key, varstr &value) = 0;
+
+  virtual PROMISE(void) ReadSchemaTable(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+                         OID *out_oid = nullptr) = 0;
+
+  virtual PROMISE(rc_t) WriteNormalTable(str_arena *arena, OrderedIndex *index, transaction *t, varstr &value) = 0;
+
+  virtual PROMISE(rc_t) CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t) = 0;
+
   // Get a record with a key of length keylen. The underlying DB does not manage
   // the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
   virtual PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
@@ -54,12 +63,12 @@ public:
   // Search [start_key, *end_key) if end_key is not null, otherwise
   // search [start_key, +infty)
   virtual PROMISE(rc_t) Scan(transaction *t, const varstr &start_key,
-                             const varstr *end_key, ScanCallback &callback) = 0;
+                             const varstr *end_key, ScanCallback &callback, str_arena *arena = nullptr) = 0;
   // Search (*end_key, start_key] if end_key is not null, otherwise
   // search (-infty, start_key] (starting at start_key and traversing
   // backwards)
   virtual PROMISE(rc_t) ReverseScan(transaction *t, const varstr &start_key,
-                                    const varstr *end_key, ScanCallback &callback) = 0;
+                                    const varstr *end_key, ScanCallback &callback, str_arena *arena = nullptr) = 0;
 
   // Default implementation calls put() with NULL (zero-length) value
   virtual PROMISE(rc_t) RemoveRecord(transaction *t, const varstr &key) = 0;

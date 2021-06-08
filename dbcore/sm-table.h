@@ -10,41 +10,6 @@ namespace ermia {
 class OrderedIndex;
 
 class TableDescriptor {
- public:
-  // Map table name to descriptors, global, no CC
-  static std::unordered_map<std::string, TableDescriptor*> name_map;
-
-  // Map FID to descriptors, global, no CC
-  static std::unordered_map<FID, TableDescriptor*> fid_map;
-
-  // Map index name to OrderedIndex (primary or secondary), global, no CC
-  static std::unordered_map<std::string, OrderedIndex*> index_map;
-
-  static inline OrderedIndex *GetIndex(const std::string &name) {
-    return index_map[name];
-  }
-  static inline bool NameExists(std::string name) {
-    return name_map.find(name) != name_map.end();
-  }
-  static inline bool FidExists(FID fid) {
-    return fid_map.find(fid) != fid_map.end();
-  }
-  static inline TableDescriptor* Get(std::string name) {
-    return name_map[name];
-  }
-  static inline TableDescriptor* Get(FID fid) { return fid_map[fid]; }
-  static inline OrderedIndex* GetPrimaryIndex(const std::string& name) {
-    return name_map[name]->GetPrimaryIndex();
-  }
-  static inline OrderedIndex* GetPrimaryIndex(FID fid) {
-    return fid_map[fid]->GetPrimaryIndex();
-  }
-  static inline TableDescriptor* New(std::string name) {
-    name_map[name] = new TableDescriptor(name);
-    return name_map[name];
-  }
-  static inline uint32_t NumTables() { return name_map.size(); }
-
  private:
   std::string name;
   OrderedIndex *primary_index;
@@ -53,7 +18,6 @@ class TableDescriptor {
   FID tuple_fid;
   oid_array* tuple_array;
 
-  // An auxiliary array: on primary this is the key array
   FID aux_fid_;
   oid_array* aux_array_;
 
@@ -73,12 +37,43 @@ class TableDescriptor {
   inline oid_array* GetKeyArray() {
     return aux_array_;
   }
-  inline FID GetPersistentAddressFid() {
-    return aux_fid_;
-  }
-  inline oid_array* GetPersistentAddressArray() {
-    return aux_array_;
-  }
   inline oid_array* GetTupleArray() { return tuple_array; }
 };
+
+struct Catalog {
+  // Map table name to descriptors, global, no CC
+  static std::unordered_map<std::string, TableDescriptor*> name_map;
+
+  // Map FID to descriptors, global, no CC
+  static std::unordered_map<FID, TableDescriptor*> fid_map;
+
+  // Map index name to OrderedIndex (primary or secondary), global, no CC
+  static std::unordered_map<std::string, OrderedIndex*> index_map;
+
+  static inline OrderedIndex *GetIndex(const std::string &name) {
+    return index_map[name];
+  }
+  static inline bool NameExists(std::string name) {
+    return name_map.find(name) != name_map.end();
+  }
+  static inline bool FidExists(FID fid) {
+    return fid_map.find(fid) != fid_map.end();
+  }
+  static inline TableDescriptor* GetTable(std::string name) {
+    return name_map[name];
+  }
+  static inline TableDescriptor* GetTable(FID fid) { return fid_map[fid]; }
+  static inline OrderedIndex* GetPrimaryIndex(const std::string& name) {
+    return name_map[name]->GetPrimaryIndex();
+  }
+  static inline OrderedIndex* GetPrimaryIndex(FID fid) {
+    return fid_map[fid]->GetPrimaryIndex();
+  }
+  static inline TableDescriptor* NewTable(std::string name) {
+    name_map[name] = new TableDescriptor(name);
+    return name_map[name];
+  }
+  static inline uint32_t NumTables() { return name_map.size(); }
+};
+
 }  // namespace ermia

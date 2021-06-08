@@ -133,7 +133,7 @@ class tpcc_bench_runner : public bench_runner {
     if (g_enable_separate_tree_per_partition && !is_read_only) {
       if (NumWarehouses() <= ermia::config::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++) {
-          ret[i] = ermia::TableDescriptor::GetIndex(s_name + "_" + std::to_string(i));
+          ret[i] = ermia::Catalog::GetIndex(s_name + "_" + std::to_string(i));
           ALWAYS_ASSERT(ret[i]);
         }
       } else {
@@ -145,7 +145,7 @@ class tpcc_bench_runner : public bench_runner {
                                     ? NumWarehouses()
                                     : (partid + 1) * nwhse_per_partition;
           ermia::OrderedIndex *idx =
-              ermia::TableDescriptor::GetIndex(s_name + "_" + std::to_string(partid));
+              ermia::Catalog::GetIndex(s_name + "_" + std::to_string(partid));
           ALWAYS_ASSERT(idx);
           for (size_t i = wstart; i < wend; i++) {
             ret[i] = idx;
@@ -153,7 +153,7 @@ class tpcc_bench_runner : public bench_runner {
         }
       }
     } else {
-      ermia::OrderedIndex *idx = ermia::TableDescriptor::GetIndex(s_name);
+      ermia::OrderedIndex *idx = ermia::Catalog::GetIndex(s_name);
       ALWAYS_ASSERT(idx);
       for (size_t i = 0; i < NumWarehouses(); i++) {
         ret[i] = idx;
