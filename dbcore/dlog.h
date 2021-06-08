@@ -126,6 +126,8 @@ public:
 
   inline pcommit::tls_committer *get_committer() { return &tcommitter; }
 
+  inline uint64_t get_latency() { return tcommitter.get_latency(); }
+ 
   // start this committer
   inline void start_committer() { tcommitter.start(); }
 

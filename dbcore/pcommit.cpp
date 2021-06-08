@@ -8,8 +8,6 @@ namespace ermia {
 
 namespace pcommit {
 
-static const uint64_t DIRTY_FLAG = uint64_t{1} << 63;
-
 // Store tls durable csns
 uint64_t *_tls_durable_csn =
     (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
@@ -25,10 +23,7 @@ std::atomic<uint32_t> _running_committer_num(0);
 std::atomic<uint64_t> _durable_csn(0);
 mcs_lock _durable_csn_lock;
 
-uint64_t commit_queue::total_latency_us = 0;
-
 void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush, bool *insert) {
-  CRITICAL_SECTION(cs, lock);
   if (items >= config::group_commit_queue_length * 0.8) {
     *flush = true;
   }
@@ -100,17 +95,11 @@ void tls_committer::set_tls_durable_csn(uint64_t csn) {
   }
 }
 
-void tls_committer::set_dirty_flag() {
-  uint64_t *my_csn = &_tls_durable_csn[commit_id];
-  volatile_write(*my_csn, *my_csn | DIRTY_FLAG);
-}
-
 void tls_committer::enqueue_committed_xct(uint64_t csn, uint64_t start_time, bool *flush, bool *insert) {
   _commit_queue->push_back(csn, start_time, flush, insert);
 }
 
 void tls_committer::dequeue_committed_xcts(uint64_t upto_csn, uint64_t end_time) {
-  CRITICAL_SECTION(cs, _commit_queue->lock);
   uint32_t n = volatile_read(_commit_queue->start);
   uint32_t size = _commit_queue->size();
   uint32_t dequeue = 0;
