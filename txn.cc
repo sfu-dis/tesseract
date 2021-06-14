@@ -14,6 +14,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     masstree_absent_set.set_empty_key(NULL);  // google dense map
     masstree_absent_set.clear();
   }
+  if (is_ddl()) write_set.init_large_write_set();
   write_set.clear();
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
  read_set.clear();
@@ -114,7 +115,7 @@ void transaction::Abort() {
 #endif
 
   for (uint32_t i = 0; i < write_set.size(); ++i) {
-    auto &w = write_set[i];
+    write_record_t w = write_set.get(is_ddl(), i);
     dbtuple *tuple = (dbtuple *)w.get_object()->GetPayload();
     ASSERT(tuple);
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
@@ -193,9 +194,14 @@ rc_t transaction::si_commit() {
   dlog::log_block *lb = nullptr;
   dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
   uint64_t segnum = -1;
+  uint64_t logbuf_size = log->get_logbuf_size() - sizeof(dlog::log_block);
   // Generate a log block if not read-only
   if (write_set.size()) {
-    lb = log->allocate_log_block(log_size, &lb_lsn, &segnum);
+    if (log_size > logbuf_size) {
+      lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum);
+    } else {
+      lb = log->allocate_log_block(log_size, &lb_lsn, &segnum);
+    }
     lb->csn = xc->end;
   }
 
@@ -206,17 +212,24 @@ rc_t transaction::si_commit() {
   // Post-commit: install CSN to tuples (traverse write-tuple), generate log
   // records, etc.
   for (uint32_t i = 0; i < write_set.size(); ++i) {
-    auto &w = write_set[i];
+    write_record_t w = write_set.get(is_ddl(), i);
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
     tuple->DoWrite();
 
+    uint32_t log_record_size = sizeof(dbtuple) + tuple->size;
+
+    if (lb->payload_size + align_up(log_record_size + sizeof(dlog::log_record)) > lb->capacity) {
+      lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum);
+      lb->csn = xc->end;
+    }
+
     // Populate log block and obtain persistent address
     uint32_t off = lb->payload_size;
     if (w.is_insert) {
-      dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, sizeof(dbtuple) + tuple->size);
+      dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, log_record_size);
     } else {
-      dlog::log_update(lb, w.fid, w.oid, (char *)tuple, sizeof(dbtuple) + tuple->size);
+      dlog::log_update(lb, w.fid, w.oid, (char *)tuple, log_record_size);
     }
     ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
 
@@ -231,7 +244,7 @@ rc_t transaction::si_commit() {
     object->SetCSN(csn_ptr);
     ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
   }
-  ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
+  // ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
 
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!
@@ -391,7 +404,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
       ASSERT(XID::from_ptr(prev->sstamp) == xc->owner);
       ASSERT(tuple->NextVolatile() == prev);
 #endif
-      add_to_write_set(tuple_array->get(oid), tuple_fid, oid, tuple->size, false);
+      add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid, tuple->size, false);
       prev_persistent_ptr = prev_obj->GetPersistentAddress();
     }
 
@@ -464,7 +477,7 @@ OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple)
   oidmgr->oid_put_new(tuple_array, oid, new_head);
 
   ASSERT(tuple->size == value->size());
-  add_to_write_set(tuple_array->get(oid), tuple_fid, oid, tuple->size, true);
+  add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid, tuple->size, true);
 
   if (out_tuple) {
     *out_tuple = tuple;

@@ -19,6 +19,7 @@
 
 volatile bool running = true;
 std::vector<bench_worker *> bench_runner::workers;
+std::atomic<int> ddl_num(0);
 
 thread_local ermia::epoch_num coroutine_batch_end_epoch = 0;
 
@@ -38,7 +39,11 @@ uint32_t bench_worker::fetch_workload() {
   double d = r.next_uniform();
   for (size_t i = 0; i < workload.size(); i++) {
     if ((i + 1) == workload.size() || d < workload[i].frequency) {
-        return i;
+      if (i == workload.size() - 1) {
+	ddl_num++;
+        if (ddl_num != 800) continue;
+      } 
+      return i;
     }
     d -= workload[i].frequency;
   }
@@ -295,8 +300,9 @@ void bench_runner::start_measurement() {
 
   double total_util = 0;
   double sec_util = 0;
+  uint32_t sleep_time = 1;
   auto gather_stats = [&]() {
-    sleep(1);
+    sleep(sleep_time);
     uint64_t sec_commits = 0, sec_aborts = 0;
     for (size_t i = 0; i < ermia::config::worker_threads; i++) {
       sec_commits += workers[i]->get_ntxn_commits();
@@ -314,7 +320,7 @@ void bench_runner::start_measurement() {
     } else {
       printf("%lu,%lu,%lu\n", slept + 1, sec_commits, sec_aborts);
     }
-    slept++;
+    slept += sleep_time;
   };
 
   // Backups run forever until told to stop.

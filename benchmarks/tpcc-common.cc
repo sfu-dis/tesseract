@@ -27,8 +27,9 @@ int g_hybrid = 0;
 // 5: StockLevel
 // 6: TPC-CH query 2 variant - original query 2, but /w marginal stock table update
 // 7: Microbenchmark-random - same as Microbenchmark, but uses random read-set range
+// 8: DDL
 unsigned g_txn_workload_mix[8] = {
-    45, 43, 0, 4, 4, 4, 0, 0};  // default TPC-C workload mix
+    45, 43, 0, 4, 4, 390, 0, 0};  // default TPC-C workload mix
 
 // how much % of time a worker should use a random home wh
 // 0 - always use home wh
@@ -131,6 +132,7 @@ class tpcc_bench_runner : public bench_runner {
     const std::string s_name(name);
     std::vector<ermia::OrderedIndex *> ret(NumWarehouses());
     if (g_enable_separate_tree_per_partition && !is_read_only) {
+      printf("enter 1\n");
       if (NumWarehouses() <= ermia::config::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++) {
           ret[i] = ermia::Catalog::GetIndex(s_name + "_" + std::to_string(i));
@@ -153,6 +155,7 @@ class tpcc_bench_runner : public bench_runner {
         }
       }
     } else {
+      printf("enter 2: %s\n", s_name.c_str());
       ermia::OrderedIndex *idx = ermia::Catalog::GetIndex(s_name);
       ALWAYS_ASSERT(idx);
       for (size_t i = 0; i < NumWarehouses(); i++) {
@@ -234,6 +237,10 @@ class tpcc_bench_runner : public bench_runner {
     RegisterIndex(db, "region",     "region",           true);
     RegisterIndex(db, "supplier",   "supplier",         true);
     RegisterIndex(db, "warehouse",  "warehouse",        true);
+    create_schema_table(db, "SCHEMA");
+#ifdef BLOCKDDL
+    db->BuildIndexMap("order_line");
+#endif
   }
 
   virtual void prepare(char *) {
@@ -249,6 +256,8 @@ class tpcc_bench_runner : public bench_runner {
         open_tables[t.first + "_" + std::to_string(i)] = v[i];
     }
 
+    open_tables["SCHEMA"] = ermia::Catalog::GetPrimaryIndex("SCHEMA");
+
     if (g_new_order_fast_id_gen) {
       void *const px = memalign(
           CACHELINE_SIZE, sizeof(util::aligned_padded_elem<std::atomic<uint64_t>>) *
@@ -263,6 +272,7 @@ class tpcc_bench_runner : public bench_runner {
  protected:
   virtual std::vector<bench_loader *> make_loaders() {
     std::vector<bench_loader *> ret;
+    ret.push_back(new schematable_loader(0, db, open_tables));
     ret.push_back(new tpcc_warehouse_loader(9324, db, open_tables, partitions));
     ret.push_back(new tpcc_nation_loader(1512, db, open_tables, partitions));
     ret.push_back(new tpcc_region_loader(789121, db, open_tables, partitions));
@@ -396,7 +406,7 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
         break;
 
       case '?':
-        /* getopt_long already printed an error message. */
+        // getopt_long already printed an error message.
         exit(1);
 
       default:

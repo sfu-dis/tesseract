@@ -35,6 +35,12 @@ static inline ermia::varstr &Encode(ermia::varstr &s, const T &t) {
 }
 
 template <typename T>
+static inline ermia::varstr &Encode_(ermia::varstr &s, const T &t) {
+  s.copy_from(t, sizeof(t));
+  return s;
+}
+
+template <typename T>
 static inline std::string &Encode(std::string &buf, const T &t) {
   const encoder<T> enc;
   return enc.write(buf, &t);

@@ -7,6 +7,7 @@
 
 #include "bench.h"
 #include "tpcc.h"
+#include "../catalog_mgr.h"
 
 // configuration flags
 extern int g_disable_xpartition_txn;
@@ -975,6 +976,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
             v_ol.ol_quantity = 5;
             // v_ol.ol_dist_info comes from stock_data(ol_supply_w_id, ol_o_id)
             // v_ol.ol_dist_info = RandomStr(r, 24);
+	    v_ol.v = 0;
 
 #ifndef NDEBUG
             checker::SanityCheckOrderLine(&k_ol, &v_ol);
@@ -1069,16 +1071,35 @@ class static_limit_callback : public ermia::OrderedIndex::ScanCallback {
 class credit_check_order_line_scan_callback
     : public ermia::OrderedIndex::ScanCallback {
  public:
-  credit_check_order_line_scan_callback() : sum(0) {}
+  credit_check_order_line_scan_callback(uint64_t v) : sum(0), schema_v(v) {}
   inline virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
     MARK_REFERENCED(keyp);
     MARK_REFERENCED(keylen);
-    order_line::value v_ol_temp;
-    const order_line::value *val = Decode(value, v_ol_temp);
-    sum += val->ol_amount;
+    if (schema_v == 0) {
+      order_line::value v_ol_temp;
+      const order_line::value *val = Decode(value, v_ol_temp);
+      // if (val->v != schema_v) printf("schema_v: %lu, val.v: %lu\n", schema_v, val->v);
+      /*if (val->v != schema_v) {
+        order_line_1::value v_ol_temp_1;
+        const order_line_1::value *v_ol_1 = Decode(value, v_ol_temp_1);
+        if (v_ol_1->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol_1->v);
+      }*/
+      sum += val->ol_amount;
+    } else {
+      order_line_1::value v_ol_temp;
+      const order_line_1::value *val = Decode(value, v_ol_temp);
+      // if (val->v != schema_v) printf("schema_v: %lu, val.v: %lu\n", schema_v, val->v);
+      /*if (val->v != schema_v) {
+        order_line::value v_ol_temp_1;
+        const order_line::value *v_ol_1 = Decode(value, v_ol_temp_1);
+        if (v_ol_1->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol_1->v);
+      }*/
+      sum += val->ol_amount;
+    }
     return true;
   }
   double sum;
+  uint64_t schema_v;
 };
 
 class credit_check_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
@@ -1098,22 +1119,41 @@ class credit_check_order_scan_callback : public ermia::OrderedIndex::ScanCallbac
 
 class order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
  public:
-  order_line_nop_callback() : n(0) {}
+  order_line_nop_callback(uint64_t v) : n(0), schema_v(v) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
     MARK_REFERENCED(keylen);
     MARK_REFERENCED(keyp);
-    ASSERT(keylen == sizeof(order_line::key));
-    order_line::value v_ol_temp;
-    const order_line::value *v_ol = Decode(value, v_ol_temp);
+    if (schema_v == 0) {
+      ASSERT(keylen == sizeof(order_line::key));
+      //order_line::value v_ol_temp;
+      //const order_line::value *v_ol = Decode(value, v_ol_temp);
+      // if (v_ol->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol->v);
+      /*if (v_ol->v != schema_v) {
+        order_line_1::value v_ol_temp_1;
+        const order_line_1::value *v_ol_1 = Decode(value, v_ol_temp_1);
+        if (v_ol_1->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol_1->v);
+      }*/
 #ifndef NDEBUG
     order_line::key k_ol_temp;
     const order_line::key *k_ol = Decode(keyp, k_ol_temp);
     checker::SanityCheckOrderLine(k_ol, v_ol);
 #endif
+    } else {
+      ASSERT(keylen == sizeof(order_line_1::key));
+      //order_line_1::value v_ol_temp;
+      //const order_line_1::value *v_ol = Decode(value, v_ol_temp);
+      // if (v_ol->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol->v);
+      /*if (v_ol->v != schema_v) {
+        order_line::value v_ol_temp_1;
+        const order_line::value *v_ol_1 = Decode(value, v_ol_temp_1);
+        if (v_ol_1->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol_1->v);
+      }*/
+    }
     ++n;
     return true;
   }
   size_t n;
+  uint64_t schema_v;
 };
 
 class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
@@ -1143,25 +1183,44 @@ class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
 
 class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
  public:
-  order_line_scan_callback() : n(0) {}
+  order_line_scan_callback(uint64_t v) : n(0), schema_v(v) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
     MARK_REFERENCED(keyp);
     MARK_REFERENCED(keylen);
-    ASSERT(keylen == sizeof(order_line::key));
-    order_line::value v_ol_temp;
-    const order_line::value *v_ol = Decode(value, v_ol_temp);
-
+    if (schema_v == 0) {
+      ASSERT(keylen == sizeof(order_line::key));
+      order_line::value v_ol_temp;
+      const order_line::value *v_ol = Decode(value, v_ol_temp);
+      // if (v_ol->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol->v);
+      /*if (v_ol->v != schema_v) {
+        order_line_1::value v_ol_temp_1;
+        const order_line_1::value *v_ol_1 = Decode(value, v_ol_temp_1);
+        if (v_ol_1->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol_1->v);
+      }*/
 #ifndef NDEBUG
     order_line::key k_ol_temp;
     const order_line::key *k_ol = Decode(keyp, k_ol_temp);
     checker::SanityCheckOrderLine(k_ol, v_ol);
 #endif
 
-    s_i_ids[v_ol->ol_i_id] = 1;
+      s_i_ids[v_ol->ol_i_id] = 1;
+    } else {
+      ASSERT(keylen == sizeof(order_line_1::key));
+      order_line_1::value v_ol_temp;
+      const order_line_1::value *v_ol = Decode(value, v_ol_temp);
+      // if (v_ol->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol->v);
+      /*if (v_ol->v != schema_v) {
+        order_line::value v_ol_temp_1;
+        const order_line::value *v_ol_1 = Decode(value, v_ol_temp_1);
+        if (v_ol_1->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol_1->v);
+      }*/
+      s_i_ids[v_ol->ol_i_id] = 1;
+    }
     n++;
     return true;
   }
   size_t n;
+  uint64_t schema_v;
   std::unordered_map<uint, bool> s_i_ids;
 };
 
@@ -1197,7 +1256,12 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
               uint home_warehouse_id)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
         tpcc_worker_mixin(partitions),
-        home_warehouse_id(home_warehouse_id) {
+        home_warehouse_id(home_warehouse_id),
+        schema_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("SCHEMA"))
+#if !defined(COPYDDL)	
+	, table_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("order_line_0"))	
+#endif
+	{
     ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
     memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
   }
@@ -1252,6 +1316,12 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
     return static_cast<tpcc_worker *>(w)->txn_query2();
   }
 
+  rc_t txn_ddl();
+
+  static rc_t TxnDDL(bench_worker *w) {
+    return static_cast<tpcc_worker *>(w)->txn_ddl();
+  }
+
   virtual workload_desc_vec get_workload() const override;
 
  protected:
@@ -1260,6 +1330,10 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
  private:
   const uint home_warehouse_id;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
+  ermia::ConcurrentMasstreeIndex *schema_index;
+#if !defined(COPYDDL)
+  ermia::ConcurrentMasstreeIndex *table_index;
+#endif
 };
 
 class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {

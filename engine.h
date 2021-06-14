@@ -7,6 +7,7 @@
 #include <experimental/coroutine>
 #include "../benchmarks/ddl-schemas.h"
 #include "rwlatch.h"
+#include "../benchmarks/tpcc.h"
 
 namespace ermia {
 
@@ -57,6 +58,13 @@ public:
     if (!rc.IsAbort()) {
       t->~transaction();
     }
+    /*
+    else {
+      printf("txn abort 1\n");
+      t->Abort();
+      t->~transaction();
+      printf("txn abort 2\n");
+    }*/
     return rc;
   }
 

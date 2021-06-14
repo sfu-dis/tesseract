@@ -4,14 +4,14 @@ void schematable_loader::load() {
   ermia::OrderedIndex *tbl = open_tables.at("SCHEMA");
   ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
 
-  char str1[] = "USERTABLE";
+  char str1[] = "order_line";
   ermia::varstr &k = str(sizeof(str1));
   k.copy_from(str1, sizeof(str1));
 
 #ifdef COPYDDL
   struct Schema_record schema;
-  schema.index = ermia::Catalog::GetTable("USERTABLE")->GetPrimaryIndex();
-  schema.td = ermia::Catalog::GetTable("USERTABLE");
+  schema.index = ermia::Catalog::GetTable("order_line")->GetPrimaryIndex();
+  schema.td = ermia::Catalog::GetTable("order_line");
   char str2[sizeof(Schema_record)];
 #else
   struct Schema_base schema;

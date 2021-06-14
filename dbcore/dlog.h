@@ -115,6 +115,8 @@ public:
 
   inline uint32_t get_id() { return id; }
 
+  inline uint64_t get_logbuf_size() { return logbuf_size; }
+  
   // Commit (insert) a log block to the log - [block] must *not* be allocated
   // using allocate_log_block.
   //void insert(log_block *block);

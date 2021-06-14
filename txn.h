@@ -51,19 +51,33 @@ struct write_record_t {
 };
 
 struct write_set_t {
-  static const uint32_t kMaxEntries = 256;
+  static const uint32_t kMaxEntries = 256, kMaxEntries_ = 50000000;
   uint32_t num_entries;
   write_record_t entries[kMaxEntries];
+  write_record_t *entries_;
   write_set_t() : num_entries(0) {}
-  inline void emplace_back(fat_ptr *oe, FID fid, OID oid, uint32_t size, bool insert) {
+  inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid, uint32_t size, bool insert) {
+    if (is_ddl) {
+    ALWAYS_ASSERT(num_entries < kMaxEntries_);
+    new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, insert);
+    ++num_entries;
+    ASSERT(entries_[num_entries - 1].entry == oe);
+    } else {
     ALWAYS_ASSERT(num_entries < kMaxEntries);
     new (&entries[num_entries]) write_record_t(oe, fid, oid, size, insert);
     ++num_entries;
     ASSERT(entries[num_entries - 1].entry == oe);
+    }
   }
   inline uint32_t size() { return num_entries; }
   inline void clear() { num_entries = 0; }
-  inline write_record_t &operator[](uint32_t idx) { return entries[idx]; }
+  inline write_record_t get(bool is_ddl, uint32_t idx) { 
+    if (is_ddl)
+      return entries_[idx]; 
+    else
+      return entries[idx]; 
+  }
+  inline void init_large_write_set() { entries_ = new write_record_t[kMaxEntries_]; }
 };
 
 class transaction {
@@ -156,7 +170,7 @@ protected:
 
   inline str_arena &string_allocator() { return *sa; }
 
-  inline void add_to_write_set(fat_ptr *entry, FID fid, OID oid, uint64_t size, bool insert) {
+  inline void add_to_write_set(bool is_ddl, fat_ptr *entry, FID fid, OID oid, uint64_t size, bool insert) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto &w = write_set[i];
@@ -168,7 +182,7 @@ protected:
     // Work out the encoded size to be added to the log block later
     auto logrec_size = align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
     log_size += logrec_size;
-    write_set.emplace_back(entry, fid, oid, logrec_size, insert);
+    write_set.emplace_back(is_ddl, entry, fid, oid, logrec_size, insert);
   }
 
   inline TXN::xid_context *GetXIDContext() { return xc; }

@@ -35,6 +35,9 @@ public:
   varstr *next(uint64_t size) {
     uint64_t off = n;
     n += align_up(size + sizeof(varstr));
+    if (n >= config::arena_size_mb * config::MB) {
+      return nullptr;
+    }
     ASSERT(n < config::arena_size_mb * config::MB);
     varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
     return ret;
