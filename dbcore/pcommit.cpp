@@ -33,7 +33,9 @@ void tls_committer::initialize(uint32_t id) {
 
 void tls_committer::reset() {
   _commit_queue = new commit_queue(commit_id);
-  _tls_durable_csn[commit_id] = 0;
+  if (commit_id == 0) {
+    memset(_tls_durable_csn, 0, sizeof(uint64_t) * config::MAX_THREADS);
+  }
 }
 
 uint64_t tls_committer::get_lowest_tls_durable_csn() {
