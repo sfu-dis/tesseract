@@ -8,6 +8,8 @@
 
 namespace ermia {
 
+extern bool is_loading;
+
 dlog::tls_log *GetLog();
 
 class Table;

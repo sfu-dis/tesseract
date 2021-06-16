@@ -16,6 +16,8 @@ namespace dlog {
 #define SEGMENT_FILE_NAME_FMT "tlog-%08x-%08x"
 #define SEGMENT_FILE_NAME_BUFSZ sizeof("tlog-01234567-01234567")
 
+tls_log *tlogs[config::MAX_THREADS];
+
 std::atomic<uint64_t> current_csn(0);
 
 std::mutex tls_log_lock;
@@ -52,11 +54,21 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
 }
 
 void tls_log::uninitialize() {
+  CRITICAL_SECTION(cs, lock);
   if (logbuf_offset) {
     issue_flush(active_logbuf, logbuf_offset);
     poll_flush();
   }
   io_uring_queue_exit(&ring);
+}
+
+void tls_log::enqueue_flush() {
+  CRITICAL_SECTION(cs, lock);
+  if (logbuf_offset) {
+    issue_flush(active_logbuf, logbuf_offset);
+    active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
+    logbuf_offset = 0;
+  }
 }
 
 void tls_log::issue_flush(const char *buf, uint64_t size) {
@@ -102,23 +114,21 @@ void tls_log::poll_flush() {
   durable_lsn += size;
   current_segment()->size += size;
 
-  if (tcommitter.is_running()) {
-    // get latest tls durable csn
-    uint64_t latest_tls_durable_csn = latest_csn;
+  // get latest tls durable csn
+  uint64_t latest_tls_durable_csn = latest_csn;
     
-    // set tls durable csn
-    tcommitter.set_tls_durable_csn(latest_tls_durable_csn);
-    // printf("id: %u, tls_durable_csn: %lu\n", id, tcommitter.get_tls_durable_csn());
-    ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == latest_tls_durable_csn);
-    
-    // get the lowest tls durable csn
-    uint64_t lowest_tls_durable_csn = tcommitter.get_lowest_tls_durable_csn();
-    // printf("id: %u, lowest_tls_durable_csn: %lu\n", id, lowest_tls_durable_csn);
-    
-    // dequeue some committed txns
-    util::timer t;
-    tcommitter.dequeue_committed_xcts(lowest_tls_durable_csn, t.get_start());
-  }
+  // set tls durable csn
+  tcommitter.set_tls_durable_csn(latest_tls_durable_csn);
+  // printf("id: %u, tls_durable_csn: %lu\n", id, tcommitter.get_tls_durable_csn());
+  ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == latest_tls_durable_csn);
+   
+  // get the lowest tls durable csn
+  uint64_t lowest_tls_durable_csn = tcommitter.get_lowest_tls_durable_csn();
+  // printf("id: %u, lowest_tls_durable_csn: %lu\n", id, lowest_tls_durable_csn);
+
+  // dequeue some committed txns
+  util::timer t;
+  tcommitter.dequeue_committed_xcts(lowest_tls_durable_csn, t.get_start());
 }
 
 void tls_log::create_segment() { 
@@ -148,9 +158,8 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size, uint64_t *out_cur_
     return nullptr;
   }
 
-  if (tcommitter.is_running()) {
-    tcommitter.set_dirty_flag();
-  }
+  CRITICAL_SECTION(cs, lock);
+  tcommitter.set_dirty_flag();
 
   uint32_t alloc_size = payload_size + sizeof(log_block);
   LOG_IF(FATAL, alloc_size > logbuf_size) << "Total size too big";
@@ -166,9 +175,11 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size, uint64_t *out_cur_
   // or we need to create a new segment for this log block,
   // flush the active logbuf, and switch to the other logbuf.
   if (alloc_size + logbuf_offset > logbuf_size || create_new_segment) {
-    issue_flush(active_logbuf, logbuf_offset);
-    active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
-    logbuf_offset = 0;
+    if (logbuf_offset) {
+      issue_flush(active_logbuf, logbuf_offset);
+      active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
+      logbuf_offset = 0;
+    }
 
     if (create_new_segment) {
       create_segment();
@@ -202,7 +213,13 @@ void tls_log::enqueue_committed_xct(uint64_t csn, uint64_t start_time) {
   bool insert = true;
 retry :
   if (flush) {
-    if (logbuf_offset) {  
+    for (uint i = 0; i < config::MAX_THREADS; i++) {
+      tls_log *tlog = tlogs[i];
+      if (tlog) {
+        tlog->enqueue_flush();
+      }
+    }
+    if (logbuf_offset) {
       issue_flush(active_logbuf, logbuf_offset);
       active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
       logbuf_offset = 0;

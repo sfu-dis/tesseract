@@ -107,7 +107,7 @@ void bench_worker::MyWork(char *) {
   if (is_worker) {
     // Start the tls committer
     tlog = ermia::GetLog();
-    tlog->start_committer();
+    tlog->reset_committer();
     workload = get_workload();
     txn_counts.resize(workload.size());
     barrier_a->count_down();
@@ -133,6 +133,7 @@ void bench_runner::run() {
   // load data, unless we recover from logs or is a backup server (recover from
   // shipped logs)
   if (true) { //not ermia::sm_log::need_recovery) {
+    ermia::is_loading = true;
     std::vector<bench_loader *> loaders = make_loaders();
     {
       util::scoped_timer t("dataloading", ermia::config::verbose);
@@ -168,7 +169,8 @@ void bench_runner::run() {
         for (uint i = 0; i < loaders.size(); i++) {
           auto *loader = loaders[i];
           if (loader and loader->IsImpersonated() and loader->TryJoin()) {
-            delete loader;
+	    // loader->get_log()->uninitialize(false);
+	    delete loader;
             loaders[i] = nullptr;
             done++;
             --n_running;
@@ -180,6 +182,8 @@ void bench_runner::run() {
     ermia::volatile_write(ermia::MM::safesnap_lsn, ermia::dlog::current_csn);
     ALWAYS_ASSERT(ermia::MM::safesnap_lsn);
 
+    ermia::is_loading = false;
+    
     // Persist the database
     //ermia::dlog->flush();
     //if (ermia::config::enable_chkpt) {

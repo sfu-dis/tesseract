@@ -12,17 +12,6 @@ namespace pcommit {
 uint64_t *_tls_durable_csn =
     (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
 
-// Mark running committers as true, false otherwise
-bool *_running_committer =
-    (bool *)malloc(sizeof(bool) * config::MAX_THREADS);
-
-// Store the number of running committer
-std::atomic<uint32_t> _running_committer_num(0);
-
-// Store the largest durable csn among all threads
-std::atomic<uint64_t> _durable_csn(0);
-mcs_lock _durable_csn_lock;
-
 void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush, bool *insert) {
   if (items >= config::group_commit_queue_length * 0.8) {
     *flush = true;
@@ -39,43 +28,26 @@ void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush, boo
 
 void tls_committer::initialize(uint32_t id) {
   commit_id = id;
-  running = false;
   _commit_queue = new commit_queue(id);
-  set_tls_durable_csn(0);
 }
 
-void tls_committer::start() {
-  volatile_write(running, true);
-  
-  if (_running_committer_num.load(std::memory_order_relaxed) == 0) {
-    memset(_tls_durable_csn, 0, sizeof(uint64_t) * config::MAX_THREADS);
-    memset(_running_committer, false, sizeof(bool) * config::MAX_THREADS);
-  }
-
-  _running_committer_num.fetch_add(1);
-
-  volatile_write(_running_committer[commit_id], true);
-  
-  // Wait until all running committers are ready
-  while (_running_committer_num.load(std::memory_order_relaxed) < 
-		  config::worker_threads) {
-    continue;
-  }
-
-  ALWAYS_ASSERT(volatile_read(_running_committer[commit_id]) != 0);
+void tls_committer::reset() {
+  _commit_queue = new commit_queue(commit_id);
+  _tls_durable_csn[commit_id] = 0;
 }
 
 uint64_t tls_committer::get_lowest_tls_durable_csn() {
   bool found = false;
-  uint64_t min_dirty = _durable_csn.load(std::memory_order_relaxed);
+  uint64_t min_dirty = std::numeric_limits<uint64_t>::max();
   uint64_t max_clean = 0;
   for (uint32_t i = 0; i < config::MAX_THREADS; i++) {
     uint64_t csn = volatile_read(_tls_durable_csn[i]);
-    if (csn && volatile_read(_running_committer[i])) {
+    if (csn) {  
       if (csn & DIRTY_FLAG) {
         min_dirty = std::min(csn & ~DIRTY_FLAG, min_dirty);
 	found = true;
-      } else if (max_clean < csn) {
+      } else 
+	if (max_clean < csn) {
         max_clean = csn;
       }
     }
@@ -89,10 +61,6 @@ uint64_t tls_committer::get_tls_durable_csn() {
 
 void tls_committer::set_tls_durable_csn(uint64_t csn) {
   volatile_write(_tls_durable_csn[commit_id], csn);
-  CRITICAL_SECTION(cs, _durable_csn_lock);
-  if (_durable_csn.load(std::memory_order_relaxed) < csn) {
-    _durable_csn.store(csn, std::memory_order_relaxed);
-  }
 }
 
 void tls_committer::enqueue_committed_xct(uint64_t csn, uint64_t start_time, bool *flush, bool *insert) {

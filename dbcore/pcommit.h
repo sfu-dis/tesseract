@@ -10,10 +10,6 @@ namespace pcommit {
 
 static const uint64_t DIRTY_FLAG = uint64_t{1} << 63;
 extern uint64_t *_tls_durable_csn;
-extern bool *_running_committer;
-extern std::atomic<uint32_t> _running_committer_num;
-extern std::atomic<uint64_t> _durable_csn;
-extern mcs_lock _durable_csn_lock;
 
 struct commit_queue {
   struct Entry {
@@ -39,13 +35,10 @@ private:
   // Same as log id and thread id
   uint32_t commit_id;
   commit_queue *_commit_queue;
-  bool running;
 
 public:
   tls_committer() {}
   ~tls_committer() {}
-
-  inline bool is_running() { return volatile_read(running); }
 
   inline uint64_t get_latency() { return _commit_queue->total_latency_us; }
 
@@ -57,8 +50,8 @@ public:
   // Initialize a tls_committer object
   void initialize(uint32_t id);
 
-  // Start a tls_committer
-  void start();
+  // Reset a tls_committer to get a real latency for workloads
+  void reset();
 
   // Get the lowest tls durable csn among all threads
   uint64_t get_lowest_tls_durable_csn();

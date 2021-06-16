@@ -95,9 +95,15 @@ private:
   // Committer
   pcommit::tls_committer tcommitter;
 
+  // Lock
+  mcs_lock lock;
+
 private:
   // Get the currently open segment
   inline segment *current_segment() { return &segments[segments.size() - 1]; }
+
+  // Do flush when doing enqueue commits
+  void enqueue_flush();
 
   // Issue an async I/O to flush the current active log buffer
   void issue_flush(const char *buf, uint64_t size);
@@ -128,9 +134,9 @@ public:
 
   inline uint64_t get_latency() { return tcommitter.get_latency(); }
  
-  // start this committer
-  inline void start_committer() { tcommitter.start(); }
-
+  // reset this committer
+  inline void reset_committer() { tcommitter.reset();  }
+  
   // Commit (insert) a log block to the log - [block] must *not* be allocated
   // using allocate_log_block.
   //void insert(log_block *block);
@@ -146,6 +152,8 @@ public:
   // Enqueue commit queue
   void enqueue_committed_xct(uint64_t csn, uint64_t start_time);
 };
+
+extern tls_log *tlogs[config::MAX_THREADS];
 
 }  // namespace dlog
 
