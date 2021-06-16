@@ -169,7 +169,6 @@ void bench_runner::run() {
         for (uint i = 0; i < loaders.size(); i++) {
           auto *loader = loaders[i];
           if (loader and loader->IsImpersonated() and loader->TryJoin()) {
-	    // loader->get_log()->uninitialize(false);
 	    delete loader;
             loaders[i] = nullptr;
             done++;
@@ -366,7 +365,6 @@ void bench_runner::start_measurement() {
     if (!ermia::config::group_commit) {
       latency_numer_us += workers[i]->get_latency_numer_us();
     } else {
-      printf("worker[%zu]: %lu\n", i, workers[i]->get_log()->get_latency());
       latency_numer_us += workers[i]->get_log()->get_latency();
     }
   }
