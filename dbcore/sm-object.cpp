@@ -1,6 +1,7 @@
 #include "sm-alloc.h"
 #include "sm-object.h"
 #include "../tuple.h"
+#include "../engine.h"
 
 namespace ermia {
 
@@ -47,13 +48,19 @@ void Object::Pin() {
 
   size_t data_sz = decode_size_aligned(pdest_.size_code());
   if (where == fat_ptr::ASI_LOG) {
-    ALWAYS_ASSERT(0);
-    /*
-    logmgr->load_object((char *)tuple->get_value_start(), data_sz, pdest_);
+    auto segnum = pdest_.log_segment();
+    ASSERT(segnum >= 0 && segnum <= NUM_LOG_SEGMENTS);
+
+    auto *log = GetLog();
+    auto *segment = log->get_segment(segnum);
+    ASSERT(segment);
+
+    size_t m = os_pread(segment->fd, (char *)tuple->get_value_start(), data_sz,
+                        pdest_.offset() - segment->start_offset);
 
     // Strip out the varstr stuff
     tuple->size = ((varstr *)tuple->get_value_start())->size();
-    // Fill in the overwritten version's pdest if needed
+
     // Could be a delete
     ASSERT(tuple->size < data_sz);
     if (tuple->size == 0) {
@@ -62,10 +69,8 @@ void Object::Pin() {
     }
     memmove(tuple->get_value_start(),
             (char *)tuple->get_value_start() + sizeof(varstr), tuple->size);
-    LOG(FATAL) << "SET CSN";
-    //SetCsn(LSN::make(pdest_.offset(), 0).to_log_ptr());
-    //ALWAYS_ASSERT(pdest_.offset() == csn_.offset());
-    */
+    SetCSN(LSN::from_ptr(pdest_).to_ptr());
+    ALWAYS_ASSERT(pdest_.offset() == csn_.offset());
   } else {
     ALWAYS_ASSERT(0);
     /*

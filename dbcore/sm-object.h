@@ -2,6 +2,7 @@
 
 #include <list>
 
+#include "dlog.h"
 #include "dlog-defs.h"
 #include "epoch.h"
 #include "sm-common.h"

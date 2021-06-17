@@ -29,6 +29,9 @@ extern std::atomic<uint64_t> current_csn;
 struct segment {
   // File descriptor for the underlying file
   int fd;
+ 
+  // The (global) beginning address this segment covers
+  uint64_t start_offset;
 
   // Amount of data that has been written
   uint64_t size;
@@ -114,6 +117,7 @@ public:
   void uninitialize();
 
   inline uint32_t get_id() { return id; }
+  inline segment *get_segment(uint32_t segnum) { return &segments[segnum]; }
 
   // Commit (insert) a log block to the log - [block] must *not* be allocated
   // using allocate_log_block.
