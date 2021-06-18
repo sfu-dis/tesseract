@@ -230,11 +230,6 @@ rc_t transaction::si_commit() {
   // This is when (committed) tuple data are made visible to readers
   volatile_write(xc->state, TXN::TXN_CMMTD);
 
-  if (is_loading) {
-    util::timer t;
-    log->enqueue_committed_xct(log->get_latest_csn(), t.get_start());
-  }
-
   return rc_t{RC_TRUE};
 }
 #endif
@@ -491,6 +486,10 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
 
   // do the actual tuple read
   return tuple->DoRead(out_v, !read_my_own);
+}
+
+void transaction::enqueue_committed_xct() {
+  log->enqueue_committed_xct(log->get_latest_csn(), t.get_start());
 }
 
 }  // namespace ermia

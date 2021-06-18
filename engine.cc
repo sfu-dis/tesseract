@@ -5,8 +5,6 @@
 
 namespace ermia {
 
-bool is_loading = false;
-
 thread_local dlog::tls_log tlog;
 dlog::tls_log *GetLog() {
   thread_local bool initialized = false;

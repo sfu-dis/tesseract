@@ -51,6 +51,9 @@ public:
     if (!rc.IsAbort()) {
       t->~transaction();
     }
+    if (config::state == config::kStateLoading) {
+      t->enqueue_committed_xct();
+    }
     return rc;
   }
 

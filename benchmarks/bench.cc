@@ -133,7 +133,6 @@ void bench_runner::run() {
   // load data, unless we recover from logs or is a backup server (recover from
   // shipped logs)
   if (true) { //not ermia::sm_log::need_recovery) {
-    ermia::is_loading = true;
     std::vector<bench_loader *> loaders = make_loaders();
     {
       util::scoped_timer t("dataloading", ermia::config::verbose);
@@ -177,12 +176,12 @@ void bench_runner::run() {
           }
         }
       }
+
+      ermia::dlog::last_flush();
     }
     ermia::volatile_write(ermia::MM::safesnap_lsn, ermia::dlog::current_csn);
     ALWAYS_ASSERT(ermia::MM::safesnap_lsn);
 
-    ermia::is_loading = false;
-    
     // Persist the database
     //ermia::dlog->flush();
     //if (ermia::config::enable_chkpt) {

@@ -13,6 +13,7 @@ uint64_t *_tls_durable_csn =
     (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
 
 void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush, bool *insert) {
+  CRITICAL_SECTION(cs, lock);
   if (items >= config::group_commit_queue_length * 0.8) {
     *flush = true;
   }
@@ -47,9 +48,8 @@ uint64_t tls_committer::get_lowest_tls_durable_csn() {
     if (csn) {  
       if (csn & DIRTY_FLAG) {
         min_dirty = std::min(csn & ~DIRTY_FLAG, min_dirty);
-	found = true;
-      } else 
-	if (max_clean < csn) {
+        found = true;
+      } else if (max_clean < csn) {
         max_clean = csn;
       }
     }
@@ -57,19 +57,12 @@ uint64_t tls_committer::get_lowest_tls_durable_csn() {
   return found ? min_dirty : max_clean;
 }
 
-uint64_t tls_committer::get_tls_durable_csn() {
-  return volatile_read(_tls_durable_csn[commit_id]);
-}
-
-void tls_committer::set_tls_durable_csn(uint64_t csn) {
-  volatile_write(_tls_durable_csn[commit_id], csn);
-}
-
 void tls_committer::enqueue_committed_xct(uint64_t csn, uint64_t start_time, bool *flush, bool *insert) {
   _commit_queue->push_back(csn, start_time, flush, insert);
 }
 
 void tls_committer::dequeue_committed_xcts(uint64_t upto_csn, uint64_t end_time) {
+  CRITICAL_SECTION(cs, _commit_queue->lock);
   uint32_t n = volatile_read(_commit_queue->start);
   uint32_t size = _commit_queue->size();
   uint32_t dequeue = 0;

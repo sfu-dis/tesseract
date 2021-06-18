@@ -22,6 +22,24 @@ std::atomic<uint64_t> current_csn(0);
 
 std::mutex tls_log_lock;
 
+void last_flush() {
+  // Flush rest blocks
+  for (uint i = 0; i < config::MAX_THREADS; i++) {
+    tls_log *tlog = tlogs[i];
+    if (tlog) {
+      tlog->last_flush();
+    }
+  }
+
+  // Dequeue rest txns
+  for (uint i = 0; i < config::MAX_THREADS; i++) {
+    tls_log *tlog = tlogs[i];
+    if (tlog) {
+      tlog->last_dequeue_committed_xcts();
+    }
+  }
+}
+
 void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
                          uint64_t logbuf_mb, uint64_t max_segment_mb) {
   std::lock_guard<std::mutex> lock(tls_log_lock);
@@ -71,6 +89,27 @@ void tls_log::enqueue_flush() {
   }
 }
 
+void tls_log::last_flush() {
+  CRITICAL_SECTION(cs, lock);
+  // printf("id: %u, tls_durable_csn: %lu\n", id,
+  // tcommitter.get_tls_durable_csn()); printf("id: %u, lowest_tls_durable_csn:
+  // %lu\n", id, tcommitter.get_lowest_tls_durable_csn()); printf("id: %u,
+  // number of committed txns to be dequeued: %u\n", id,
+  // tcommitter.get_queue_size());
+  if (flushing) {
+    poll_flush();
+    flushing = false;
+  }
+
+  if (logbuf_offset) {
+    issue_flush(active_logbuf, logbuf_offset);
+    active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
+    logbuf_offset = 0;
+    poll_flush();
+    flushing = false;
+  }
+}
+
 void tls_log::issue_flush(const char *buf, uint64_t size) {
   if (config::null_log_device) {
     durable_lsn += size;
@@ -114,14 +153,15 @@ void tls_log::poll_flush() {
   durable_lsn += size;
   current_segment()->size += size;
 
-  // get latest tls durable csn
-  uint64_t latest_tls_durable_csn = latest_csn;
-    
+  // get last tls durable csn
+  uint64_t last_tls_durable_csn =
+      (active_logbuf == logbuf[0]) ? last_csns[1] : last_csns[0];
+
   // set tls durable csn
-  tcommitter.set_tls_durable_csn(latest_tls_durable_csn);
+  tcommitter.set_tls_durable_csn(last_tls_durable_csn);
   // printf("id: %u, tls_durable_csn: %lu\n", id, tcommitter.get_tls_durable_csn());
-  ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == latest_tls_durable_csn);
-   
+  ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == last_tls_durable_csn);
+
   // get the lowest tls durable csn
   uint64_t lowest_tls_durable_csn = tcommitter.get_lowest_tls_durable_csn();
   // printf("id: %u, lowest_tls_durable_csn: %lu\n", id, lowest_tls_durable_csn);
@@ -200,6 +240,12 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size, uint64_t *out_cur_
   // Store the latest csn of log block
   latest_csn = block_csn;
 
+  if (active_logbuf == logbuf[0]) {
+    last_csns[0] = block_csn;
+  } else {
+    last_csns[1] = block_csn;
+  }
+
   new (lb) log_block(payload_size);
   lb->csn = block_csn;
   return lb;
@@ -219,11 +265,6 @@ retry :
         tlog->enqueue_flush();
       }
     }
-    if (logbuf_offset) {
-      issue_flush(active_logbuf, logbuf_offset);
-      active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
-      logbuf_offset = 0;
-    }
     flush = false;
   }
   if (insert) {
@@ -232,6 +273,20 @@ retry :
       goto retry;
     }
   }
+}
+
+void tls_log::last_dequeue_committed_xcts() {
+  // get the lowest tls durable csn
+  uint64_t lowest_tls_durable_csn = tcommitter.get_lowest_tls_durable_csn();
+  // printf("id: %u, lowest_tls_durable_csn: %lu\n", id,
+  // lowest_tls_durable_csn);
+
+  // dequeue some committed txns
+  util::timer t;
+  tcommitter.dequeue_committed_xcts(lowest_tls_durable_csn, t.get_start());
+  // printf("id: %u, number of committed txns to be dequeued: %u\n", id,
+  // tcommitter.get_queue_size());
+  ALWAYS_ASSERT(tcommitter.get_queue_size() == 0);
 }
 
 segment::segment(int dfd, const char *segname) : size(0), expected_size(0) {

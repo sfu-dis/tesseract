@@ -26,6 +26,8 @@ namespace dlog {
 
 extern std::atomic<uint64_t> current_csn;
 
+void last_flush();
+
 // A segment of the log, i.e., a file
 struct segment {
   // File descriptor for the underlying file
@@ -67,9 +69,12 @@ private:
   // Two log buffers (double buffering)
   char *logbuf[2];
 
+  // Last csn for each log buffer
+  uint64_t last_csns[2];
+
   // Latest csn
   uint64_t latest_csn;
-  
+
   // The log buffer accepting new writes
   char *active_logbuf;
 
@@ -151,6 +156,12 @@ public:
 
   // Enqueue commit queue
   void enqueue_committed_xct(uint64_t csn, uint64_t start_time);
+
+  // Dequeue commit queue
+  void last_dequeue_committed_xcts();
+
+  // Last flush
+  void last_flush();
 };
 
 extern tls_log *tlogs[config::MAX_THREADS];
