@@ -15,6 +15,7 @@ dlog::tls_log *GetLog() {
                     config::log_buffer_mb,
                     config::log_segment_mb);
     initialized = true;
+    dlog::tlogs[thread::MyId()] = &tlog;
   }
   return &tlog;
 }

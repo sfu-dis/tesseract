@@ -188,8 +188,7 @@ rc_t transaction::si_commit() {
   uint64_t segnum = -1;
   // Generate a log block if not read-only
   if (write_set.size()) {
-    lb = log->allocate_log_block(log_size, &lb_lsn, &segnum);
-    lb->csn = xc->end;
+    lb = log->allocate_log_block(log_size, &lb_lsn, &segnum, xc->end);
   }
 
   // Normally, we'd generate it along the way or here first before toggling the
@@ -486,6 +485,10 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
 
   // do the actual tuple read
   return tuple->DoRead(out_v, !read_my_own);
+}
+
+void transaction::enqueue_committed_xct() {
+  log->enqueue_committed_xct(log->get_latest_csn(), t.get_start());
 }
 
 }  // namespace ermia
