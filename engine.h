@@ -8,6 +8,8 @@
 
 namespace ermia {
 
+extern bool is_loading;
+
 dlog::tls_log *GetLog();
 
 class Table;
@@ -48,6 +50,9 @@ public:
     rc_t rc = t->commit();
     if (!rc.IsAbort()) {
       t->~transaction();
+    }
+    if (config::state == config::kStateLoading) {
+      t->enqueue_committed_xct();
     }
     return rc;
   }
