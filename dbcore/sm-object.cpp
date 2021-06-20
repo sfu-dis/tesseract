@@ -55,8 +55,9 @@ void Object::Pin() {
     auto *segment = log->get_segment(segnum);
     ASSERT(segment);
 
+    uint64_t tlsn = LSN::from_ptr(pdest_).loffset();
     size_t m = os_pread(segment->fd, (char *)tuple->get_value_start(), data_sz,
-                        pdest_.offset() - segment->start_offset);
+                        tlsn - segment->start_offset);
 
     // Strip out the varstr stuff
     tuple->size = ((varstr *)tuple->get_value_start())->size();
@@ -69,8 +70,6 @@ void Object::Pin() {
     }
     memmove(tuple->get_value_start(),
             (char *)tuple->get_value_start() + sizeof(varstr), tuple->size);
-    SetCSN(LSN::from_ptr(pdest_).to_ptr());
-    ALWAYS_ASSERT(pdest_.offset() == csn_.offset());
   } else {
     ALWAYS_ASSERT(0);
     /*
