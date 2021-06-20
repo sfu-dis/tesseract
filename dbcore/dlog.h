@@ -26,7 +26,7 @@ namespace dlog {
 
 extern std::atomic<uint64_t> current_csn;
 
-void last_flush();
+void flush_all();
 
 // A segment of the log, i.e., a file
 struct segment {

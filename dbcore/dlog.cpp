@@ -22,7 +22,7 @@ std::atomic<uint64_t> current_csn(0);
 
 std::mutex tls_log_lock;
 
-void last_flush() {
+void flush_all() {
   // Flush rest blocks
   for (uint i = 0; i < config::MAX_THREADS; i++) {
     tls_log *tlog = tlogs[i];
@@ -91,11 +91,6 @@ void tls_log::enqueue_flush() {
 
 void tls_log::last_flush() {
   CRITICAL_SECTION(cs, lock);
-  // printf("id: %u, tls_durable_csn: %lu\n", id,
-  // tcommitter.get_tls_durable_csn()); printf("id: %u, lowest_tls_durable_csn:
-  // %lu\n", id, tcommitter.get_lowest_tls_durable_csn()); printf("id: %u,
-  // number of committed txns to be dequeued: %u\n", id,
-  // tcommitter.get_queue_size());
   if (flushing) {
     poll_flush();
     flushing = false;
@@ -159,12 +154,10 @@ void tls_log::poll_flush() {
 
   // set tls durable csn
   tcommitter.set_tls_durable_csn(last_tls_durable_csn);
-  // printf("id: %u, tls_durable_csn: %lu\n", id, tcommitter.get_tls_durable_csn());
   ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == last_tls_durable_csn);
 
   // get the lowest tls durable csn
   uint64_t lowest_tls_durable_csn = tcommitter.get_lowest_tls_durable_csn();
-  // printf("id: %u, lowest_tls_durable_csn: %lu\n", id, lowest_tls_durable_csn);
 
   // dequeue some committed txns
   util::timer t;
@@ -192,8 +185,10 @@ void tls_log::insert(log_block *block) {
 }
 */
 
-log_block *tls_log::allocate_log_block(uint32_t payload_size, uint64_t *out_cur_lsn, 
-				       uint64_t *out_seg_num, uint64_t block_csn) {
+log_block *tls_log::allocate_log_block(uint32_t payload_size,
+                                       uint64_t *out_cur_lsn,
+                                       uint64_t *out_seg_num,
+                                       uint64_t block_csn) {
   if (payload_size == 0) {
     return nullptr;
   }
@@ -278,14 +273,10 @@ retry :
 void tls_log::last_dequeue_committed_xcts() {
   // get the lowest tls durable csn
   uint64_t lowest_tls_durable_csn = tcommitter.get_lowest_tls_durable_csn();
-  // printf("id: %u, lowest_tls_durable_csn: %lu\n", id,
-  // lowest_tls_durable_csn);
 
   // dequeue some committed txns
   util::timer t;
   tcommitter.dequeue_committed_xcts(lowest_tls_durable_csn, t.get_start());
-  // printf("id: %u, number of committed txns to be dequeued: %u\n", id,
-  // tcommitter.get_queue_size());
   ALWAYS_ASSERT(tcommitter.get_queue_size() == 0);
 }
 

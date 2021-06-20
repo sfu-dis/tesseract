@@ -168,7 +168,7 @@ void bench_runner::run() {
         for (uint i = 0; i < loaders.size(); i++) {
           auto *loader = loaders[i];
           if (loader and loader->IsImpersonated() and loader->TryJoin()) {
-	    delete loader;
+            delete loader;
             loaders[i] = nullptr;
             done++;
             --n_running;
@@ -177,7 +177,7 @@ void bench_runner::run() {
         }
       }
 
-      ermia::dlog::last_flush();
+      ermia::dlog::flush_all();
     }
     ermia::volatile_write(ermia::MM::safesnap_lsn, ermia::dlog::current_csn);
     ALWAYS_ASSERT(ermia::MM::safesnap_lsn);

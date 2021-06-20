@@ -9,7 +9,7 @@ namespace ermia {
 namespace pcommit {
 
 static const uint64_t DIRTY_FLAG = uint64_t{1} << 63;
-extern uint64_t *_tls_durable_csn;
+extern uint64_t *_tls_durable_csn CACHE_ALIGNED;
 
 struct commit_queue {
   struct Entry {
@@ -35,7 +35,7 @@ class tls_committer {
 private:
   // Same as log id and thread id
   uint32_t commit_id;
-  commit_queue *_commit_queue;
+  commit_queue *_commit_queue CACHE_ALIGNED;
 
 public:
   tls_committer() {}
