@@ -68,8 +68,6 @@ void Object::Pin() {
       final_status = kStatusDeleted;
       ASSERT(next_pdest_.offset());
     }
-    memmove(tuple->get_value_start(),
-            (char *)tuple->get_value_start() + sizeof(varstr), tuple->size);
   } else {
     ALWAYS_ASSERT(0);
     /*
