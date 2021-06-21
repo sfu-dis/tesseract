@@ -134,25 +134,23 @@ public:
   inline uint32_t get_id() { return id; }
 
   inline uint64_t get_logbuf_size() { return logbuf_size; }
-  
+
   inline uint64_t get_latest_csn() { return latest_csn; }
 
   inline pcommit::tls_committer *get_committer() { return &tcommitter; }
 
   inline uint64_t get_latency() { return tcommitter.get_latency(); }
- 
+
   // reset this committer
-  inline void reset_committer() { tcommitter.reset();  }
-  
+  inline void reset_committer() { tcommitter.reset(); }
+
   // Commit (insert) a log block to the log - [block] must *not* be allocated
   // using allocate_log_block.
   //void insert(log_block *block);
 
   // Allocate a log block in-place on the log buffer
-  log_block *allocate_log_block(uint32_t payload_size,
-                                uint64_t *out_cur_lsn,
-                                uint64_t *out_seg_num,
-				uint64_t block_csn);
+  log_block *allocate_log_block(uint32_t payload_size, uint64_t *out_cur_lsn,
+                                uint64_t *out_seg_num, uint64_t block_csn);
 
   void commit_log_block(log_block *block);
 

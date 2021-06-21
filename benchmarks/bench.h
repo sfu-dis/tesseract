@@ -171,10 +171,10 @@ class bench_worker : public ermia::thread::Runner {
   void do_workload_function(uint32_t i);
   uint32_t fetch_workload();
   bool finish_workload(rc_t ret, uint32_t workload_idx, util::timer t);
-  
+
   inline ermia::dlog::tls_log *get_log() { return tlog; }
 
- protected:
+protected:
   virtual void MyWork(char *);
   inline ermia::transaction *txn_buf() { return txn_obj_buf; }
 

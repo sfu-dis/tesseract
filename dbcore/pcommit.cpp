@@ -1,8 +1,8 @@
 #include <atomic>
 
+#include "../macros.h"
 #include "pcommit.h"
 #include "sm-common.h"
-#include "../macros.h"
 
 namespace ermia {
 
@@ -12,7 +12,8 @@ namespace pcommit {
 uint64_t *_tls_durable_csn =
     (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
 
-void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush, bool *insert) {
+void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush,
+                             bool *insert) {
   CRITICAL_SECTION(cs, lock);
   if (items >= config::group_commit_queue_length * 0.8) {
     *flush = true;
@@ -45,7 +46,7 @@ uint64_t tls_committer::get_lowest_tls_durable_csn() {
   uint64_t max_clean = 0;
   for (uint32_t i = 0; i < config::MAX_THREADS; i++) {
     uint64_t csn = volatile_read(_tls_durable_csn[i]);
-    if (csn) {  
+    if (csn) {
       if (csn & DIRTY_FLAG) {
         min_dirty = std::min(csn & ~DIRTY_FLAG, min_dirty);
         found = true;
@@ -57,11 +58,13 @@ uint64_t tls_committer::get_lowest_tls_durable_csn() {
   return found ? min_dirty : max_clean;
 }
 
-void tls_committer::enqueue_committed_xct(uint64_t csn, uint64_t start_time, bool *flush, bool *insert) {
+void tls_committer::enqueue_committed_xct(uint64_t csn, uint64_t start_time,
+                                          bool *flush, bool *insert) {
   _commit_queue->push_back(csn, start_time, flush, insert);
 }
 
-void tls_committer::dequeue_committed_xcts(uint64_t upto_csn, uint64_t end_time) {
+void tls_committer::dequeue_committed_xcts(uint64_t upto_csn,
+                                           uint64_t end_time) {
   CRITICAL_SECTION(cs, _commit_queue->lock);
   uint32_t n = volatile_read(_commit_queue->start);
   uint32_t size = _commit_queue->size();
@@ -76,7 +79,8 @@ void tls_committer::dequeue_committed_xcts(uint64_t upto_csn, uint64_t end_time)
     dequeue++;
   }
   _commit_queue->items -= dequeue;
-  volatile_write(_commit_queue->start, (n + dequeue) % config::group_commit_queue_length);
+  volatile_write(_commit_queue->start,
+                 (n + dequeue) % config::group_commit_queue_length);
 }
 
 } // namespace pcommit

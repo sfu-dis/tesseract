@@ -222,7 +222,8 @@ int main(int argc, char **argv) {
   std::cerr << "  coro-batch-size   : " << FLAGS_coro_batch_size << std::endl;
   std::cerr << "  scan-use-iterator : " << FLAGS_scan_with_iterator << std::endl;
   std::cerr << "  enable-perf       : " << ermia::config::enable_perf << std::endl;
-  std::cerr << "  group_commit      : " << ermia::config::group_commit << std::endl;
+  std::cerr << "  group_commit      : " << ermia::config::group_commit
+            << std::endl;
   std::cerr << "  index-probe-only  : " << FLAGS_index_probe_only << std::endl;
   std::cerr << "  log-buffer-mb     : " << ermia::config::log_buffer_mb << std::endl;
   std::cerr << "  log-dir           : " << ermia::config::log_dir << std::endl;

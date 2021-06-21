@@ -23,7 +23,8 @@ struct commit_queue {
   uint32_t items;
   mcs_lock lock;
   uint64_t total_latency_us;
-  commit_queue(uint32_t _id) : id(_id), start(0), items(0), total_latency_us(0) {
+  commit_queue(uint32_t _id)
+      : id(_id), start(0), items(0), total_latency_us(0) {
     queue = new Entry[config::group_commit_queue_length];
   }
   ~commit_queue() { delete[] queue; }
@@ -47,7 +48,8 @@ public:
 
   // Mark committer as ongoing: some log blocks have not been durable
   inline void set_dirty_flag() {
-    volatile_write(_tls_durable_csn[commit_id], _tls_durable_csn[commit_id] | DIRTY_FLAG);
+    volatile_write(_tls_durable_csn[commit_id],
+                   _tls_durable_csn[commit_id] | DIRTY_FLAG);
   }
 
   // Get tls durable csn of this thread
@@ -70,7 +72,8 @@ public:
   uint64_t get_lowest_tls_durable_csn();
 
   // Enqueue commit queue of this thread
-  void enqueue_committed_xct(uint64_t csn, uint64_t start_time, bool *flush, bool *insert);
+  void enqueue_committed_xct(uint64_t csn, uint64_t start_time, bool *flush,
+                             bool *insert);
 
   // Dequeue commit queue of this thread
   void dequeue_committed_xcts(uint64_t upto_csn, uint64_t end_time);

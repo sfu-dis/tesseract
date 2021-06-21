@@ -252,7 +252,7 @@ void tls_log::commit_log_block(log_block *block) {
 void tls_log::enqueue_committed_xct(uint64_t csn, uint64_t start_time) {
   bool flush = false;
   bool insert = true;
-retry :
+retry:
   if (flush) {
     for (uint i = 0; i < config::MAX_THREADS; i++) {
       tls_log *tlog = tlogs[i];
