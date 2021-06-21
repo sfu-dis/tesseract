@@ -11,6 +11,8 @@
 
 namespace ermia {
 
+extern bool is_loading;
+
 dlog::tls_log *GetLog();
 
 class Table;
@@ -58,13 +60,9 @@ public:
     if (!rc.IsAbort()) {
       t->~transaction();
     }
-    /*
-    else {
-      printf("txn abort 1\n");
-      t->Abort();
-      t->~transaction();
-      printf("txn abort 2\n");
-    }*/
+    if (config::state == config::kStateLoading) {
+      t->enqueue_committed_xct();
+    }
     return rc;
   }
 

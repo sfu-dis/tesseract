@@ -18,12 +18,15 @@
 #include <glog/logging.h>
 
 #include "dlog-defs.h"
+#include "pcommit.h"
 
 namespace ermia {
 
 namespace dlog {
 
 extern std::atomic<uint64_t> current_csn;
+
+void flush_all();
 
 // A segment of the log, i.e., a file
 struct segment {
@@ -66,6 +69,12 @@ private:
   // Two log buffers (double buffering)
   char *logbuf[2];
 
+  // Last csn for each log buffer
+  uint64_t last_csns[2];
+
+  // Latest csn
+  uint64_t latest_csn;
+
   // The log buffer accepting new writes
   char *active_logbuf;
 
@@ -88,9 +97,18 @@ private:
   // io_uring structures
   struct io_uring ring;
 
+  // Committer
+  pcommit::tls_committer tcommitter;
+
+  // Lock
+  mcs_lock lock;
+
 private:
   // Get the currently open segment
   inline segment *current_segment() { return &segments[segments.size() - 1]; }
+
+  // Do flush when doing enqueue commits
+  void enqueue_flush();
 
   // Issue an async I/O to flush the current active log buffer
   void issue_flush(const char *buf, uint64_t size);
@@ -117,6 +135,15 @@ public:
 
   inline uint64_t get_logbuf_size() { return logbuf_size; }
   
+  inline uint64_t get_latest_csn() { return latest_csn; }
+
+  inline pcommit::tls_committer *get_committer() { return &tcommitter; }
+
+  inline uint64_t get_latency() { return tcommitter.get_latency(); }
+ 
+  // reset this committer
+  inline void reset_committer() { tcommitter.reset();  }
+  
   // Commit (insert) a log block to the log - [block] must *not* be allocated
   // using allocate_log_block.
   //void insert(log_block *block);
@@ -124,10 +151,22 @@ public:
   // Allocate a log block in-place on the log buffer
   log_block *allocate_log_block(uint32_t payload_size,
                                 uint64_t *out_cur_lsn,
-                                uint64_t *out_seg_num);
+                                uint64_t *out_seg_num,
+				uint64_t block_csn);
 
   void commit_log_block(log_block *block);
+
+  // Enqueue commit queue
+  void enqueue_committed_xct(uint64_t csn, uint64_t start_time);
+
+  // Dequeue commit queue
+  void last_dequeue_committed_xcts();
+
+  // Last flush
+  void last_flush();
 };
+
+extern tls_log *tlogs[config::MAX_THREADS];
 
 }  // namespace dlog
 

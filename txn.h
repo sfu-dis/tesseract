@@ -162,7 +162,9 @@ protected:
 
   void LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key);
 
- public:
+  void enqueue_committed_xct();
+
+public:
   // Reads the contents of tuple into v within this transaction context
   rc_t DoTupleRead(dbtuple *tuple, varstr *out_v);
 
@@ -196,6 +198,7 @@ protected:
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
   std::unordered_map<TableDescriptor*, OID> schema_read_map;
+  util::timer t;
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t read_set;

@@ -198,11 +198,10 @@ rc_t transaction::si_commit() {
   // Generate a log block if not read-only
   if (write_set.size()) {
     if (log_size > logbuf_size) {
-      lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum);
+      lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
     } else {
-      lb = log->allocate_log_block(log_size, &lb_lsn, &segnum);
+      lb = log->allocate_log_block(log_size, &lb_lsn, &segnum, xc->end);
     }
-    lb->csn = xc->end;
   }
 
   // Normally, we'd generate it along the way or here first before toggling the
@@ -220,8 +219,7 @@ rc_t transaction::si_commit() {
     uint32_t log_record_size = sizeof(dbtuple) + tuple->size;
 
     if (lb->payload_size + align_up(log_record_size + sizeof(dlog::log_record)) > lb->capacity) {
-      lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum);
-      lb->csn = xc->end;
+      lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
     }
 
     // Populate log block and obtain persistent address
@@ -533,6 +531,10 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
 
   // do the actual tuple read
   return tuple->DoRead(out_v, !read_my_own);
+}
+
+void transaction::enqueue_committed_xct() {
+  log->enqueue_committed_xct(log->get_latest_csn(), t.get_start());
 }
 
 }  // namespace ermia

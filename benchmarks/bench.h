@@ -171,6 +171,8 @@ class bench_worker : public ermia::thread::Runner {
   void do_workload_function(uint32_t i);
   uint32_t fetch_workload();
   bool finish_workload(rc_t ret, uint32_t workload_idx, util::timer t);
+  
+  inline ermia::dlog::tls_log *get_log() { return tlog; }
 
  protected:
   virtual void MyWork(char *);
@@ -213,6 +215,8 @@ class bench_worker : public ermia::thread::Runner {
   // NOTE: inter-transaction interleaving
   ermia::transaction *transactions;
   ermia::str_arena *arenas;
+
+  ermia::dlog::tls_log *tlog;
 };
 
 class bench_runner {

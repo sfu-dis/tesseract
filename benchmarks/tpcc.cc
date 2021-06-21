@@ -560,7 +560,8 @@ rc_t tpcc_worker::txn_delivery() {
         sum += v_ol->ol_amount;
         order_line_1::value v_ol_new(*v_ol);
         v_ol_new.ol_delivery_d = ts;
-        ASSERT(s_arena.get()->manages(c.values[i].first));
+        v_ol_new.ol_tax = 0;
+	ASSERT(s_arena.get()->manages(c.values[i].first));
         TryCatch(table_index
                       ->UpdateRecord(txn, *c.values[i].first,
                             Encode(str(Size(v_ol_new)), v_ol_new)));
