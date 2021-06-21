@@ -246,7 +246,6 @@ struct LSN {
 
   uint64_t _val;
 
-  fat_ptr to_log_ptr() const { return fat_ptr{_val | fat_ptr::ASI_LOG_FLAG}; }
   inline uint64_t logid() const { return (_val >> fat_ptr::VALUE_START_BIT) & LOG_ID_MASK; }
   inline uint64_t loffset() const { return (_val >> fat_ptr::VALUE_START_BIT) & LOFFSET_MASK; }
   inline uint16_t flags() const { return _val & fat_ptr::ASI_FLAG_MASK; }
