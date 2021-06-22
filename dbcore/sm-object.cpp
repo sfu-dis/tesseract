@@ -55,12 +55,14 @@ void Object::Pin() {
     auto *segment = log->get_segment(segnum);
     ASSERT(segment);
 
+    dlog::log_block *lb = (dlog::log_block *)malloc(data_sz);
     uint64_t tlsn = LSN::from_ptr(pdest_).loffset();
-    size_t m = os_pread(segment->fd, (char *)tuple->get_value_start(), data_sz,
-                        tlsn - segment->start_offset);
+    uint64_t offset_in_seg = tlsn - segment->start_offset;
+    size_t m = os_pread(segment->fd, (char *)lb, data_sz, offset_in_seg);
 
-    // Strip out the varstr stuff
-    tuple->size = ((varstr *)tuple->get_value_start())->size();
+    // Strip out the header
+    tuple->size = lb->payload_size;
+    memcpy(tuple->get_value_start(), lb->get_payload(), lb->payload_size);
 
     // Could be a delete
     ASSERT(tuple->size < data_sz);
@@ -68,6 +70,11 @@ void Object::Pin() {
       final_status = kStatusDeleted;
       ASSERT(next_pdest_.offset());
     }
+
+    // Set CSN
+    fat_ptr csn_ptr = GenerateCsnPtr(lb->csn);
+    SetCSN(csn_ptr);
+    ASSERT(GetCSN().asi_type() == fat_ptr::ASI_CSN);
   } else {
     ALWAYS_ASSERT(0);
     /*
