@@ -67,6 +67,11 @@ DO_STRUCT(new_order, NEW_ORDER_KEY_FIELDS, NEW_ORDER_VALUE_FIELDS)
       y(bool, o_all_local) y(uint32_t, o_entry_d)
 DO_STRUCT(oorder, OORDER_KEY_FIELDS, OORDER_VALUE_FIELDS)
 
+#define OORDER_VALUE_PRECOMPUTE_AGGREGATE_FIELDS(x, y)                                 \
+  x(int32_t, o_c_id) y(int32_t, o_carrier_id) y(int8_t, o_ol_cnt) \
+      y(bool, o_all_local) y(uint32_t, o_entry_d) y(float, o_total_amount)
+DO_STRUCT(oorder_precompute_aggregate, OORDER_KEY_FIELDS, OORDER_VALUE_PRECOMPUTE_AGGREGATE_FIELDS)
+
 #define OORDER_C_ID_IDX_KEY_FIELDS(x, y) \
   x(int32_t, o_w_id) y(int32_t, o_d_id) y(int32_t, o_c_id) y(int32_t, o_o_id)
 #define OORDER_C_ID_IDX_VALUE_FIELDS(x, y) x(uint8_t, dummy)

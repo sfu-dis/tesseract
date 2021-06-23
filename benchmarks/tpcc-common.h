@@ -1078,22 +1078,10 @@ class credit_check_order_line_scan_callback
     if (schema_v == 0) {
       order_line::value v_ol_temp;
       const order_line::value *val = Decode(value, v_ol_temp);
-      // if (val->v != schema_v) printf("schema_v: %lu, val.v: %lu\n", schema_v, val->v);
-      /*if (val->v != schema_v) {
-        order_line_1::value v_ol_temp_1;
-        const order_line_1::value *v_ol_1 = Decode(value, v_ol_temp_1);
-        if (v_ol_1->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol_1->v);
-      }*/
       sum += val->ol_amount;
     } else {
       order_line_1::value v_ol_temp;
       const order_line_1::value *val = Decode(value, v_ol_temp);
-      // if (val->v != schema_v) printf("schema_v: %lu, val.v: %lu\n", schema_v, val->v);
-      /*if (val->v != schema_v) {
-        order_line::value v_ol_temp_1;
-        const order_line::value *v_ol_1 = Decode(value, v_ol_temp_1);
-        if (v_ol_1->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol_1->v);
-      }*/
       sum += val->ol_amount;
     }
     return true;
@@ -1125,14 +1113,8 @@ class order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
     MARK_REFERENCED(keyp);
     if (schema_v == 0) {
       ASSERT(keylen == sizeof(order_line::key));
-      //order_line::value v_ol_temp;
-      //const order_line::value *v_ol = Decode(value, v_ol_temp);
-      // if (v_ol->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol->v);
-      /*if (v_ol->v != schema_v) {
-        order_line_1::value v_ol_temp_1;
-        const order_line_1::value *v_ol_1 = Decode(value, v_ol_temp_1);
-        if (v_ol_1->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol_1->v);
-      }*/
+      order_line::value v_ol_temp;
+      const order_line::value *v_ol = Decode(value, v_ol_temp);
 #ifndef NDEBUG
     order_line::key k_ol_temp;
     const order_line::key *k_ol = Decode(keyp, k_ol_temp);
@@ -1140,14 +1122,8 @@ class order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
 #endif
     } else {
       ASSERT(keylen == sizeof(order_line_1::key));
-      //order_line_1::value v_ol_temp;
-      //const order_line_1::value *v_ol = Decode(value, v_ol_temp);
-      // if (v_ol->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol->v);
-      /*if (v_ol->v != schema_v) {
-        order_line::value v_ol_temp_1;
-        const order_line::value *v_ol_1 = Decode(value, v_ol_temp_1);
-        if (v_ol_1->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol_1->v);
-      }*/
+      order_line_1::value v_ol_temp;
+      const order_line_1::value *v_ol = Decode(value, v_ol_temp);
     }
     ++n;
     return true;
@@ -1191,12 +1167,6 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
       ASSERT(keylen == sizeof(order_line::key));
       order_line::value v_ol_temp;
       const order_line::value *v_ol = Decode(value, v_ol_temp);
-      // if (v_ol->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol->v);
-      /*if (v_ol->v != schema_v) {
-        order_line_1::value v_ol_temp_1;
-        const order_line_1::value *v_ol_1 = Decode(value, v_ol_temp_1);
-        if (v_ol_1->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol_1->v);
-      }*/
 #ifndef NDEBUG
     order_line::key k_ol_temp;
     const order_line::key *k_ol = Decode(keyp, k_ol_temp);
@@ -1208,12 +1178,6 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
       ASSERT(keylen == sizeof(order_line_1::key));
       order_line_1::value v_ol_temp;
       const order_line_1::value *v_ol = Decode(value, v_ol_temp);
-      // if (v_ol->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol->v);
-      /*if (v_ol->v != schema_v) {
-        order_line::value v_ol_temp_1;
-        const order_line::value *v_ol_1 = Decode(value, v_ol_temp_1);
-        if (v_ol_1->v != schema_v) printf("schema_v: %lu, v_ol.v: %lu\n", schema_v, v_ol_1->v);
-      }*/
       s_i_ids[v_ol->ol_i_id] = 1;
     }
     n++;
@@ -1259,7 +1223,8 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
         home_warehouse_id(home_warehouse_id),
         schema_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("SCHEMA"))
 #if !defined(COPYDDL)	
-	, table_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("order_line_0"))	
+	, order_line_table_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("order_line_0"))
+	, oorder_table_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("oorder_0"))
 #endif
 	{
     ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
@@ -1332,7 +1297,8 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
   ermia::ConcurrentMasstreeIndex *schema_index;
 #if !defined(COPYDDL)
-  ermia::ConcurrentMasstreeIndex *table_index;
+  ermia::ConcurrentMasstreeIndex *order_line_table_index;
+  ermia::ConcurrentMasstreeIndex *oorder_table_index;
 #endif
 };
 

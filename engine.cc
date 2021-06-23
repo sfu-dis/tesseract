@@ -155,14 +155,13 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena, OrderedIndex *i
   printf("begin op\n");
   /*
   for (uint w = 1; w <= NumWarehouses(); w++) {
-    printf("w: %u\n", w);
+    // printf("w: %u\n", w);
     for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
       // printf("d: %u\n", d);
-      for (uint c = 1; c <= NumCustomersPerDistrict(); c++) {
+      for (uint l = 1; l <= 15; l++) {
 	// printf("c: %u\n", c);
-	const order_line::key k_ol_0(w, d, c, 0);
-	const order_line::key k_ol_1(w, d, c,
-                                 std::numeric_limits<int32_t>::max());
+	const order_line::key k_ol_0(w, d, 1, l);
+	const order_line::key k_ol_1(w, d, std::numeric_limits<int32_t>::max(), l);
 	varstr *start_key = arena->next(::Size(k_ol_0));
 	if (!start_key) {
 	  arena = new ermia::str_arena(ermia::config::arena_size_mb);
@@ -182,25 +181,17 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena, OrderedIndex *i
     }
   }*/
 
-  const order_line::key k_ol_0(1, 1, 1, 1);
-        // const order_line::key k_ol_1(w, d, c,
-        //                          std::numeric_limits<int32_t>::max());
-        varstr *start_key = arena->next(::Size(k_ol_0));
-        if (!start_key) {
-          arena = new ermia::str_arena(ermia::config::arena_size_mb);
-          start_key = arena->next(::Size(k_ol_0));
-        }
-        /*varstr *end_key = arena->next(::Size(k_ol_1));
-        if (!end_key) {
-          arena = new ermia::str_arena(ermia::config::arena_size_mb);
-          end_key = arena->next(::Size(k_ol_1));
-        }*/
-        // r = index->Scan(t, Encode(*start_key, k_ol_0), &Encode(*end_key, k_ol_1), c_add_column, arena);
-        r = index->Scan(t, Encode(*start_key, k_ol_0), nullptr, c_add_column, arena);
-	if (r._val != RC_TRUE) {
-          printf("DDL scan false\n");
-          return r;
-        }
+  const order_line::key k_ol_0(1, 1, 1, 0);
+  varstr *start_key = arena->next(::Size(k_ol_0));
+  if (!start_key) {
+    arena = new ermia::str_arena(ermia::config::arena_size_mb);
+    start_key = arena->next(::Size(k_ol_0));
+  }
+  r = index->Scan(t, Encode(*start_key, k_ol_0), nullptr, c_add_column, arena);
+  if (r._val != RC_TRUE) {
+    printf("DDL scan false\n");
+    return r;
+  }
 
   /*r = index->Scan(t, *start_key, nullptr, c_add_column, arena);
   if (r._val != RC_TRUE) {
@@ -211,6 +202,124 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena, OrderedIndex *i
   printf("scan invoke status: %hu\n", c_add_column.invoke_status._val);
 
   return c_add_column.invoke_status;
+}
+
+class ddl_precompute_aggregate_scan_callback : public OrderedIndex::ScanCallback {
+ public:
+  ddl_precompute_aggregate_scan_callback(
+		  OrderedIndex *new_oorder_table_index, 
+		  OrderedIndex *order_line_table_index, 
+		  transaction *t,
+                  uint64_t schema_version, 
+		  ermia::str_arena *arena)
+          : _new_oorder_table_index(new_oorder_table_index), 
+	  _order_line_table_index(order_line_table_index),
+	  _txn(t), _version(schema_version) {}
+  virtual bool Invoke(const char *keyp, size_t keylen, const varstr &value) {
+    MARK_REFERENCED(value);
+
+    varstr *k = _arena->next(keylen);
+    if (!k) {
+      _arena = new ermia::str_arena(ermia::config::arena_size_mb);
+      k = _arena->next(keylen);
+    }
+    ASSERT(k);
+    k->copy_from(keyp, keylen);
+
+    oorder::key k_oo_temp;
+    const oorder::key *k_oo = Decode(keyp, k_oo_temp);
+
+    credit_check_order_line_scan_callback c_ol(_version);
+    const order_line::key k_ol_0(k_oo->o_w_id, k_oo->o_d_id, k_oo->o_id, 1);
+    const order_line::key k_ol_1(k_oo->o_w_id, k_oo->o_d_id, k_oo->o_id, 15);
+
+    varstr *k_ol_0_str = _arena->next(Size(k_ol_0));
+    if (!k_ol_0_str) {
+      _arena = new ermia::str_arena(ermia::config::arena_size_mb);
+      k_ol_0_str = _arena->next(Size(k_ol_0));
+    }
+
+    varstr *k_ol_1_str = _arena->next(Size(k_ol_1));
+    if (!k_ol_1_str) {
+      _arena = new ermia::str_arena(ermia::config::arena_size_mb);
+      k_ol_1_str = _arena->next(Size(k_ol_1));
+    } 
+
+    _order_line_table_index
+                  ->Scan(_txn, Encode(*k_ol_0_str, k_ol_0),
+                         &Encode(*k_ol_1_str, k_ol_1), c_ol);
+    
+    oorder::value v_oo_temp;
+    const oorder::value *v_oo = Decode(value, v_oo_temp);
+
+    oorder_precompute_aggregate::value v_oo_pa;
+    v_oo_pa.o_c_id = v_oo->o_c_id;
+    v_oo_pa.o_carrier_id = v_oo->o_carrier_id;
+    v_oo_pa.o_ol_cnt = v_oo->o_ol_cnt;
+    v_oo_pa.o_all_local = v_oo->o_all_local;
+    v_oo_pa.o_entry_d = v_oo->o_entry_d;
+    v_oo_pa.o_total_amount = c_ol.sum;
+
+    const size_t oorder_sz = Size(v_oo_pa);
+    varstr *d_v = _arena->next(oorder_sz);
+
+    if (!d_v) {
+      _arena = new ermia::str_arena(ermia::config::arena_size_mb);
+      d_v = _arena->next(oorder_sz);
+    }
+    d_v = &Encode(*d_v, v_oo_pa);
+
+#if defined(BLOCKDDL) || defined(SIDDL)
+    invoke_status = _new_oorder_table_index->UpdateRecord(_txn, *k, *d_v);
+    if (invoke_status._val != RC_TRUE) {
+      printf("DDL normal record update false\n");
+      return false;
+    }
+#elif defined(COPYDDL)
+    invoke_status = _new_oorder_table_index->InsertRecord(_txn, *k, *d_v);
+    if (invoke_status._val != RC_TRUE) {
+      printf("DDL normal record insert false\n");
+      return false;
+    }
+#endif
+
+    return true;
+  }
+  OrderedIndex *_new_oorder_table_index;
+  OrderedIndex *_order_line_table_index;
+  transaction *_txn;
+  uint64_t _version;
+  ermia::str_arena *_arena = new ermia::str_arena(ermia::config::arena_size_mb);
+  rc_t invoke_status = rc_t{RC_INVALID};
+};
+
+rc_t ConcurrentMasstreeIndex::WriteNormalTable1(str_arena *arena, OrderedIndex *old_oorder_table_index, OrderedIndex *order_line_table_index, transaction *t, varstr &value) {
+  rc_t r;
+#ifdef COPYDDL
+  struct Schema_record schema;
+#else
+  struct Schema_base schema;
+#endif
+  memcpy(&schema, (char *)value.data(), sizeof(schema));
+  uint64_t schema_version = schema.v;
+
+  ddl_precompute_aggregate_scan_callback c_precompute_aggregate(this, order_line_table_index, t, schema_version, arena);
+
+  const oorder::key k_oo_0(1, 1, 1);
+  varstr *start_key = arena->next(::Size(k_oo_0));
+  if (!start_key) {
+    arena = new ermia::str_arena(ermia::config::arena_size_mb);
+    start_key = arena->next(::Size(k_oo_0));
+  }
+  r = old_oorder_table_index->Scan(t, Encode(*start_key, k_oo_0), nullptr, c_precompute_aggregate, arena);
+  if (r._val != RC_TRUE) {
+    printf("DDL scan false\n");
+    return r;
+  }
+
+  printf("scan invoke status: %hu\n", c_precompute_aggregate.invoke_status._val);
+
+  return c_precompute_aggregate.invoke_status;
 }
 
 class ddl_add_constraint_scan_callback : public OrderedIndex::ScanCallback {

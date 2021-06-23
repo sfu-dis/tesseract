@@ -4,25 +4,37 @@ void schematable_loader::load() {
   ermia::OrderedIndex *tbl = open_tables.at("SCHEMA");
   ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
 
-  char str1[] = "order_line";
-  ermia::varstr &k = str(sizeof(str1));
-  k.copy_from(str1, sizeof(str1));
+  char str1[] = "order_line", str2[] = "oorder";
+  ermia::varstr &k1 = str(sizeof(str1)), &k2 = str(sizeof(str2));
+  k1.copy_from(str1, sizeof(str1));
+  k2.copy_from(str2, sizeof(str2));
 
 #ifdef COPYDDL
-  struct Schema_record schema;
-  schema.index = ermia::Catalog::GetTable("order_line")->GetPrimaryIndex();
-  schema.td = ermia::Catalog::GetTable("order_line");
-  char str2[sizeof(Schema_record)];
-#else
-  struct Schema_base schema;
-  char str2[sizeof(Schema_base)];
-#endif
-  schema.v = 0;
-  memcpy(str2, &schema, sizeof(str2));
-  ermia::varstr &v = str(sizeof(str2));
-  v.copy_from(str2, sizeof(str2));
+  struct Schema_record order_line_schema;
+  order_line_schema.index = ermia::Catalog::GetTable("order_line")->GetPrimaryIndex();
+  order_line_schema.td = ermia::Catalog::GetTable("order_line");
 
-  TryVerifyStrict(tbl->InsertRecord(txn, k, v));
+  struct Schema_record oorder_schema;
+  oorder_schema.index = ermia::Catalog::GetTable("oorder")->GetPrimaryIndex();
+  oorder_schema.td = ermia::Catalog::GetTable("oorder");  
+
+  char str3[sizeof(Schema_record)], str4[sizeof(Schema_record)];
+#else
+  struct Schema_base order_line_schema, oorder_schema;
+  char str3[sizeof(Schema_base)], str4[sizeof(Schema_record)];;
+#endif
+  order_line_schema.v = 0;
+  memcpy(str3, &order_line_schema, sizeof(str3));
+  ermia::varstr &v1 = str(sizeof(str3));
+  v1.copy_from(str3, sizeof(str3));
+
+  oorder_schema.v = 0;
+  memcpy(str4, &oorder_schema, sizeof(str4));
+  ermia::varstr &v2 = str(sizeof(str4));
+  v2.copy_from(str4, sizeof(str4));
+
+  TryVerifyStrict(tbl->InsertRecord(txn, k1, v1));
+  TryVerifyStrict(tbl->InsertRecord(txn, k2, v2));
   TryVerifyStrict(db->Commit(txn));
 
   if (ermia::config::verbose) {

@@ -132,7 +132,6 @@ class tpcc_bench_runner : public bench_runner {
     const std::string s_name(name);
     std::vector<ermia::OrderedIndex *> ret(NumWarehouses());
     if (g_enable_separate_tree_per_partition && !is_read_only) {
-      printf("enter 1\n");
       if (NumWarehouses() <= ermia::config::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++) {
           ret[i] = ermia::Catalog::GetIndex(s_name + "_" + std::to_string(i));
@@ -155,7 +154,6 @@ class tpcc_bench_runner : public bench_runner {
         }
       }
     } else {
-      printf("enter 2: %s\n", s_name.c_str());
       ermia::OrderedIndex *idx = ermia::Catalog::GetIndex(s_name);
       ALWAYS_ASSERT(idx);
       for (size_t i = 0; i < NumWarehouses(); i++) {

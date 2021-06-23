@@ -211,6 +211,8 @@ public:
 
   PROMISE(rc_t) WriteNormalTable(str_arena *arena, OrderedIndex *index, transaction *t, varstr &value) override;
 
+  PROMISE(rc_t) WriteNormalTable1(str_arena *arena, OrderedIndex *old_oorder_table_index, OrderedIndex *order_line_table_index, transaction *t, varstr &value) override;
+
   PROMISE(rc_t) CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t) override;
 
   PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;

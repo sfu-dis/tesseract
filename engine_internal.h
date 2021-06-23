@@ -35,6 +35,8 @@ public:
 
   virtual PROMISE(rc_t) WriteNormalTable(str_arena *arena, OrderedIndex *index, transaction *t, varstr &value) = 0;
 
+  virtual PROMISE(rc_t) WriteNormalTable1(str_arena *arena, OrderedIndex *old_oorder_table_index, OrderedIndex *order_line_table_index, transaction *t, varstr &value) = 0;
+  
   virtual PROMISE(rc_t) CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t) = 0;
 
   // Get a record with a key of length keylen. The underlying DB does not manage
