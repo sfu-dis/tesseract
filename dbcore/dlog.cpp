@@ -250,6 +250,10 @@ void tls_log::commit_log_block(log_block *block) {
 }
 
 void tls_log::enqueue_committed_xct(uint64_t csn, uint64_t start_time) {
+  if (config::null_log_device) {
+    return;
+  }
+
   bool flush = false;
   bool insert = true;
 retry :
