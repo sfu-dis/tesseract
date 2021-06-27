@@ -251,7 +251,10 @@ rc_t tpcc_worker::txn_new_order() {
 
     const size_t oorder_sz = Size(v_oo);
     ermia::OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
-    TryCatch(tbl_oorder(warehouse_id)
+#ifdef COPYDDL
+    ermia::ConcurrentMasstreeIndex *oorder_table_index = (ermia::ConcurrentMasstreeIndex *) oorder_schema.index;
+#endif
+    TryCatch(oorder_table_index
                   ->InsertRecord(txn, Encode(str(Size(k_oo)), k_oo),
                            Encode(str(oorder_sz), v_oo), &v_oo_oid));
 
