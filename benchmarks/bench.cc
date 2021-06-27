@@ -182,7 +182,9 @@ void bench_runner::run() {
         }
       }
 
-      ermia::dlog::flush_all();
+      if (ermia::config::group_commit) {
+        ermia::dlog::flush_all();
+      }
     }
     ermia::volatile_write(ermia::MM::safesnap_lsn, ermia::dlog::current_csn);
     ALWAYS_ASSERT(ermia::MM::safesnap_lsn);
