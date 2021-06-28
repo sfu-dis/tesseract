@@ -238,6 +238,7 @@ class tpcc_bench_runner : public bench_runner {
     create_schema_table(db, "SCHEMA");
 #ifdef BLOCKDDL
     db->BuildIndexMap("order_line");
+    db->BuildIndexMap("oorder");
 #endif
   }
 

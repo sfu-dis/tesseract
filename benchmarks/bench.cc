@@ -41,7 +41,11 @@ uint32_t bench_worker::fetch_workload() {
     if ((i + 1) == workload.size() || d < workload[i].frequency) {
       if (i == workload.size() - 1) {
 	ddl_num++;
+#ifdef COPYDDL
         if (ddl_num != 800) continue;
+#else
+	if (ddl_num != 20) continue;
+#endif
       } 
       return i;
     }

@@ -207,12 +207,12 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena, OrderedIndex *i
 class ddl_precompute_aggregate_scan_callback : public OrderedIndex::ScanCallback {
  public:
   ddl_precompute_aggregate_scan_callback(
-		  OrderedIndex *new_oorder_table_index, 
+		  OrderedIndex *oorder_table_index, 
 		  OrderedIndex *order_line_table_index, 
 		  transaction *t,
                   uint64_t schema_version, 
 		  ermia::str_arena *arena)
-          : _new_oorder_table_index(new_oorder_table_index), 
+          : _oorder_table_index(oorder_table_index), 
 	  _order_line_table_index(order_line_table_index),
 	  _txn(t), _version(schema_version) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const varstr &value) {
@@ -270,13 +270,13 @@ class ddl_precompute_aggregate_scan_callback : public OrderedIndex::ScanCallback
     d_v = &Encode(*d_v, v_oo_pa);
 
 #if defined(BLOCKDDL) || defined(SIDDL)
-    invoke_status = _new_oorder_table_index->UpdateRecord(_txn, *k, *d_v);
+    invoke_status = _oorder_table_index->UpdateRecord(_txn, *k, *d_v);
     if (invoke_status._val != RC_TRUE) {
       printf("DDL normal record update false\n");
       return false;
     }
 #elif defined(COPYDDL)
-    invoke_status = _new_oorder_table_index->InsertRecord(_txn, *k, *d_v);
+    invoke_status = _oorder_table_index->InsertRecord(_txn, *k, *d_v);
     if (invoke_status._val != RC_TRUE) {
       printf("DDL normal record insert false\n");
       return false;
@@ -285,7 +285,7 @@ class ddl_precompute_aggregate_scan_callback : public OrderedIndex::ScanCallback
 
     return true;
   }
-  OrderedIndex *_new_oorder_table_index;
+  OrderedIndex *_oorder_table_index;
   OrderedIndex *_order_line_table_index;
   transaction *_txn;
   uint64_t _version;
@@ -303,7 +303,11 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable1(str_arena *arena, OrderedIndex *
   memcpy(&schema, (char *)value.data(), sizeof(schema));
   uint64_t schema_version = schema.v;
 
+#ifdef COPYDDL
   ddl_precompute_aggregate_scan_callback c_precompute_aggregate(this, order_line_table_index, t, schema_version, arena);
+#else
+  ddl_precompute_aggregate_scan_callback c_precompute_aggregate(old_oorder_table_index, order_line_table_index, t, schema_version, arena);
+#endif
 
   const oorder::key k_oo_0(1, 1, 1);
   varstr *start_key = arena->next(::Size(k_oo_0));
