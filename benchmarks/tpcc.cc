@@ -1413,7 +1413,7 @@ rc_t tpcc_worker::txn_ddl() {
   rc = schema_index->WriteSchemaTable(txn, rc, k1, v2);
   TryCatch(rc);
   
-  rc = oorder_table_index->WriteNormalTable(arena, oorder_table_index, txn, v2);
+  rc = order_line_table_index->WriteNormalTable(arena, order_line_table_index, txn, v2);
   TryCatch(rc);
   
   TryCatch(db->Commit(txn));
@@ -1462,7 +1462,7 @@ rc_t tpcc_worker::txn_ddl() {
   TryCatch(rc);
 
   TryCatch(db->Commit(txn));
-
+  
   db->WriteUnlock("SCHEMA");
   db->WriteUnlock("order_line");
   db->WriteUnlock("oorder");
@@ -1503,7 +1503,8 @@ rc_t tpcc_worker::txn_ddl() {
   std::stringstream ss;
   ss << schema_version;
 
-  std::string str3 = std::string(str2);
+  //std::string str3 = std::string(str2);
+  std::string str3 = std::string(str1);
   str3 += ss.str();
   
   if (!db->BuildIndexMap(str3.c_str())) {
@@ -1519,21 +1520,28 @@ rc_t tpcc_worker::txn_ddl() {
   
   // std::cerr << "Create a new table: " << str3 << std::endl;
   
-  oorder_schema.index = ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
-  oorder_schema.td = ermia::Catalog::GetTable(str3.c_str());
+  //oorder_schema.index = ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
+  //oorder_schema.td = ermia::Catalog::GetTable(str3.c_str());
+  order_line_schema.index = ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
+  order_line_schema.td = ermia::Catalog::GetTable(str3.c_str());
   char str4[sizeof(Schema_record)];
-  memcpy(str4, &oorder_schema, sizeof(str4));
+  //memcpy(str4, &oorder_schema, sizeof(str4));
+  memcpy(str4, &order_line_schema, sizeof(str4));
   ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
   
+  //txn->set_table_index(oorder_schema.index);
+  txn->set_table_index(order_line_schema.index);
+
   db->WriteUnlock(str3.c_str());
 
-  ermia::ConcurrentMasstreeIndex *oorder_table_index = (ermia::ConcurrentMasstreeIndex *) oorder_schema.index;
-  // rc = oorder_table_index->WriteNormalTable(arena, old_oorder_table_index, txn, v3);
-  rc = oorder_table_index->WriteNormalTable1(arena, old_oorder_table_index, order_line_table_index, txn, v1);
+  schema_index->WriteSchemaTable(txn, rc, k2, v3);
   TryCatch(rc);
   
   rc = rc_t{RC_INVALID};
-  schema_index->WriteSchemaTable(txn, rc, k2, v3);
+  //ermia::ConcurrentMasstreeIndex *oorder_table_index = (ermia::ConcurrentMasstreeIndex *) oorder_schema.index;
+  ermia::ConcurrentMasstreeIndex *new_order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
+  rc = new_order_line_table_index->WriteNormalTable(arena, order_line_table_index, txn, v3);
+  //rc = oorder_table_index->WriteNormalTable1(arena, old_oorder_table_index, order_line_table_index, txn, v1);
   TryCatch(rc);
   
   TryCatch(db->Commit(txn));

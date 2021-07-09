@@ -186,7 +186,7 @@ rc_t transaction::si_commit() {
 
 #ifdef COPYDDL
   if (is_dml() && DMLConsistencyHandler()) {
-    printf("DML failed\n\n");
+    //printf("DML failed\n");
     return rc_t{RC_ABORT_SI_CONFLICT};
   }
 #endif
@@ -204,37 +204,88 @@ rc_t transaction::si_commit() {
     }
   }
 
+#ifdef COPYDDL
+  if (is_ddl()) {
+    // If txn is DDL, commit schema record first before CDC
+    write_record_t w = write_set.get(is_ddl(), 0);
+    Object *object = w.get_object();
+    dbtuple *tuple = (dbtuple *)object->GetPayload();
+    tuple->DoWrite();
+
+    uint32_t log_tuple_size = sizeof(dbtuple) + tuple->size;
+    uint32_t log_str_size = sizeof(varstr) + w.str->size();
+
+    if (lb->payload_size + align_up(log_tuple_size + sizeof(dlog::log_record)) + align_up(log_str_size + sizeof(dlog::log_record)) > lb->capacity) { 
+      lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
+    }
+
+    // Populate log block and obtain persistent address
+    uint32_t str_off = lb->payload_size, tuple_off = str_off + align_up(log_str_size + sizeof(dlog::log_record));
+    if (w.type == dlog::log_record::logrec_type::INSERT) {
+      dlog::log_insert_key(lb, w.fid, w.oid, (char *)w.str, log_str_size);
+      dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+    } else if (w.type == dlog::log_record::logrec_type::UPDATE) {
+      dlog::log_update_key(lb, w.fid, w.oid, (char *)w.str, log_str_size);
+      dlog::log_update(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+    }
+    ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
+
+    // Set persistent address
+     auto tuple_size_code = encode_size_aligned(w.size);
+    fat_ptr tuple_pdest = LSN::make(log->get_id(), lb_lsn + tuple_off, segnum, tuple_size_code).to_ptr();
+    object->SetPersistentAddress(tuple_pdest);
+    ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
+
+    // Set CSN
+    fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
+    object->SetCSN(csn_ptr);
+    ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
+
+    // Do CDC
+    table_index->changed_data_capture(this, xc->begin, xc->end);
+  }
+#endif
+
   // Normally, we'd generate it along the way or here first before toggling the
   // CSN's "committed" bit. But we can actually do it first, and generate the
   // log block as we scan the write set once, leveraging pipelined commit!
 
   // Post-commit: install CSN to tuples (traverse write-tuple), generate log
   // records, etc.
-  for (uint32_t i = 0; i < write_set.size(); ++i) {
+  uint32_t start = 0;
+#ifdef COPYDDL
+  if (is_ddl()) {
+    start = 1;
+  }
+#endif
+  for (uint32_t i = start; i < write_set.size(); ++i) {
     write_record_t w = write_set.get(is_ddl(), i);
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
     tuple->DoWrite();
 
-    uint32_t log_record_size = sizeof(dbtuple) + tuple->size;
+    uint32_t log_tuple_size = sizeof(dbtuple) + tuple->size;
+    uint32_t log_str_size = sizeof(varstr) + w.str->size();
 
-    if (lb->payload_size + align_up(log_record_size + sizeof(dlog::log_record)) > lb->capacity) {
+    if (lb->payload_size + align_up(log_tuple_size + sizeof(dlog::log_record)) + align_up(log_str_size + sizeof(dlog::log_record)) > lb->capacity) {
       lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
     }
 
     // Populate log block and obtain persistent address
-    uint32_t off = lb->payload_size;
-    if (w.is_insert) {
-      dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, log_record_size);
-    } else {
-      dlog::log_update(lb, w.fid, w.oid, (char *)tuple, log_record_size);
+    uint32_t str_off = lb->payload_size, tuple_off = str_off + align_up(log_str_size + sizeof(dlog::log_record));
+    if (w.type == dlog::log_record::logrec_type::INSERT) {
+      dlog::log_insert_key(lb, w.fid, w.oid, (char *)w.str, log_str_size);
+      dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+    } else if (w.type == dlog::log_record::logrec_type::UPDATE) {
+      dlog::log_update_key(lb, w.fid, w.oid, (char *)w.str, log_str_size);
+      dlog::log_update(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
     }
     ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
 
     // Set persistent address
-    auto size_code = encode_size_aligned(w.size);
-    fat_ptr pdest = LSN::make(log->get_id(), lb_lsn + off, segnum, size_code).to_ptr();
-    object->SetPersistentAddress(pdest);
+    auto tuple_size_code = encode_size_aligned(w.size);
+    fat_ptr tuple_pdest = LSN::make(log->get_id(), lb_lsn + tuple_off, segnum, tuple_size_code).to_ptr();
+    object->SetPersistentAddress(tuple_pdest);
     ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
 
     // Set CSN
@@ -244,6 +295,15 @@ rc_t transaction::si_commit() {
   }
   // ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
 
+#ifdef COPYDDL
+  if (is_ddl()) {
+    //printf("free bufs\n");
+    for (std::vector<char *>::iterator buf = bufs.begin(); buf != bufs.end(); buf++) {  
+      free(*buf);
+    }
+  }
+#endif
+
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!
   // This is when (committed) tuple data are made visible to readers
@@ -251,6 +311,17 @@ rc_t transaction::si_commit() {
   return rc_t{RC_TRUE};
 }
 #endif
+
+#ifdef COPYDDL
+void transaction::changed_data_capture() {
+  for (uint i = 0; i < config::MAX_THREADS; i++) {
+    dlog::tls_log *tlog = dlog::tlogs[i];
+    uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
+    if (tlog && i != thread::MyId() && csn) {
+      tlog->cdc(this, xc->begin, xc->end, bufs);
+    }
+  }
+}
 
 bool transaction::DMLConsistencyHandler() {
   TXN::xid_context *tmp_xc = TXN::xid_get_context(xid);
@@ -278,6 +349,7 @@ bool transaction::DMLConsistencyHandler() {
 
   return false;
 }
+#endif
 
 // returns true if btree versions have changed, ie there's phantom
 bool transaction::MasstreeCheckPhantom() {
@@ -402,7 +474,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
       ASSERT(XID::from_ptr(prev->sstamp) == xc->owner);
       ASSERT(tuple->NextVolatile() == prev);
 #endif
-      add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid, tuple->size, false);
+      add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid, tuple->size, dlog::log_record::logrec_type::UPDATE, k);
       prev_persistent_ptr = prev_obj->GetPersistentAddress();
     }
 
@@ -460,7 +532,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
   }
 }
 
-OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple) {
+OID transaction::Insert(TableDescriptor *td, const varstr *k, varstr *value, dbtuple **out_tuple) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
 
@@ -475,7 +547,7 @@ OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple)
   oidmgr->oid_put_new(tuple_array, oid, new_head);
 
   ASSERT(tuple->size == value->size());
-  add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid, tuple->size, true);
+  add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid, tuple->size, dlog::log_record::logrec_type::INSERT, k);
 
   if (out_tuple) {
     *out_tuple = tuple;

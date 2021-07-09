@@ -885,7 +885,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
       return false;
     }
 
-    /*if (state == TXN::TXN_COMMITTING) {
+    if (state == TXN::TXN_COMMITTING) {
       ASSERT(owner == holder_xid);
       if (holder_lsn) {
 	// holder has finished SetClsn(), just retry
@@ -899,7 +899,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
           return false;
 	}
       }
-    }*/
+    }
 
     if (state == TXN::TXN_CMMTD) {
       ASSERT(volatile_read(holder->end));

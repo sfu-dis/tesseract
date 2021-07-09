@@ -39,6 +39,10 @@ public:
   
   virtual PROMISE(rc_t) CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t) = 0;
 
+#ifdef COPYDDL
+  virtual PROMISE(void) changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn) = 0;
+#endif
+
   // Get a record with a key of length keylen. The underlying DB does not manage
   // the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
   virtual PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,

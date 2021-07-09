@@ -43,10 +43,11 @@ struct write_record_t {
   FID fid;
   OID oid;
   uint64_t size;
-  bool is_insert;
-  write_record_t(fat_ptr *entry, FID fid, OID oid, uint64_t size, bool insert)
-    : entry(entry), fid(fid), oid(oid), size(size), is_insert(insert) {}
-  write_record_t() : entry(nullptr), fid(0), oid(0), size(0), is_insert(false) {}
+  dlog::log_record::logrec_type type;
+  const varstr *str;
+  write_record_t(fat_ptr *entry, FID fid, OID oid, uint64_t size, dlog::log_record::logrec_type type, const varstr *str)
+    : entry(entry), fid(fid), oid(oid), size(size), type(type), str(str) {}
+  write_record_t() : entry(nullptr), fid(0), oid(0), size(0), type(dlog::log_record::logrec_type::INVALID), str(nullptr) {}
   inline Object *get_object() { return (Object *)entry->offset(); }
 };
 
@@ -56,17 +57,18 @@ struct write_set_t {
   write_record_t entries[kMaxEntries];
   write_record_t *entries_;
   write_set_t() : num_entries(0) {}
-  inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid, uint32_t size, bool insert) {
+  inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid, uint32_t size, dlog::log_record::logrec_type type, const varstr *str) {
     if (is_ddl) {
-    ALWAYS_ASSERT(num_entries < kMaxEntries_);
-    new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, insert);
-    ++num_entries;
-    ASSERT(entries_[num_entries - 1].entry == oe);
+      if (num_entries >= kMaxEntries_) { printf("beyond\n"); }
+      ALWAYS_ASSERT(num_entries < kMaxEntries_);
+      new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, type, str);
+      ++num_entries;
+      ASSERT(entries_[num_entries - 1].entry == oe);
     } else {
-    ALWAYS_ASSERT(num_entries < kMaxEntries);
-    new (&entries[num_entries]) write_record_t(oe, fid, oid, size, insert);
-    ++num_entries;
-    ASSERT(entries[num_entries - 1].entry == oe);
+      ALWAYS_ASSERT(num_entries < kMaxEntries);
+      new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type, str);
+      ++num_entries;
+      ASSERT(entries[num_entries - 1].entry == oe);
     }
   }
   inline uint32_t size() { return num_entries; }
@@ -146,12 +148,16 @@ protected:
   rc_t si_commit();
 #endif
 
+#ifdef COPYDDL
+  void changed_data_capture();
   bool DMLConsistencyHandler();
+#endif
+  
   bool MasstreeCheckPhantom();
   void Abort();
 
   // Insert a record to the underlying table
-  OID Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple = nullptr);
+  OID Insert(TableDescriptor *td, const varstr *k, varstr *value, dbtuple **out_tuple = nullptr);
 
   rc_t Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
 
@@ -172,7 +178,7 @@ public:
 
   inline str_arena &string_allocator() { return *sa; }
 
-  inline void add_to_write_set(bool is_ddl, fat_ptr *entry, FID fid, OID oid, uint64_t size, bool insert) {
+  inline void add_to_write_set(bool is_ddl, fat_ptr *entry, FID fid, OID oid, uint64_t size, dlog::log_record::logrec_type type, const varstr *str) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto &w = write_set[i];
@@ -183,11 +189,18 @@ public:
 
     // Work out the encoded size to be added to the log block later
     auto logrec_size = align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
-    log_size += logrec_size;
-    write_set.emplace_back(is_ddl, entry, fid, oid, logrec_size, insert);
+    auto str_size = align_up(str->size() + sizeof(varstr) + sizeof(dlog::log_record));
+    log_size += logrec_size + str_size;
+    write_set.emplace_back(is_ddl, entry, fid, oid, logrec_size, type, str);
   }
 
   inline TXN::xid_context *GetXIDContext() { return xc; }
+
+#ifdef COPYDDL
+  inline void set_table_index(OrderedIndex *_table_index) { table_index = _table_index; }
+  
+  inline std::vector<char *> get_bufs() { return bufs; }
+#endif
 
  protected:
   const uint64_t flags;
@@ -197,7 +210,11 @@ public:
   uint32_t log_size;
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
+#ifdef COPYDDL
   std::unordered_map<TableDescriptor*, OID> schema_read_map;
+  OrderedIndex *table_index;
+  std::vector<char *> bufs;
+#endif
   util::timer t;
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)

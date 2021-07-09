@@ -1048,7 +1048,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_InsertRecord(transact
 
   // Insert to the table first
   dbtuple *tuple = nullptr;
-  OID oid = t->Insert(table_descriptor, &value, &tuple);
+  OID oid = t->Insert(table_descriptor, &key, &value, &tuple);
 
   // Done with table record, now set up index
   ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));

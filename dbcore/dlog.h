@@ -133,6 +133,8 @@ public:
 
   inline uint32_t get_id() { return id; }
 
+  inline std::vector<segment> *get_segments() { return &segments; }
+
   inline uint64_t get_logbuf_size() { return logbuf_size; }
 
   inline uint64_t get_latest_csn() { return latest_csn; }
@@ -162,6 +164,9 @@ public:
 
   // Last flush
   void last_flush();
+
+  // CDC
+  void cdc(transaction *t, uint64_t begin_csn, uint64_t end_csn, std::vector<char *> bufs);
 };
 
 extern tls_log *tlogs[config::MAX_THREADS];

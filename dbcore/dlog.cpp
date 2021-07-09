@@ -168,6 +168,7 @@ void tls_log::create_segment() {
   char buf[SEGMENT_FILE_NAME_BUFSZ];
   size_t n = snprintf(buf, sizeof(buf), SEGMENT_FILE_NAME_FMT, id, (unsigned int)segments.size());
   DIR *logdir = opendir(dir);
+  if (logdir == nullptr) printf("logdir null\n");
   ALWAYS_ASSERT(logdir);
   segments.emplace_back(dirfd(logdir), buf);
 }

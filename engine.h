@@ -106,7 +106,7 @@ private:
   TableDescriptor *td;
 
 public:
-  rc_t Insert(transaction &t, varstr *value, OID *out_oid);
+  rc_t Insert(transaction &t, varstr *k, varstr *value, OID *out_oid);
   rc_t Update(transaction &t, OID oid, varstr &value);
   rc_t Read(transaction &t, OID oid, varstr *out_value);
   rc_t Remove(transaction &t, OID oid);
@@ -214,6 +214,10 @@ public:
   PROMISE(rc_t) WriteNormalTable1(str_arena *arena, OrderedIndex *old_oorder_table_index, OrderedIndex *order_line_table_index, transaction *t, varstr &value) override;
 
   PROMISE(rc_t) CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t) override;
+
+#ifdef COPYDDL
+  PROMISE(void) changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn) override;
+#endif
 
   PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   PROMISE(rc_t) UpdateRecord(transaction *t, const varstr &key, varstr &value) override;
