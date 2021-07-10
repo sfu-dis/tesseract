@@ -1,8 +1,8 @@
+#include "engine.h"
+#include "benchmarks/tpcc-common.h"
 #include "dbcore/rcu.h"
 #include "dbcore/sm-thread.h"
-#include "engine.h"
 #include "txn.h"
-#include "benchmarks/tpcc-common.h"
 
 namespace ermia {
 
@@ -12,10 +12,8 @@ thread_local dlog::tls_log tlog;
 dlog::tls_log *GetLog() {
   thread_local bool initialized = false;
   if (!initialized) {
-    tlog.initialize(config::log_dir.c_str(),
-                    thread::MyId(),
-                    numa_node_of_cpu(sched_getcpu()),
-                    config::log_buffer_mb,
+    tlog.initialize(config::log_dir.c_str(), thread::MyId(),
+                    numa_node_of_cpu(sched_getcpu()), config::log_buffer_mb,
                     config::log_segment_mb);
     initialized = true;
     dlog::tlogs[thread::MyId()] = &tlog;
@@ -24,10 +22,10 @@ dlog::tls_log *GetLog() {
 }
 
 class ddl_add_column_scan_callback : public OrderedIndex::ScanCallback {
- public:
-  ddl_add_column_scan_callback(OrderedIndex *index, transaction *t, 
-		  uint64_t schema_version, ermia::str_arena *arena)
-	  : _index(index), _txn(t), _version(schema_version) {}
+public:
+  ddl_add_column_scan_callback(OrderedIndex *index, transaction *t,
+                               uint64_t schema_version, ermia::str_arena *arena)
+      : _index(index), _txn(t), _version(schema_version) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const varstr &value) {
     MARK_REFERENCED(value);
     // _arena->reset();
@@ -104,7 +102,9 @@ class ddl_add_column_scan_callback : public OrderedIndex::ScanCallback {
   rc_t invoke_status = rc_t{RC_TRUE};
 };
 
-rc_t ConcurrentMasstreeIndex::WriteSchemaTable(transaction *t, rc_t &rc, const varstr &key, varstr &value) {
+rc_t ConcurrentMasstreeIndex::WriteSchemaTable(transaction *t, rc_t &rc,
+                                               const varstr &key,
+                                               varstr &value) {
   rc = UpdateRecord(t, key, value);
   if (rc._val != RC_TRUE) {
     printf("DDL schema update false\n");
@@ -115,10 +115,12 @@ rc_t ConcurrentMasstreeIndex::WriteSchemaTable(transaction *t, rc_t &rc, const v
   return rc;
 }
 
-void ConcurrentMasstreeIndex::ReadSchemaTable(transaction *t, rc_t &rc, const varstr &key,
-                                        varstr &value, OID *out_oid) {
+void ConcurrentMasstreeIndex::ReadSchemaTable(transaction *t, rc_t &rc,
+                                              const varstr &key, varstr &value,
+                                              OID *out_oid) {
   GetRecord(t, rc, key, value, out_oid);
-  if (rc._val != RC_TRUE) printf("Read schema table failed\n");
+  if (rc._val != RC_TRUE)
+    printf("Read schema table failed\n");
   ALWAYS_ASSERT(rc._val == RC_TRUE);
 
 #ifdef COPYDDL
@@ -130,7 +132,9 @@ void ConcurrentMasstreeIndex::ReadSchemaTable(transaction *t, rc_t &rc, const va
 #endif
 }
 
-rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena, OrderedIndex *index, transaction *t, varstr &value) {
+rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
+                                               OrderedIndex *index,
+                                               transaction *t, varstr &value) {
   rc_t r;
 #ifdef COPYDDL
   struct Schema_record schema;
@@ -159,23 +163,21 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena, OrderedIndex *i
     for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
       // printf("d: %u\n", d);
       for (uint l = 1; l <= 15; l++) {
-	// printf("c: %u\n", c);
-	const order_line::key k_ol_0(w, d, 1, l);
-	const order_line::key k_ol_1(w, d, std::numeric_limits<int32_t>::max(), l);
-	varstr *start_key = arena->next(::Size(k_ol_0));
-	if (!start_key) {
-	  arena = new ermia::str_arena(ermia::config::arena_size_mb);
-          start_key = arena->next(::Size(k_ol_0));
-	}
-	varstr *end_key = arena->next(::Size(k_ol_1));
+        // printf("c: %u\n", c);
+        const order_line::key k_ol_0(w, d, 1, l);
+        const order_line::key k_ol_1(w, d, std::numeric_limits<int32_t>::max(),
+  l); varstr *start_key = arena->next(::Size(k_ol_0)); if (!start_key) { arena =
+  new ermia::str_arena(ermia::config::arena_size_mb); start_key =
+  arena->next(::Size(k_ol_0));
+        }
+        varstr *end_key = arena->next(::Size(k_ol_1));
         if (!end_key) {
-	  arena = new ermia::str_arena(ermia::config::arena_size_mb);
+          arena = new ermia::str_arena(ermia::config::arena_size_mb);
           end_key = arena->next(::Size(k_ol_1));
-	}
-	r = index->Scan(t, Encode(*start_key, k_ol_0), &Encode(*end_key, k_ol_1), c_add_column, arena);
-        if (r._val != RC_TRUE) {
-          printf("DDL scan false\n");
-          return r;
+        }
+        r = index->Scan(t, Encode(*start_key, k_ol_0), &Encode(*end_key,
+  k_ol_1), c_add_column, arena); if (r._val != RC_TRUE) { printf("DDL scan
+  false\n"); return r;
         }
       }
     }
@@ -204,17 +206,17 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena, OrderedIndex *i
   return c_add_column.invoke_status;
 }
 
-class ddl_precompute_aggregate_scan_callback : public OrderedIndex::ScanCallback {
- public:
-  ddl_precompute_aggregate_scan_callback(
-		  OrderedIndex *oorder_table_index, 
-		  OrderedIndex *order_line_table_index, 
-		  transaction *t,
-                  uint64_t schema_version, 
-		  ermia::str_arena *arena)
-          : _oorder_table_index(oorder_table_index), 
-	  _order_line_table_index(order_line_table_index),
-	  _txn(t), _version(schema_version) {}
+class ddl_precompute_aggregate_scan_callback
+    : public OrderedIndex::ScanCallback {
+public:
+  ddl_precompute_aggregate_scan_callback(OrderedIndex *oorder_table_index,
+                                         OrderedIndex *order_line_table_index,
+                                         transaction *t,
+                                         uint64_t schema_version,
+                                         ermia::str_arena *arena)
+      : _oorder_table_index(oorder_table_index),
+        _order_line_table_index(order_line_table_index), _txn(t),
+        _version(schema_version) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const varstr &value) {
     MARK_REFERENCED(value);
 
@@ -243,12 +245,11 @@ class ddl_precompute_aggregate_scan_callback : public OrderedIndex::ScanCallback
     if (!k_ol_1_str) {
       _arena = new ermia::str_arena(ermia::config::arena_size_mb);
       k_ol_1_str = _arena->next(Size(k_ol_1));
-    } 
+    }
 
-    _order_line_table_index
-                  ->Scan(_txn, Encode(*k_ol_0_str, k_ol_0),
-                         &Encode(*k_ol_1_str, k_ol_1), c_ol);
-    
+    _order_line_table_index->Scan(_txn, Encode(*k_ol_0_str, k_ol_0),
+                                  &Encode(*k_ol_1_str, k_ol_1), c_ol);
+
     oorder::value v_oo_temp;
     const oorder::value *v_oo = Decode(value, v_oo_temp);
 
@@ -293,7 +294,9 @@ class ddl_precompute_aggregate_scan_callback : public OrderedIndex::ScanCallback
   rc_t invoke_status = rc_t{RC_INVALID};
 };
 
-rc_t ConcurrentMasstreeIndex::WriteNormalTable1(str_arena *arena, OrderedIndex *old_oorder_table_index, OrderedIndex *order_line_table_index, transaction *t, varstr &value) {
+rc_t ConcurrentMasstreeIndex::WriteNormalTable1(
+    str_arena *arena, OrderedIndex *old_oorder_table_index,
+    OrderedIndex *order_line_table_index, transaction *t, varstr &value) {
   rc_t r;
 #ifdef COPYDDL
   struct Schema_record schema;
@@ -304,9 +307,11 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable1(str_arena *arena, OrderedIndex *
   uint64_t schema_version = schema.v;
 
 #ifdef COPYDDL
-  ddl_precompute_aggregate_scan_callback c_precompute_aggregate(this, order_line_table_index, t, schema_version, arena);
+  ddl_precompute_aggregate_scan_callback c_precompute_aggregate(
+      this, order_line_table_index, t, schema_version, arena);
 #else
-  ddl_precompute_aggregate_scan_callback c_precompute_aggregate(old_oorder_table_index, order_line_table_index, t, schema_version, arena);
+  ddl_precompute_aggregate_scan_callback c_precompute_aggregate(
+      old_oorder_table_index, order_line_table_index, t, schema_version, arena);
 #endif
 
   const oorder::key k_oo_0(1, 1, 1);
@@ -315,21 +320,24 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable1(str_arena *arena, OrderedIndex *
     arena = new ermia::str_arena(ermia::config::arena_size_mb);
     start_key = arena->next(::Size(k_oo_0));
   }
-  r = old_oorder_table_index->Scan(t, Encode(*start_key, k_oo_0), nullptr, c_precompute_aggregate, arena);
+  r = old_oorder_table_index->Scan(t, Encode(*start_key, k_oo_0), nullptr,
+                                   c_precompute_aggregate, arena);
   if (r._val != RC_TRUE) {
     printf("DDL scan false\n");
     return r;
   }
 
-  printf("scan invoke status: %hu\n", c_precompute_aggregate.invoke_status._val);
+  printf("scan invoke status: %hu\n",
+         c_precompute_aggregate.invoke_status._val);
 
   return c_precompute_aggregate.invoke_status;
 }
 
 class ddl_add_constraint_scan_callback : public OrderedIndex::ScanCallback {
- public:
-  ddl_add_constraint_scan_callback(OrderedIndex *index, transaction *t, ermia::str_arena *arena)
-          : _index(index), _txn(t), _arena(arena) {}
+public:
+  ddl_add_constraint_scan_callback(OrderedIndex *index, transaction *t,
+                                   ermia::str_arena *arena)
+      : _index(index), _txn(t), _arena(arena) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const varstr &value) {
     MARK_REFERENCED(value);
     /*
@@ -349,7 +357,9 @@ class ddl_add_constraint_scan_callback : public OrderedIndex::ScanCallback {
   rc_t invoke_status = rc_t{RC_TRUE};
 };
 
-rc_t ConcurrentMasstreeIndex::CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t) {
+rc_t ConcurrentMasstreeIndex::CheckNormalTable(str_arena *arena,
+                                               OrderedIndex *index,
+                                               transaction *t) {
   rc_t r;
 
   ddl_add_constraint_scan_callback c_add_constraint(this, t, arena);
@@ -370,318 +380,344 @@ rc_t ConcurrentMasstreeIndex::CheckNormalTable(str_arena *arena, OrderedIndex *i
 }
 
 #ifdef COPYDDL
-void ConcurrentMasstreeIndex::changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn) {
+void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
+                                                   uint64_t begin_csn,
+                                                   uint64_t end_csn) {
   printf("cdc begins\n");
   for (uint i = 0; i < config::MAX_THREADS; i++) {
     dlog::tls_log *tlog = dlog::tlogs[i];
     uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
     if (tlog && i != thread::MyId() && csn) {
       std::vector<dlog::segment> *segments = tlog->get_segments();
-      //printf("log %u cdc, seg size: %lu\n", tlog->get_id(), segments->size());
+      // printf("log %u cdc, seg size: %lu\n", tlog->get_id(),
+      // segments->size());
       bool stop_scan = false;
-      for (std::vector<dlog::segment>::reverse_iterator seg = segments->rbegin(); seg != segments->rend(); seg++) { 
+      for (std::vector<dlog::segment>::reverse_iterator seg =
+               segments->rbegin();
+           seg != segments->rend(); seg++) {
         uint64_t offset_in_seg = 0;
         uint64_t data_sz = seg->size;
-        //printf("seg size: %lu\n", data_sz);
+        // printf("seg size: %lu\n", data_sz);
         char *data_buf = (char *)malloc(data_sz);
         t->get_bufs().emplace_back(data_buf);
         size_t m = os_pread(seg->fd, (char *)data_buf, data_sz, offset_in_seg);
-        uint64_t block_sz = sizeof(dlog::log_block), logrec_sz = sizeof(dlog::log_record), tuple_sc = sizeof(dbtuple);
-      
+        uint64_t block_sz = sizeof(dlog::log_block),
+                 logrec_sz = sizeof(dlog::log_record),
+                 tuple_sc = sizeof(dbtuple);
+
         while (offset_in_seg < data_sz) {
-          dlog::log_block *header = (dlog::log_block *)(data_buf + offset_in_seg);
+          dlog::log_block *header =
+              (dlog::log_block *)(data_buf + offset_in_seg);
           if (begin_csn < header->csn && header->csn < end_csn) {
             uint64_t offset_in_block = 0;
-	    varstr *insert_key, *update_key;
+            varstr *insert_key, *update_key;
             while (offset_in_block < header->payload_size) {
-              dlog::log_record *logrec = (dlog::log_record *)(data_buf + offset_in_seg + block_sz + offset_in_block);
+              dlog::log_record *logrec =
+                  (dlog::log_record *)(data_buf + offset_in_seg + block_sz +
+                                       offset_in_block);
               ALWAYS_ASSERT(logrec->oid);
-      	      ALWAYS_ASSERT(logrec->fid);
-      	      //printf("logrec->fid: %u, logrec->rec_size: %u\n", logrec->fid, logrec->rec_size);
-      	      ALWAYS_ASSERT(logrec->rec_size);
-      	      ALWAYS_ASSERT(logrec->data);
-              //varstr valptr;
-	      //rc_t rc = rc_t{RC_INVALID};
-	      OID oid = INVALID_OID;
-	      ConcurrentMasstree::versioned_node_t sinfo;
+              ALWAYS_ASSERT(logrec->fid);
+              // printf("logrec->fid: %u, logrec->rec_size: %u\n", logrec->fid,
+              // logrec->rec_size);
+              ALWAYS_ASSERT(logrec->rec_size);
+              ALWAYS_ASSERT(logrec->data);
+              // varstr valptr;
+              // rc_t rc = rc_t{RC_INVALID};
+              OID oid = INVALID_OID;
+              ConcurrentMasstree::versioned_node_t sinfo;
 
-	      if (logrec->type == dlog::log_record::logrec_type::INSERT) {
-	        //this->GetRecord(t, rc, *insert_key, valptr);
-		//if (rc._val == RC_FALSE) {
-		//bool found = AWAIT masstree_.search(*insert_key, oid, t->xc->begin_epoch, &sinfo);
-                //if (!found) {
-	 	  dbtuple *tuple = (dbtuple *)(logrec->data);
-                  //printf("cdc insert, tuple->size: %u\n", tuple->size);
-		  varstr value(tuple->get_value_start(), tuple->size);
-	          this->InsertRecord(t, *insert_key, value);
-	        //}
-	      } else if (logrec->type == dlog::log_record::logrec_type::UPDATE) {
-		//this->GetRecord(t, rc, *update_key, valptr);
-                //if (rc._val == RC_FALSE) {
-		//bool found = AWAIT masstree_.search(*update_key, oid, t->xc->begin_epoch, &sinfo);
-                //if (!found) {
-		  dbtuple *tuple = (dbtuple *)(logrec->data);
-                  //printf("cdc update, tuple->size: %u\n", tuple->size);
-	          varstr value(tuple->get_value_start(), tuple->size);
-		  this->UpdateRecord(t, *update_key, value);
-	        //}
-              } else if (logrec->type == dlog::log_record::logrec_type::INSERT_KEY) {
-	        insert_key = (varstr *)(logrec->data);
-	      } else if (logrec->type == dlog::log_record::logrec_type::UPDATE_KEY) {
-	        update_key = (varstr *)(logrec->data);
-	      } else if (logrec->type == dlog::log_record::logrec_type::INVALID) {
-	      } else {
-	        printf("unknown type\n");
-	      }
+              if (logrec->type == dlog::log_record::logrec_type::INSERT) {
+                // this->GetRecord(t, rc, *insert_key, valptr);
+                // if (rc._val == RC_FALSE) {
+                // bool found = AWAIT masstree_.search(*insert_key, oid,
+                // t->xc->begin_epoch, &sinfo); if (!found) {
+                dbtuple *tuple = (dbtuple *)(logrec->data);
+                // printf("cdc insert, tuple->size: %u\n", tuple->size);
+                varstr value(tuple->get_value_start(), tuple->size);
+                this->InsertRecord(t, *insert_key, value);
+                //}
+              } else if (logrec->type ==
+                         dlog::log_record::logrec_type::UPDATE) {
+                // this->GetRecord(t, rc, *update_key, valptr);
+                // if (rc._val == RC_FALSE) {
+                // bool found = AWAIT masstree_.search(*update_key, oid,
+                // t->xc->begin_epoch, &sinfo); if (!found) {
+                dbtuple *tuple = (dbtuple *)(logrec->data);
+                // printf("cdc update, tuple->size: %u\n", tuple->size);
+                varstr value(tuple->get_value_start(), tuple->size);
+                this->UpdateRecord(t, *update_key, value);
+                //}
+              } else if (logrec->type ==
+                         dlog::log_record::logrec_type::INSERT_KEY) {
+                insert_key = (varstr *)(logrec->data);
+              } else if (logrec->type ==
+                         dlog::log_record::logrec_type::UPDATE_KEY) {
+                update_key = (varstr *)(logrec->data);
+              } else if (logrec->type ==
+                         dlog::log_record::logrec_type::INVALID) {
+              } else {
+                printf("unknown type\n");
+              }
 
-	      /*
-	      Object* obj = new (MM::allocate(tuple->size))
-	      Object(logrec->data, NULL_PTR, 0, config::eager_warm_up());
-	      obj->SetClsn(logrec->data);
-	      ASSERT(obj->GetClsn().asi_type() == fat_ptr::ASI_LOG);
-	      */
-      
-	      offset_in_block += logrec->rec_size;
-	    }
-	  } else {
+              /*
+              Object* obj = new (MM::allocate(tuple->size))
+              Object(logrec->data, NULL_PTR, 0, config::eager_warm_up());
+              obj->SetClsn(logrec->data);
+              ASSERT(obj->GetClsn().asi_type() == fat_ptr::ASI_LOG);
+              */
+
+              offset_in_block += logrec->rec_size;
+            }
+          } else {
             stop_scan = true;
-	    if (header->csn < end_csn) { 
-	      //printf("header->csn < end_csn\n"); 
-	      break;
-	    }
-	  }
-	  offset_in_seg += header->payload_size + block_sz;
-	  // printf("payload_size: %u\n", header->payload_size);
-	}
-    
-	// printf("offset_in_seg: %lu\n", offset_in_seg);
-	
-	if (stop_scan) break;
+            if (header->csn < end_csn) {
+              // printf("header->csn < end_csn\n");
+              break;
+            }
+          }
+          offset_in_seg += header->payload_size + block_sz;
+          // printf("payload_size: %u\n", header->payload_size);
+        }
+
+        // printf("offset_in_seg: %lu\n", offset_in_seg);
+
+        if (stop_scan)
+          break;
       }
     }
   }
 }
 #endif
 
-	// Engine initialization, including creating the OID, log, and checkpoint
-	// managers and recovery if needed.
-	Engine::Engine() {
-	  config::sanity_check();
-	  ALWAYS_ASSERT(config::log_dir.size());
-	  ALWAYS_ASSERT(!oidmgr);
-	  sm_oid_mgr::create();
-	  ALWAYS_ASSERT(oidmgr);
-	}
+// Engine initialization, including creating the OID, log, and checkpoint
+// managers and recovery if needed.
+Engine::Engine() {
+  config::sanity_check();
+  ALWAYS_ASSERT(config::log_dir.size());
+  ALWAYS_ASSERT(!oidmgr);
+  sm_oid_mgr::create();
+  ALWAYS_ASSERT(oidmgr);
+}
 
-	TableDescriptor *Engine::CreateTable(const char *name) {
-	  auto *td = Catalog::NewTable(name);
+TableDescriptor *Engine::CreateTable(const char *name) {
+  auto *td = Catalog::NewTable(name);
 
-	  if (true) { //!sm_log::need_recovery) {
-	    // Note: this will insert to the log and therefore affect min_flush_lsn,
-	    // so must be done in an sm-thread which must be created by the user
-	    // application (not here in ERMIA library).
-	    //ASSERT(ermia::logmgr);
+  if (true) { //! sm_log::need_recovery) {
+    // Note: this will insert to the log and therefore affect min_flush_lsn,
+    // so must be done in an sm-thread which must be created by the user
+    // application (not here in ERMIA library).
+    // ASSERT(ermia::logmgr);
 
-	    // TODO(tzwang): perhaps make this transactional to allocate it from
-	    // transaction string arena to avoid malloc-ing memory (~10k size).
-	    //char *log_space = (char *)malloc(sizeof(sm_tx_log));
-	    //ermia::sm_tx_log *log = ermia::logmgr->new_tx_log(log_space);
-	    td->Initialize();
-	    //log->log_table(td->GetTupleFid(), td->GetKeyFid(), td->GetName());
-	    //log->commit(nullptr);
-	    //free(log_space);
-	  }
-	  return td;
-	}
+    // TODO(tzwang): perhaps make this transactional to allocate it from
+    // transaction string arena to avoid malloc-ing memory (~10k size).
+    // char *log_space = (char *)malloc(sizeof(sm_tx_log));
+    // ermia::sm_tx_log *log = ermia::logmgr->new_tx_log(log_space);
+    td->Initialize();
+    // log->log_table(td->GetTupleFid(), td->GetKeyFid(), td->GetName());
+    // log->commit(nullptr);
+    // free(log_space);
+  }
+  return td;
+}
 
-	void Engine::LogIndexCreation(bool primary, FID table_fid, FID index_fid, const std::string &index_name) {
-	  /*
-	  if (!sm_log::need_recovery) {
-	    // Note: this will insert to the log and therefore affect min_flush_lsn,
-	    // so must be done in an sm-thread which must be created by the user
-	    // application (not here in ERMIA library).
-	    ASSERT(ermia::logmgr);
+void Engine::LogIndexCreation(bool primary, FID table_fid, FID index_fid,
+                              const std::string &index_name) {
+  /*
+  if (!sm_log::need_recovery) {
+    // Note: this will insert to the log and therefore affect min_flush_lsn,
+    // so must be done in an sm-thread which must be created by the user
+    // application (not here in ERMIA library).
+    ASSERT(ermia::logmgr);
 
-	    // TODO(tzwang): perhaps make this transactional to allocate it from
-	    // transaction string arena to avoid malloc-ing memory (~10k size).
-	    char *log_space = (char *)malloc(sizeof(sm_tx_log));
-	    ermia::sm_tx_log *log = ermia::logmgr->new_tx_log(log_space);
-	    log->log_index(table_fid, index_fid, index_name, primary);
-	    log->commit(nullptr);
-	    free(log_space);
-	  }
-	  */
-	}
+    // TODO(tzwang): perhaps make this transactional to allocate it from
+    // transaction string arena to avoid malloc-ing memory (~10k size).
+    char *log_space = (char *)malloc(sizeof(sm_tx_log));
+    ermia::sm_tx_log *log = ermia::logmgr->new_tx_log(log_space);
+    log->log_index(table_fid, index_fid, index_name, primary);
+    log->commit(nullptr);
+    free(log_space);
+  }
+  */
+}
 
-	void Engine::CreateIndex(const char *table_name, const std::string &index_name, bool is_primary) {
-	  auto *td = Catalog::GetTable(table_name);
-	  ALWAYS_ASSERT(td);
-	  auto *index = new ConcurrentMasstreeIndex(table_name, is_primary);
-	  if (is_primary) {
-	    td->SetPrimaryIndex(index, index_name);
-	  } else {
-	    td->AddSecondaryIndex(index, index_name);
-	  }
-	  FID index_fid = index->GetIndexFid();
-	  LogIndexCreation(is_primary, td->GetTupleFid(), index_fid, index_name);
-	}
+void Engine::CreateIndex(const char *table_name, const std::string &index_name,
+                         bool is_primary) {
+  auto *td = Catalog::GetTable(table_name);
+  ALWAYS_ASSERT(td);
+  auto *index = new ConcurrentMasstreeIndex(table_name, is_primary);
+  if (is_primary) {
+    td->SetPrimaryIndex(index, index_name);
+  } else {
+    td->AddSecondaryIndex(index, index_name);
+  }
+  FID index_fid = index->GetIndexFid();
+  LogIndexCreation(is_primary, td->GetTupleFid(), index_fid, index_name);
+}
 
-	PROMISE(rc_t) ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
-					   const varstr *end_key, ScanCallback &callback, str_arena *arena) {
-	  SearchRangeCallback c(callback);
-	  ASSERT(c.return_code._val == RC_FALSE);
+PROMISE(rc_t)
+ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
+                              const varstr *end_key, ScanCallback &callback,
+                              str_arena *arena) {
+  SearchRangeCallback c(callback);
+  ASSERT(c.return_code._val == RC_FALSE);
 
-	  t->ensure_active();
-	  if (end_key) {
-	    VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
-			      << ")::search_range_call [" << util::hexify(start_key)
-			      << ", " << util::hexify(*end_key) << ")" << std::endl);
-	  } else {
-	    VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
-			      << ")::search_range_call [" << util::hexify(start_key)
-			      << ", +inf)" << std::endl);
-	  }
+  t->ensure_active();
+  if (end_key) {
+    VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
+                      << ")::search_range_call [" << util::hexify(start_key)
+                      << ", " << util::hexify(*end_key) << ")" << std::endl);
+  } else {
+    VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
+                      << ")::search_range_call [" << util::hexify(start_key)
+                      << ", +inf)" << std::endl);
+  }
 
-	  if (!unlikely(end_key && *end_key <= start_key)) {
-	    XctSearchRangeCallback cb(t, &c);
-	    AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr, cb, t->xc);
-	  }
-	  RETURN c.return_code;
-	}
+  if (!unlikely(end_key && *end_key <= start_key)) {
+    XctSearchRangeCallback cb(t, &c);
+    AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
+                                      cb, t->xc);
+  }
+  RETURN c.return_code;
+}
 
-	PROMISE(rc_t) ConcurrentMasstreeIndex::ReverseScan(transaction *t,
-						  const varstr &start_key,
-						  const varstr *end_key,
-						  ScanCallback &callback,
-						  str_arena *arena) {
-	  SearchRangeCallback c(callback);
-	  ASSERT(c.return_code._val == RC_FALSE);
+PROMISE(rc_t)
+ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
+                                     const varstr *end_key,
+                                     ScanCallback &callback, str_arena *arena) {
+  SearchRangeCallback c(callback);
+  ASSERT(c.return_code._val == RC_FALSE);
 
-	  t->ensure_active();
-	  if (!unlikely(end_key && start_key <= *end_key)) {
-	    XctSearchRangeCallback cb(t, &c);
+  t->ensure_active();
+  if (!unlikely(end_key && start_key <= *end_key)) {
+    XctSearchRangeCallback cb(t, &c);
 
-	    varstr lowervk;
-	    if (end_key) {
-	      lowervk = *end_key;
-	    }
-	    AWAIT masstree_.rsearch_range_call(start_key, end_key ? &lowervk : nullptr, cb,
-					 t->xc);
-	  }
-	  RETURN c.return_code;
-	}
+    varstr lowervk;
+    if (end_key) {
+      lowervk = *end_key;
+    }
+    AWAIT masstree_.rsearch_range_call(start_key, end_key ? &lowervk : nullptr,
+                                       cb, t->xc);
+  }
+  RETURN c.return_code;
+}
 
-	std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
-	  PurgeTreeWalker w;
-	  masstree_.tree_walk(w);
-	  masstree_.clear();
-	  return std::map<std::string, uint64_t>();
-	}
+std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
+  PurgeTreeWalker w;
+  masstree_.tree_walk(w);
+  masstree_.clear();
+  return std::map<std::string, uint64_t>();
+}
 
-	PROMISE(void) ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
-						varstr &value, OID *out_oid) {
-	  OID oid = INVALID_OID;
-	  rc = {RC_INVALID};
-	  ConcurrentMasstree::versioned_node_t sinfo;
+PROMISE(void)
+ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
+                                   varstr &value, OID *out_oid) {
+  OID oid = INVALID_OID;
+  rc = {RC_INVALID};
+  ConcurrentMasstree::versioned_node_t sinfo;
 
-	  if (!t) {
-	    auto e = MM::epoch_enter();
-	    rc._val = AWAIT masstree_.search(key, oid, e, &sinfo) ? RC_TRUE : RC_FALSE;
-	    MM::epoch_exit(0, e);
-	  } else {
-	    t->ensure_active();
-	    bool found = AWAIT masstree_.search(key, oid, t->xc->begin_epoch, &sinfo);
+  if (!t) {
+    auto e = MM::epoch_enter();
+    rc._val = AWAIT masstree_.search(key, oid, e, &sinfo) ? RC_TRUE : RC_FALSE;
+    MM::epoch_exit(0, e);
+  } else {
+    t->ensure_active();
+    bool found = AWAIT masstree_.search(key, oid, t->xc->begin_epoch, &sinfo);
 
-	    dbtuple *tuple = nullptr;
-	    if (found) {
-	      // Key-OID mapping exists, now try to get the actual tuple to be sure
-	      tuple = AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oid, t->xc);
-	      if (!tuple) {
-		found = false;
-	      }
-	    }
+    dbtuple *tuple = nullptr;
+    if (found) {
+      // Key-OID mapping exists, now try to get the actual tuple to be sure
+      tuple = AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(),
+                                            oid, t->xc);
+      if (!tuple) {
+        found = false;
+      }
+    }
 
-	    if (found) {
-	      volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
-	    } else if (config::phantom_prot) {
-	      volatile_write(rc._val, DoNodeRead(t, sinfo.first, sinfo.second)._val);
-	    } else {
-	      volatile_write(rc._val, RC_FALSE);
-	    }
+    if (found) {
+      volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
+    } else if (config::phantom_prot) {
+      volatile_write(rc._val, DoNodeRead(t, sinfo.first, sinfo.second)._val);
+    } else {
+      volatile_write(rc._val, RC_FALSE);
+    }
 #ifndef SSN
-	    ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
+    ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
 #endif
-	  }
+  }
 
-	  if (out_oid) {
-	    *out_oid = oid;
-	  }
-	}
+  if (out_oid) {
+    *out_oid = oid;
+  }
+}
 
-	void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_begin(
-	    const typename ConcurrentMasstree::node_opaque_t *n) {
-	  ASSERT(spec_values.empty());
-	  spec_values = ConcurrentMasstree::ExtractValues(n);
-	}
+void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_begin(
+    const typename ConcurrentMasstree::node_opaque_t *n) {
+  ASSERT(spec_values.empty());
+  spec_values = ConcurrentMasstree::ExtractValues(n);
+}
 
-	void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_success() {
-	  spec_values.clear();
-	}
+void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_success() {
+  spec_values.clear();
+}
 
-	void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_failure() {
-	  spec_values.clear();
-	}
+void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_failure() {
+  spec_values.clear();
+}
 
-	PROMISE(bool) ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key,
-						     OID oid) {
-	  typename ConcurrentMasstree::insert_info_t ins_info;
-	  bool inserted = AWAIT masstree_.insert_if_absent(key, oid, t->xc, &ins_info);
+PROMISE(bool)
+ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key,
+                                        OID oid) {
+  typename ConcurrentMasstree::insert_info_t ins_info;
+  bool inserted = AWAIT masstree_.insert_if_absent(key, oid, t->xc, &ins_info);
 
-	  if (!inserted) {
-	    RETURN false;
-	  }
+  if (!inserted) {
+    RETURN false;
+  }
 
-	  if (config::phantom_prot && !t->masstree_absent_set.empty()) {
-	    // Update node version number
-	    ASSERT(ins_info.node);
-	    auto it = t->masstree_absent_set.find(ins_info.node);
-	    if (it != t->masstree_absent_set.end()) {
-	      if (unlikely(it->second != ins_info.old_version)) {
-		// Important: caller should unlink the version, otherwise we risk
-		// leaving a dead version at chain head -> infinite loop or segfault...
-		RETURN false;
-	      }
-	      // otherwise, bump the version
-	      it->second = ins_info.new_version;
-	    }
-	  }
-	  RETURN true;
-	}
+  if (config::phantom_prot && !t->masstree_absent_set.empty()) {
+    // Update node version number
+    ASSERT(ins_info.node);
+    auto it = t->masstree_absent_set.find(ins_info.node);
+    if (it != t->masstree_absent_set.end()) {
+      if (unlikely(it->second != ins_info.old_version)) {
+        // Important: caller should unlink the version, otherwise we risk
+        // leaving a dead version at chain head -> infinite loop or segfault...
+        RETURN false;
+      }
+      // otherwise, bump the version
+      it->second = ins_info.new_version;
+    }
+  }
+  RETURN true;
+}
 
-	////////////////// Index interfaces /////////////////
+////////////////// Index interfaces /////////////////
 
-	PROMISE(bool) ConcurrentMasstreeIndex::InsertOID(transaction *t, const varstr &key, OID oid) {
-	  bool inserted = AWAIT InsertIfAbsent(t, key, oid);
-	  if (inserted) {
-	    t->LogIndexInsert(this, oid, &key);
-	    if (config::enable_chkpt) {
-	      auto *key_array = GetTableDescriptor()->GetKeyArray();
-	      volatile_write(key_array->get(oid)->_ptr, 0);
-	    }
-	  }
-	  RETURN inserted;
-	}
+PROMISE(bool)
+ConcurrentMasstreeIndex::InsertOID(transaction *t, const varstr &key, OID oid) {
+  bool inserted = AWAIT InsertIfAbsent(t, key, oid);
+  if (inserted) {
+    t->LogIndexInsert(this, oid, &key);
+    if (config::enable_chkpt) {
+      auto *key_array = GetTableDescriptor()->GetKeyArray();
+      volatile_write(key_array->get(oid)->_ptr, 0);
+    }
+  }
+  RETURN inserted;
+}
 
-	PROMISE(rc_t) ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid) {
-	  // For primary index only
-	  ALWAYS_ASSERT(IsPrimary());
+PROMISE(rc_t)
+ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
+                                      varstr &value, OID *out_oid) {
+  // For primary index only
+  ALWAYS_ASSERT(IsPrimary());
 
-	  ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
-	  t->ensure_active();
+  ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
+  t->ensure_active();
 
-	  // Insert to the table first
-	  dbtuple *tuple = nullptr;
-	  OID oid = t->Insert(table_descriptor, &key, &value, &tuple);
+  // Insert to the table first
+  dbtuple *tuple = nullptr;
+  OID oid = t->Insert(table_descriptor, &key, &value, &tuple);
 
   // Done with table record, now set up index
   ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
@@ -697,8 +733,7 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t, uint64_t begi
     // XXX(tzwang): only need to install this key if we need chkpt; not a
     // realistic setting here to not generate it, the purpose of skipping
     // this is solely for benchmarking CC.
-    varstr *new_key =
-        (varstr *)MM::allocate(sizeof(varstr) + key.size());
+    varstr *new_key = (varstr *)MM::allocate(sizeof(varstr) + key.size());
     new (new_key) varstr((char *)new_key + sizeof(varstr), 0);
     new_key->copy_from(&key);
     auto *key_array = table_descriptor->GetKeyArray();
@@ -714,7 +749,9 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t, uint64_t begi
   RETURN rc_t{RC_TRUE};
 }
 
-PROMISE(rc_t) ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key, varstr &value) {
+PROMISE(rc_t)
+ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
+                                      varstr &value) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
@@ -731,7 +768,8 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr
   }
 }
 
-PROMISE(rc_t) ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key) {
+PROMISE(rc_t)
+ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
@@ -821,7 +859,8 @@ rc_t Table::Insert(transaction &t, varstr *k, varstr *value, OID *out_oid) {
 }
 
 rc_t Table::Read(transaction &t, OID oid, varstr *out_value) {
-  auto *tuple = sync_wait_coro(oidmgr->oid_get_version(td->GetTupleArray(), oid, t.GetXIDContext()));
+  auto *tuple = sync_wait_coro(
+      oidmgr->oid_get_version(td->GetTupleArray(), oid, t.GetXIDContext()));
   rc_t rc = {RC_INVALID};
   if (tuple) {
     // Record exists
@@ -843,9 +882,11 @@ rc_t Table::Remove(transaction &t, OID oid) {
 
 ////////////////// End of Table interfaces //////////
 
-OrderedIndex::OrderedIndex(std::string table_name, bool is_primary) : is_primary(is_primary) {
+OrderedIndex::OrderedIndex(std::string table_name, bool is_primary)
+    : is_primary(is_primary) {
   table_descriptor = Catalog::GetTable(table_name);
   self_fid = oidmgr->create_file(true);
 }
 
 } // namespace ermia
+
