@@ -42,11 +42,11 @@ uint32_t bench_worker::fetch_workload() {
       if (i == workload.size() - 1) {
 	ddl_num++;
 #ifdef COPYDDL
-        if (ddl_num != 1300) continue;
+        if (ddl_num != 5) continue;
 #else
 	if (ddl_num != 40) continue;
 #endif
-      } 
+      }
       return i;
     }
     d -= workload[i].frequency;
@@ -116,7 +116,9 @@ void bench_worker::MyWork(char *) {
   if (is_worker) {
     // Reset the tls committer
     tlog = ermia::GetLog();
-    tlog->reset_committer();
+    tlog->reset_committer(false);
+    ermia::volatile_write(ermia::_tls_commit_csn[ermia::thread::MyId()], 
+		   ermia::pcommit::lowest_csn.load(std::memory_order_relaxed));
     workload = get_workload();
     txn_counts.resize(workload.size());
     barrier_a->count_down();

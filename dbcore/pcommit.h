@@ -10,6 +10,7 @@ namespace pcommit {
 
 static const uint64_t DIRTY_FLAG = uint64_t{1} << 63;
 extern uint64_t *_tls_durable_csn CACHE_ALIGNED;
+extern std::atomic<uint64_t> lowest_csn;
 
 struct commit_queue {
   struct Entry {
@@ -66,7 +67,7 @@ public:
   void initialize(uint32_t id);
 
   // Reset a tls_committer to get a real latency for workloads
-  void reset();
+  void reset(bool zero);
 
   // Get the lowest tls durable csn among all threads
   uint64_t get_lowest_tls_durable_csn();

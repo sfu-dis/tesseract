@@ -54,7 +54,7 @@ if [ "$bench" == "tpcc" ]; then
     if [ "$workload" == "tpcc_contention" ]; then
       wh_spread="100"
     fi
-    $options -benchmark_options "--workload-mix="45,43,0,4,4,4,0,0" --warehouse-spread=$wh_spread $2"
+    $options -benchmark_options "--workload-mix="41,43,4,4,4,4,0,0" --warehouse-spread=$wh_spread $2"
   fi
 elif [ "$bench" == "tpce" ]; then
   if [ "$workload" == "tpce_org" ]; then

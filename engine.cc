@@ -49,6 +49,13 @@ public:
     varstr *d_v = _arena->next(sizeof(str2));
     */
 
+    order_line::key k_ol_temp;
+    const order_line::key *k_ol_test = Decode(*k, k_ol_temp);
+
+    /*if (k_ol_test->ol_w_id == 2 && k_ol_test->ol_d_id == 7 && k_ol_test->ol_o_id == 2 && k_ol_test->ol_number == 2) {
+      printf("DDL find this, k_ol_test->ol_o_id: %u, k_ol_test->ol_number: %u\n", k_ol_test->ol_o_id, k_ol_test->ol_number);
+    }*/
+
     order_line::value v_ol_temp;
     const order_line::value *v_ol = Decode(value, v_ol_temp);
 
@@ -211,12 +218,14 @@ class ddl_precompute_aggregate_scan_callback
 public:
   ddl_precompute_aggregate_scan_callback(OrderedIndex *oorder_table_index,
                                          OrderedIndex *order_line_table_index,
-                                         transaction *t,
+                                         OrderedIndex *oorder_table_secondary_index,
+					 transaction *t,
                                          uint64_t schema_version,
                                          ermia::str_arena *arena)
       : _oorder_table_index(oorder_table_index),
-        _order_line_table_index(order_line_table_index), _txn(t),
-        _version(schema_version) {}
+        _order_line_table_index(order_line_table_index),
+	_oorder_table_secondary_index(oorder_table_secondary_index),
+	_txn(t), _version(schema_version) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const varstr &value) {
     MARK_REFERENCED(value);
 
@@ -277,9 +286,22 @@ public:
       return false;
     }
 #elif defined(COPYDDL)
-    invoke_status = _oorder_table_index->InsertRecord(_txn, *k, *d_v);
+    OID oid = 0;
+    invoke_status = _oorder_table_index->InsertRecord(_txn, *k, *d_v, &oid);
     if (invoke_status._val != RC_TRUE) {
       printf("DDL normal record insert false\n");
+      return false;
+    }
+    const oorder_c_id_idx::key k_idx(k_oo->o_w_id, k_oo->o_d_id,
+                                     v_oo->o_c_id, k_oo->o_id);
+    varstr *k_idx_str = _arena->next(Size(k_idx));
+    if (!k_idx_str) {
+      _arena = new ermia::str_arena(ermia::config::arena_size_mb);
+      k_idx_str = _arena->next(Size(k_idx));
+    }
+    invoke_status = _oorder_table_secondary_index->InsertOID(_txn, Encode(*k_idx_str, k_idx), oid);
+    if (invoke_status._val != RC_TRUE) {
+      printf("DDL oid record insert false\n");
       return false;
     }
 #endif
@@ -288,6 +310,7 @@ public:
   }
   OrderedIndex *_oorder_table_index;
   OrderedIndex *_order_line_table_index;
+  OrderedIndex *_oorder_table_secondary_index;
   transaction *_txn;
   uint64_t _version;
   ermia::str_arena *_arena = new ermia::str_arena(ermia::config::arena_size_mb);
@@ -296,7 +319,8 @@ public:
 
 rc_t ConcurrentMasstreeIndex::WriteNormalTable1(
     str_arena *arena, OrderedIndex *old_oorder_table_index,
-    OrderedIndex *order_line_table_index, transaction *t, varstr &value) {
+    OrderedIndex *order_line_table_index, 
+    OrderedIndex *oorder_table_secondary_index, transaction *t, varstr &value) {
   rc_t r;
 #ifdef COPYDDL
   struct Schema_record schema;
@@ -308,10 +332,11 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable1(
 
 #ifdef COPYDDL
   ddl_precompute_aggregate_scan_callback c_precompute_aggregate(
-      this, order_line_table_index, t, schema_version, arena);
+      this, order_line_table_index, oorder_table_secondary_index, t, schema_version, arena);
 #else
   ddl_precompute_aggregate_scan_callback c_precompute_aggregate(
-      old_oorder_table_index, order_line_table_index, t, schema_version, arena);
+      old_oorder_table_index, order_line_table_index, oorder_table_secondary_index, 
+      t, schema_version, arena);
 #endif
 
   const oorder::key k_oo_0(1, 1, 1);
@@ -384,13 +409,22 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
                                                    uint64_t begin_csn,
                                                    uint64_t end_csn) {
   printf("cdc begins\n");
+  FID fid = t->old_td->GetTupleFid();
+  printf("cdc on fid: %u\n", fid);
+  ermia::str_arena *arena = new ermia::str_arena(ermia::config::arena_size_mb);
+  ermia::ConcurrentMasstreeIndex *table_secondary_index = nullptr;
+  if (t->new_td->GetSecIndexes().size()) {
+    table_secondary_index =
+              (ermia::ConcurrentMasstreeIndex *) (*(t->new_td->GetSecIndexes().begin()));
+    ALWAYS_ASSERT(table_secondary_index);
+  }
   for (uint i = 0; i < config::MAX_THREADS; i++) {
     dlog::tls_log *tlog = dlog::tlogs[i];
     uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
     if (tlog && i != thread::MyId() && csn) {
+      tlog->last_flush();
       std::vector<dlog::segment> *segments = tlog->get_segments();
-      // printf("log %u cdc, seg size: %lu\n", tlog->get_id(),
-      // segments->size());
+      // printf("log %u cdc, seg size: %lu\n", tlog->get_id(), segments->size());
       bool stop_scan = false;
       for (std::vector<dlog::segment>::reverse_iterator seg =
                segments->rbegin();
@@ -405,26 +439,32 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
                  logrec_sz = sizeof(dlog::log_record),
                  tuple_sc = sizeof(dbtuple);
 
+	int insert_total = 0, update_total = 0;
+	int insert_fail = 0, update_fail = 0;
         while (offset_in_seg < data_sz) {
           dlog::log_block *header =
               (dlog::log_block *)(data_buf + offset_in_seg);
           if (begin_csn < header->csn && header->csn < end_csn) {
             uint64_t offset_in_block = 0;
-            varstr *insert_key, *update_key;
+            varstr *insert_key, *update_key, *insert_key_idx;
             while (offset_in_block < header->payload_size) {
               dlog::log_record *logrec =
                   (dlog::log_record *)(data_buf + offset_in_seg + block_sz +
                                        offset_in_block);
               ALWAYS_ASSERT(logrec->oid);
               ALWAYS_ASSERT(logrec->fid);
-              // printf("logrec->fid: %u, logrec->rec_size: %u\n", logrec->fid,
-              // logrec->rec_size);
+              // printf("logrec->fid: %u, logrec->rec_size: %u\n", logrec->fid, logrec->rec_size);
               ALWAYS_ASSERT(logrec->rec_size);
               ALWAYS_ASSERT(logrec->data);
               // varstr valptr;
               // rc_t rc = rc_t{RC_INVALID};
-              OID oid = INVALID_OID;
-              ConcurrentMasstree::versioned_node_t sinfo;
+              // OID oid = INVALID_OID;
+              // ConcurrentMasstree::versioned_node_t sinfo;
+
+	      if (logrec->fid != fid) {
+	        offset_in_block += logrec->rec_size;
+	        continue;
+	      }
 
               if (logrec->type == dlog::log_record::logrec_type::INSERT) {
                 // this->GetRecord(t, rc, *insert_key, valptr);
@@ -433,8 +473,46 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
                 // t->xc->begin_epoch, &sinfo); if (!found) {
                 dbtuple *tuple = (dbtuple *)(logrec->data);
                 // printf("cdc insert, tuple->size: %u\n", tuple->size);
+		OID oid = 0;
                 varstr value(tuple->get_value_start(), tuple->size);
-                this->InsertRecord(t, *insert_key, value);
+                
+		order_line::value v_ol_temp;
+                const order_line::value *v_ol = Decode(value, v_ol_temp);
+
+                order_line_1::value v_ol_1;
+                v_ol_1.ol_i_id = v_ol->ol_i_id;
+                // printf("cdc insert, v_ol->ol_i_id: %u\n", v_ol->ol_i_id);
+		v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
+                v_ol_1.ol_amount = v_ol->ol_amount;
+                v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
+                v_ol_1.ol_quantity = v_ol->ol_quantity;
+                v_ol_1.v = v_ol->v;
+                // printf("cdc insert, v_ol->v: %lu\n", v_ol->v);
+		v_ol_1.ol_tax = 0;
+		
+		order_line_1::key k_ol_temp;
+		const order_line_1::key *k_ol = Decode(*insert_key, k_ol_temp);
+
+                // printf("cdc insert, ol_w_id: %u, ol_d_id: %u, ol_o_id: %u\n", k_ol->ol_w_id, k_ol->ol_d_id, k_ol->ol_o_id);
+
+                const size_t order_line_sz = ::Size(v_ol_1);
+                varstr *d_v = arena->next(order_line_sz);
+
+                if (!d_v) {
+                  arena = new ermia::str_arena(ermia::config::arena_size_mb);
+                  d_v = arena->next(order_line_sz);
+                }
+                d_v = &Encode(*d_v, v_ol_1);
+		
+		insert_total++;
+		rc_t rc = this->InsertRecord(t, *insert_key, *d_v, &oid);
+		if (rc._val != RC_TRUE) {
+		  // printf("cdc insert fail\n");
+		  insert_fail++;
+		}
+		if (table_secondary_index) {
+		//   table_secondary_index->InsertOID(t, *insert_key_idx, oid);
+		}
                 //}
               } else if (logrec->type ==
                          dlog::log_record::logrec_type::UPDATE) {
@@ -445,17 +523,52 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
                 dbtuple *tuple = (dbtuple *)(logrec->data);
                 // printf("cdc update, tuple->size: %u\n", tuple->size);
                 varstr value(tuple->get_value_start(), tuple->size);
-                this->UpdateRecord(t, *update_key, value);
-                //}
+                
+		order_line::value v_ol_temp;
+                const order_line::value *v_ol = Decode(value, v_ol_temp);
+
+                order_line_1::value v_ol_1;
+                v_ol_1.ol_i_id = v_ol->ol_i_id;
+		// printf("cdc update, v_ol->ol_i_id: %u\n", v_ol->ol_i_id);
+                v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
+                v_ol_1.ol_amount = v_ol->ol_amount;
+                v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
+                v_ol_1.ol_quantity = v_ol->ol_quantity;
+                v_ol_1.v = v_ol->v;
+		// printf("cdc update, v_ol->v: %lu\n", v_ol->v);
+                v_ol_1.ol_tax = 0;
+
+		order_line_1::key k_ol_temp;
+                const order_line_1::key *k_ol = Decode(*insert_key, k_ol_temp);
+
+                // printf("cdc update, ol_w_id: %u, ol_d_id: %u, ol_o_id: %u\n", k_ol->ol_w_id, k_ol->ol_d_id, k_ol->ol_o_id);
+
+                const size_t order_line_sz = ::Size(v_ol_1);
+                varstr *d_v = arena->next(order_line_sz);
+
+                if (!d_v) {
+                  arena = new ermia::str_arena(ermia::config::arena_size_mb);
+                  d_v = arena->next(order_line_sz);
+                }
+                d_v = &Encode(*d_v, v_ol_1);
+
+		update_total++;
+		rc_t rc = this->UpdateRecord(t, *update_key, *d_v);
+                if (rc._val != RC_TRUE) {
+		  // printf("cdc update fail\n");
+		  update_fail++;
+		}
+		//}
               } else if (logrec->type ==
                          dlog::log_record::logrec_type::INSERT_KEY) {
-                insert_key = (varstr *)(logrec->data);
+                insert_key = new varstr(logrec->data + sizeof(varstr), 16);
               } else if (logrec->type ==
                          dlog::log_record::logrec_type::UPDATE_KEY) {
-                update_key = (varstr *)(logrec->data);
+                update_key = new varstr(logrec->data + sizeof(varstr), 16);
               } else if (logrec->type ==
                          dlog::log_record::logrec_type::INVALID) {
-              } else {
+                printf("Invalid type\n");
+	      } else {
                 printf("unknown type\n");
               }
 
@@ -469,15 +582,16 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
               offset_in_block += logrec->rec_size;
             }
           } else {
-            stop_scan = true;
-            if (header->csn < end_csn) {
-              // printf("header->csn < end_csn\n");
+            // stop_scan = true;
+            /*if (header->csn > end_csn) {
+              // printf("header->csn > end_csn\n");
               break;
-            }
+            }*/
           }
           offset_in_seg += header->payload_size + block_sz;
           // printf("payload_size: %u\n", header->payload_size);
         }
+	// printf("insert total: %d, insert fail: %d, update total: %d, update fail: %d\n", insert_total, insert_fail, update_total, update_fail);
 
         // printf("offset_in_seg: %lu\n", offset_in_seg);
 
@@ -486,6 +600,7 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
       }
     }
   }
+  printf("cdc finished\n");
 }
 #endif
 
@@ -610,7 +725,8 @@ std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
 
 PROMISE(void)
 ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
-                                   varstr &value, OID *out_oid) {
+                                   varstr &value, OID *out_oid,
+				   TableDescriptor *old_table_descriptor) {
   OID oid = INVALID_OID;
   rc = {RC_INVALID};
   ConcurrentMasstree::versioned_node_t sinfo;
@@ -632,6 +748,33 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
         found = false;
       }
     }
+
+#ifdef LAZYDDL
+    if (!found && old_table_descriptor) {
+      rc = {RC_INVALID};
+      oid = INVALID_OID;
+      AWAIT old_table_descriptor->GetPrimaryIndex()->GetOID(key, rc, t->xc, oid);
+
+      if (rc._val == RC_TRUE) {
+        tuple = AWAIT oidmgr->oid_get_version(old_table_descriptor->GetTupleArray(),
+                                              oid, t->xc);
+      } else {
+        volatile_write(rc._val, RC_FALSE);
+        return;
+      }
+
+      if (!tuple) {
+        found = false;
+      } else {
+        if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
+	  if (InsertRecord(t, key, value)._val != RC_TRUE) {
+	    volatile_write(rc._val, RC_FALSE);
+            return;
+	  }
+	}
+      }
+    }
+#endif
 
     if (found) {
       volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
@@ -715,9 +858,24 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
   ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
   t->ensure_active();
 
+  OID oid = 0;
+#ifdef LAZYDDL
+  // Search for OID
+  rc_t rc = {RC_INVALID};
+  AWAIT GetOID(key, rc, t->xc, oid);
+
+  if (rc._val == RC_TRUE) {
+    if (out_oid) {
+      *out_oid = oid;
+    }
+
+    RETURN rc_t{RC_TRUE};  
+  }
+#endif
+
   // Insert to the table first
   dbtuple *tuple = nullptr;
-  OID oid = t->Insert(table_descriptor, &key, &value, &tuple);
+  oid = t->Insert(table_descriptor, &key, &value, &tuple);
 
   // Done with table record, now set up index
   ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
@@ -751,7 +909,7 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
 
 PROMISE(rc_t)
 ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
-                                      varstr &value) {
+                                      varstr &value, TableDescriptor *old_table_descriptor) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
@@ -760,16 +918,29 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   rc_t rc = {RC_INVALID};
   AWAIT GetOID(key, rc, t->xc, oid);
 
+#ifdef LAZYDDL
+  if (rc._val != RC_TRUE && old_table_descriptor) {
+    oid = 0;
+    rc = {RC_INVALID};
+    AWAIT old_table_descriptor->GetPrimaryIndex()->GetOID(key, rc, t->xc, oid);
+    if (rc._val == RC_TRUE) {
+      return InsertRecord(t, key, value);
+    } else {
+      RETURN rc_t{RC_ABORT_INTERNAL};
+    }
+  }
+#endif
+
   if (rc._val == RC_TRUE) {
-    rc_t rc = t->Update(table_descriptor, oid, &key, &value);
-    RETURN rc;
+    RETURN t->Update(table_descriptor, oid, &key, &value);
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};
   }
 }
 
 PROMISE(rc_t)
-ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key) {
+ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
+                                      TableDescriptor *old_table_descriptor) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
@@ -777,6 +948,12 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key) {
   OID oid = 0;
   rc_t rc = {RC_INVALID};
   AWAIT GetOID(key, rc, t->xc, oid);
+
+#ifdef LAZYDDL
+  if (rc._val != RC_TRUE) {
+    return rc_t{RC_TRUE};
+  }
+#endif
 
   if (rc._val == RC_TRUE) {
     // Allocate an empty record version as the "new" version

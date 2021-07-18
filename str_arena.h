@@ -36,6 +36,7 @@ public:
     uint64_t off = n;
     n += align_up(size + sizeof(varstr));
     if (n >= config::arena_size_mb * config::MB) {
+      // printf("id: %u, arena beyond\n", thread::MyId());
       return nullptr;
     }
     ASSERT(n < config::arena_size_mb * config::MB);

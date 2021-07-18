@@ -22,6 +22,7 @@ using google::dense_hash_map;
 
 namespace ermia {
 
+extern uint64_t *_tls_commit_csn CACHE_ALIGNED;
 
 #if defined(SSN) || defined(SSI)
 #define set_tuple_xstamp(tuple, s)                                    \
@@ -197,7 +198,7 @@ public:
   inline TXN::xid_context *GetXIDContext() { return xc; }
 
 #ifdef COPYDDL
-  inline void set_table_index(OrderedIndex *_table_index) { table_index = _table_index; }
+  inline void set_table_descriptors(TableDescriptor *_new_td, TableDescriptor *_old_td) { new_td = _new_td, old_td = _old_td; }
   
   inline std::vector<char *> get_bufs() { return bufs; }
 #endif
@@ -212,7 +213,8 @@ public:
   uint32_t coro_batch_idx; // its index in the batch
 #ifdef COPYDDL
   std::unordered_map<TableDescriptor*, OID> schema_read_map;
-  OrderedIndex *table_index;
+  TableDescriptor *new_td;
+  TableDescriptor *old_td;
   std::vector<char *> bufs;
 #endif
   util::timer t;

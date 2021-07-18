@@ -29,7 +29,7 @@ int g_hybrid = 0;
 // 7: Microbenchmark-random - same as Microbenchmark, but uses random read-set range
 // 8: DDL
 unsigned g_txn_workload_mix[8] = {
-    45, 43, 0, 4, 4, 390, 0, 0};  // default TPC-C workload mix
+    45, 43, 0, 4, 4, 4, 0, 0};  // default TPC-C workload mix
 
 // how much % of time a worker should use a random home wh
 // 0 - always use home wh
@@ -393,11 +393,11 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
         unsigned s = 0;
         for (size_t i = 0; i < toks.size(); i++) {
           unsigned p = strtoul(toks[i].c_str(), nullptr, 10);
-          ALWAYS_ASSERT(p >= 0 && p <= 100);
+          // ALWAYS_ASSERT(p >= 0 && p <= 100);
           s += p;
           g_txn_workload_mix[i] = p;
         }
-        ALWAYS_ASSERT(s == 100);
+        // ALWAYS_ASSERT(s == 100);
       } break;
       case 'z':
         g_nr_suppliers = strtoul(optarg, NULL, 10);

@@ -13,10 +13,18 @@ void schematable_loader::load() {
   struct Schema_record order_line_schema;
   order_line_schema.index = ermia::Catalog::GetTable("order_line")->GetPrimaryIndex();
   order_line_schema.td = ermia::Catalog::GetTable("order_line");
+#ifdef LAZYDDL
+  order_line_schema.old_index = nullptr;
+  order_line_schema.old_td = nullptr;
+#endif
 
   struct Schema_record oorder_schema;
   oorder_schema.index = ermia::Catalog::GetTable("oorder")->GetPrimaryIndex();
-  oorder_schema.td = ermia::Catalog::GetTable("oorder");  
+  oorder_schema.td = ermia::Catalog::GetTable("oorder");
+#ifdef LAZYDDL
+  oorder_schema.old_index = nullptr;
+  oorder_schema.old_td = nullptr;
+#endif
 
   char str3[sizeof(Schema_record)], str4[sizeof(Schema_record)];
 #else

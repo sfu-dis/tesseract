@@ -694,7 +694,8 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermi
   const oorder_c_id_idx::key *k_oo_idx = Decode(*newest_o_c_id, k_oo_idx_temp);
   const uint o_id = k_oo_idx->o_o_id;
 
-  order_line_nop_callback c_order_line(0);
+  order_line_nop_callback c_order_line(0, false, txn,
+                                       nullptr, nullptr);
   const order_line::key k_ol_0(warehouse_id, districtID, o_id, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, o_id,
                                std::numeric_limits<int32_t>::max());

@@ -12,13 +12,15 @@ namespace pcommit {
 uint64_t *_tls_durable_csn =
     (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
 
+std::atomic<uint64_t> lowest_csn(0);
+
 void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush,
                              bool *insert) {
   CRITICAL_SECTION(cs, lock);
   if (items >= config::group_commit_queue_length * 0.8) {
     *flush = true;
   }
-  if (items < config::group_commit_queue_length) {
+  if (*insert && items < config::group_commit_queue_length) {
     uint32_t idx = (start + items) % config::group_commit_queue_length;
     volatile_write(queue[idx].csn, csn);
     volatile_write(queue[idx].start_time, start_time);
@@ -33,10 +35,14 @@ void tls_committer::initialize(uint32_t id) {
   _commit_queue = new commit_queue(id);
 }
 
-void tls_committer::reset() {
+void tls_committer::reset(bool zero) {
   _commit_queue = new commit_queue(commit_id);
-  if (commit_id == 0) {
+  if (zero) {
+    printf("%u set all 0\n", commit_id);
     memset(_tls_durable_csn, 0, sizeof(uint64_t) * config::MAX_THREADS);
+  } else {
+    printf("%u set lowest csn\n", commit_id);
+    _tls_durable_csn[commit_id] = lowest_csn.load(std::memory_order_relaxed); 
   }
 }
 
@@ -48,14 +54,18 @@ uint64_t tls_committer::get_lowest_tls_durable_csn() {
     uint64_t csn = volatile_read(_tls_durable_csn[i]);
     if (csn) {
       if (csn & DIRTY_FLAG) {
-        min_dirty = std::min(csn & ~DIRTY_FLAG, min_dirty);
+	min_dirty = std::min(csn & ~DIRTY_FLAG, min_dirty);
         found = true;
+        // if ((csn & ~DIRTY_FLAG) >= 10000000)  printf("error! csn & ~DIRTY_FLAG: %lu, found: %d\n", csn, found);
       } else if (max_clean < csn) {
         max_clean = csn;
       }
     }
   }
-  return found ? min_dirty : max_clean;
+  uint64_t lowest_tls_durable_csn = found ? min_dirty : max_clean;
+  // if (lowest_tls_durable_csn >= 10000000) printf("error! csn: %lu, found: %d\n", lowest_tls_durable_csn, found);
+  lowest_csn.store(lowest_tls_durable_csn, std::memory_order_seq_cst);
+  return lowest_tls_durable_csn;
 }
 
 void tls_committer::enqueue_committed_xct(uint64_t csn, uint64_t start_time,

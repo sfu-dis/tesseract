@@ -26,6 +26,8 @@ namespace dlog {
 
 extern std::atomic<uint64_t> current_csn;
 
+extern std::atomic<uint64_t> commit_csn;
+
 void flush_all();
 
 // A segment of the log, i.e., a file
@@ -103,6 +105,9 @@ private:
   // Lock
   mcs_lock lock;
 
+  // Whether dirty
+  bool dirty;
+
 private:
   // Get the currently open segment
   inline segment *current_segment() { return &segments[segments.size() - 1]; }
@@ -133,6 +138,10 @@ public:
 
   inline uint32_t get_id() { return id; }
 
+  inline bool is_dirty() { return dirty; }
+
+  inline void set_dirty(bool _dirty) { dirty = _dirty; } 
+
   inline std::vector<segment> *get_segments() { return &segments; }
 
   inline uint64_t get_logbuf_size() { return logbuf_size; }
@@ -144,7 +153,7 @@ public:
   inline uint64_t get_latency() { return tcommitter.get_latency(); }
 
   // reset this committer
-  inline void reset_committer() { tcommitter.reset(); }
+  inline void reset_committer(bool zero) { tcommitter.reset(zero); }
 
   // Commit (insert) a log block to the log - [block] must *not* be allocated
   // using allocate_log_block.
@@ -160,7 +169,7 @@ public:
   void enqueue_committed_xct(uint64_t csn, uint64_t start_time);
 
   // Dequeue commit queue
-  void last_dequeue_committed_xcts();
+  void wrap_dequeue_committed_xcts(bool is_last);
 
   // Last flush
   void last_flush();

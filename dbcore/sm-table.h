@@ -38,6 +38,7 @@ class TableDescriptor {
     return aux_array_;
   }
   inline oid_array* GetTupleArray() { return tuple_array; }
+  inline std::vector<OrderedIndex *> GetSecIndexes() { return sec_indexes; }
 };
 
 struct Catalog {

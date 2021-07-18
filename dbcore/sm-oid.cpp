@@ -885,21 +885,15 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
       return false;
     }
 
-    if (state == TXN::TXN_COMMITTING) {
+    /*if (state == TXN::TXN_COMMITTING) {
       ASSERT(owner == holder_xid);
-      if (holder_lsn) {
-	// holder has finished SetClsn(), just retry
-	if (holder_lsn != 0 && holder_lsn < xc->begin) {
-	  retry = true;
-          return false;
-	}
-        // txn has not got clsn, just retry
-	else if (holder_lsn == 0) {
-	  retry = true;
-          return false;
-	}
+      // holder has finished SetClsn()
+      if (holder_lsn != 0 && holder_lsn < xc->begin) {
+        // retry = true;
+	// return false;
+        return true;
       }
-    }
+    }*/
 
     if (state == TXN::TXN_CMMTD) {
       ASSERT(volatile_read(holder->end));

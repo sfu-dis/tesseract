@@ -8,6 +8,20 @@ extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 
 namespace ermia {
 
+uint64_t *_tls_commit_csn =
+    (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
+
+uint64_t get_lowest_tls_commit_csn() {
+  uint64_t min = std::numeric_limits<uint64_t>::max();
+  for (uint32_t i = 0; i < config::MAX_THREADS; i++) {
+    uint64_t csn = volatile_read(_tls_commit_csn[i]);
+    if (csn) {
+      min = std::min(csn, min);
+    }
+  }
+  return min;
+}
+
 transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     : flags(flags), log_size(0), sa(&sa), coro_batch_idx(coro_batch_idx) {
   if (config::phantom_prot) {
@@ -69,8 +83,19 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   } else {
     log = GetLog();
   }
-
-  xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
+  
+  // xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
+  if (config::state == config::kStateLoading) {
+    xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
+  /*} else if (log) {
+    xc->begin = log->get_committer()->get_lowest_tls_durable_csn();
+  */} else {
+  //  xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
+  //  xc->begin = get_lowest_tls_commit_csn();
+    xc->begin = pcommit::lowest_csn.load(std::memory_order_relaxed);
+  //  xc->begin = log->get_committer()->get_lowest_tls_durable_csn();
+  //  printf("xc->begin: %lu\n", xc->begin);
+  }
 #endif
 }
 
@@ -202,10 +227,12 @@ rc_t transaction::si_commit() {
     } else {
       lb = log->allocate_log_block(log_size, &lb_lsn, &segnum, xc->end);
     }
+    log->set_dirty(true);
   }
 
 #ifdef COPYDDL
   if (is_ddl()) {
+    printf("DDL txn end: %lu\n", xc->end);
     // If txn is DDL, commit schema record first before CDC
     write_record_t w = write_set.get(is_ddl(), 0);
     Object *object = w.get_object();
@@ -231,7 +258,7 @@ rc_t transaction::si_commit() {
     ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
 
     // Set persistent address
-     auto tuple_size_code = encode_size_aligned(w.size);
+    auto tuple_size_code = encode_size_aligned(w.size);
     fat_ptr tuple_pdest = LSN::make(log->get_id(), lb_lsn + tuple_off, segnum, tuple_size_code).to_ptr();
     object->SetPersistentAddress(tuple_pdest);
     ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
@@ -240,9 +267,11 @@ rc_t transaction::si_commit() {
     fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
     object->SetCSN(csn_ptr);
     ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
-
+    
     // Do CDC
-    table_index->changed_data_capture(this, xc->begin, xc->end);
+#if !defined(LAZYDDL)
+    new_td->GetPrimaryIndex()->changed_data_capture(this, xc->begin, xc->end);
+#endif  
   }
 #endif
 
@@ -308,6 +337,10 @@ rc_t transaction::si_commit() {
   // otherwise readers will see inconsistent data!
   // This is when (committed) tuple data are made visible to readers
   volatile_write(xc->state, TXN::TXN_CMMTD);
+  log->set_dirty(false);
+  if (config::state == config::kStateForwardProcessing) {
+    volatile_write(_tls_commit_csn[thread::MyId()], xc->end);
+  }
   return rc_t{RC_TRUE};
 }
 #endif
