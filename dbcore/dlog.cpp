@@ -289,6 +289,7 @@ retry :
     count = 0;
   }
   if (flush) {
+    count++;
     goto retry;
   }
 }

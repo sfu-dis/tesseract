@@ -25,9 +25,9 @@ struct commit_queue {
   mcs_lock lock;
   uint64_t total_latency_us;
   uint32_t group_commit_queue_length;
-  commit_queue(uint32_t _id) 
-	  : id(_id), start(0), items(0), total_latency_us(0),
-            group_commit_queue_length(config::group_commit_queue_length)	{
+  commit_queue(uint32_t _id)
+      : id(_id), start(0), items(0), total_latency_us(0),
+        group_commit_queue_length(config::group_commit_queue_length) {
     queue = new Entry[group_commit_queue_length];
   }
   ~commit_queue() { delete[] queue; }
