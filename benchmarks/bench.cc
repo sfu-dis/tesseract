@@ -42,7 +42,7 @@ uint32_t bench_worker::fetch_workload() {
       if (i == workload.size() - 1) {
 	ddl_num++;
 #ifdef COPYDDL
-        if (ddl_num != 5) continue;
+        if (ddl_num != 8) continue;
 #else
 	if (ddl_num != 40) continue;
 #endif
@@ -314,10 +314,10 @@ void bench_runner::start_measurement() {
   double total_util = 0;
   double sec_util = 0;
   //uint32_t sleep_time = 1;
-  uint32_t sleep_time = 1000;
+  uint32_t sleep_time = 500;
   auto gather_stats = [&]() {
-    sleep(1);
-    //usleep(1000 * sleep_time);
+    //sleep(1);
+    usleep(1000 * sleep_time);
     uint64_t sec_commits = 0, sec_aborts = 0;
     for (size_t i = 0; i < ermia::config::worker_threads; i++) {
       sec_commits += workers[i]->get_ntxn_commits();

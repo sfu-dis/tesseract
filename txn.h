@@ -64,12 +64,12 @@ struct write_set_t {
       ALWAYS_ASSERT(num_entries < kMaxEntries_);
       new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, type, str);
       ++num_entries;
-      ASSERT(entries_[num_entries - 1].entry == oe);
+      // ASSERT(entries_[num_entries - 1].entry == oe);
     } else {
       ALWAYS_ASSERT(num_entries < kMaxEntries);
       new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type, str);
       ++num_entries;
-      ASSERT(entries[num_entries - 1].entry == oe);
+      // ASSERT(entries[num_entries - 1].entry == oe);
     }
   }
   inline uint32_t size() { return num_entries; }
@@ -189,8 +189,11 @@ public:
 #endif
 
     // Work out the encoded size to be added to the log block later
-    auto logrec_size = align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
-    auto str_size = align_up(str->size() + sizeof(varstr) + sizeof(dlog::log_record));
+    uint64_t logrec_size = 0;
+    if (type != dlog::log_record::logrec_type::OID_KEY) {
+      logrec_size = align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
+    }
+    uint64_t str_size = align_up(str->size() + sizeof(varstr) + sizeof(dlog::log_record));
     log_size += logrec_size + str_size;
     write_set.emplace_back(is_ddl, entry, fid, oid, logrec_size, type, str);
   }
@@ -208,7 +211,7 @@ public:
   XID xid;
   TXN::xid_context *xc;
   dlog::tls_log *log;
-  uint32_t log_size;
+  uint64_t log_size;
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
 #ifdef COPYDDL

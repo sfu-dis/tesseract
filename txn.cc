@@ -211,7 +211,7 @@ rc_t transaction::si_commit() {
 
 #ifdef COPYDDL
   if (is_dml() && DMLConsistencyHandler()) {
-    //printf("DML failed\n");
+    // printf("DML failed\n");
     return rc_t{RC_ABORT_SI_CONFLICT};
   }
 #endif
@@ -239,8 +239,8 @@ rc_t transaction::si_commit() {
     dbtuple *tuple = (dbtuple *)object->GetPayload();
     tuple->DoWrite();
 
-    uint32_t log_tuple_size = sizeof(dbtuple) + tuple->size;
-    uint32_t log_str_size = sizeof(varstr) + w.str->size();
+    uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
+    uint64_t log_str_size = sizeof(varstr) + w.str->size();
 
     if (lb->payload_size + align_up(log_tuple_size + sizeof(dlog::log_record)) + align_up(log_str_size + sizeof(dlog::log_record)) > lb->capacity) { 
       lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
@@ -289,13 +289,25 @@ rc_t transaction::si_commit() {
 #endif
   for (uint32_t i = start; i < write_set.size(); ++i) {
     write_record_t w = write_set.get(is_ddl(), i);
+   
+    uint64_t log_str_size = sizeof(varstr) + w.str->size();
+    if (w.type == dlog::log_record::logrec_type::OID_KEY) {
+      // if (is_dml()) printf("id %u oid key commit starts\n", thread::MyId());
+      if (lb->payload_size + align_up(log_str_size + sizeof(dlog::log_record)) > lb->capacity) {
+        lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
+      }
+      dlog::log_oid_key(lb, w.fid, w.oid, (char *)w.str, log_str_size);
+      // if (is_dml()) printf("id %u oid key commit ends\n", thread::MyId());
+      ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
+      continue;
+    }
+   
+    ALWAYS_ASSERT(w.type != dlog::log_record::logrec_type::OID_KEY);
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
     tuple->DoWrite();
 
-    uint32_t log_tuple_size = sizeof(dbtuple) + tuple->size;
-    uint32_t log_str_size = sizeof(varstr) + w.str->size();
-
+    uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
     if (lb->payload_size + align_up(log_tuple_size + sizeof(dlog::log_record)) + align_up(log_str_size + sizeof(dlog::log_record)) > lb->capacity) {
       lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
     }
@@ -600,6 +612,9 @@ void transaction::LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key
                         fat_ptr::make((void *)key, size_code),
                         DEFAULT_ALIGNMENT_BITS, NULL);
   */
+  if (!index->IsPrimary()) {
+    // add_to_write_set(is_ddl(), nullptr, index->GetTableDescriptor()->GetTupleFid(), oid, 0, dlog::log_record::logrec_type::OID_KEY, key);
+  }
 }
 
 rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {

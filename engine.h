@@ -209,9 +209,23 @@ public:
   PROMISE(void) ReadSchemaTable(transaction *t, rc_t &rc, const varstr &key, varstr &value, 
 		  OID *out_oid = nullptr) override;
 
-  PROMISE(rc_t) WriteNormalTable(str_arena *arena, OrderedIndex *index, transaction *t, varstr &value) override;
+  PROMISE(rc_t) WriteNormalTable(str_arena *arena, OrderedIndex *index, transaction *t, varstr &value, std::function<ermia::varstr *(
+                  const char *keyp,
+                  size_t keylen,
+                  const ermia::varstr &value,
+                  uint64_t schema_version,
+                  ermia::transaction *txn,
+                  ermia::str_arena *arena,
+                  ermia::OrderedIndex *index)> op) override;
 
-  PROMISE(rc_t) WriteNormalTable1(str_arena *arena, OrderedIndex *old_oorder_table_index, OrderedIndex *order_line_table_index, OrderedIndex *oorder_table_secondary_index, transaction *t, varstr &value) override;
+  PROMISE(rc_t) WriteNormalTable1(str_arena *arena, OrderedIndex *old_oorder_table_index, OrderedIndex *order_line_table_index, OrderedIndex *oorder_table_secondary_index, transaction *t, varstr &value, std::function<ermia::varstr *(
+                  const char *keyp,
+                  size_t keylen,
+                  const ermia::varstr &value,
+                  uint64_t schema_version,
+                  ermia::transaction *txn,
+                  ermia::str_arena *arena,
+                  ermia::OrderedIndex *index)> op) override;
 
   PROMISE(rc_t) CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t) override;
 

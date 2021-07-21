@@ -102,6 +102,8 @@ void tls_log::enqueue_flush() {
     issue_flush(active_logbuf, logbuf_offset);
     active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
     logbuf_offset = 0;
+    // poll_flush();
+    // flushing = false;
   }
 }
 
@@ -270,11 +272,12 @@ void tls_log::enqueue_committed_xct(uint64_t csn, uint64_t start_time) {
 
   bool flush = false;
   bool insert = true;
+  int count = 0;
 retry:
   if (flush) {
     for (uint i = 0; i < config::MAX_THREADS; i++) {
       tls_log *tlog = tlogs[i];
-      if (tlog && !tlog->is_dirty()) {
+      if (tlog) {
         tlog->enqueue_flush();
       }
     }
@@ -284,7 +287,13 @@ retry:
     flush = false;
   }
   tcommitter.enqueue_committed_xct(csn, start_time, &flush, &insert);
+  if (count >= 10) {
+    tcommitter.extend_queue();
+    tcommitter.enqueue_committed_xct(csn, start_time, &flush, &insert);
+    count = 0;
+  }
   if (flush) {
+    count++;
     goto retry;
   }
 }

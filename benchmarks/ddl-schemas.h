@@ -1,9 +1,19 @@
 #pragma once
 
 #include "../engine.h"
+#include "tpcc.h"
 
 struct Schema_base {
   uint64_t v;
+  /*std::function<ermia::varstr *(
+                  const char *keyp,
+                  size_t keylen,
+                  const ermia::varstr &value,
+                  uint64_t schema_version,
+                  ermia::transaction *txn,
+                  ermia::str_arena *arena,
+                  ermia::OrderedIndex *index)> op;
+  */
 };
 
 struct Schema_record : public Schema_base {
@@ -13,8 +23,18 @@ struct Schema_record : public Schema_base {
   ermia::OrderedIndex *old_index;
   ermia::TableDescriptor *old_td;
 #endif
+  /*std::function<ermia::varstr *(
+		  const char *keyp,
+		  size_t keylen,
+                  const ermia::varstr &value,
+                  uint64_t schema_version,
+		  ermia::transaction *txn,
+		  ermia::str_arena *arena,
+                  ermia::OrderedIndex *index)> op;
+  */
 };
 
+/*
 struct Schema1 : public Schema_base {
   uint64_t a;
   uint64_t b;
@@ -25,4 +45,5 @@ struct Schema2 : public Schema_base {
   uint64_t b;
   uint64_t c;
 };
+*/
 

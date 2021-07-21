@@ -24,8 +24,16 @@ dlog::tls_log *GetLog() {
 class ddl_add_column_scan_callback : public OrderedIndex::ScanCallback {
 public:
   ddl_add_column_scan_callback(OrderedIndex *index, transaction *t,
-                               uint64_t schema_version, ermia::str_arena *arena)
-      : _index(index), _txn(t), _version(schema_version) {}
+                               uint64_t schema_version, ermia::str_arena *arena,
+			       std::function<ermia::varstr *(
+                                                        const char *keyp,
+                                                        size_t keylen,
+                                                        const ermia::varstr &value,
+                                                        uint64_t schema_version,
+                                                        ermia::transaction *txn,
+                                                        ermia::str_arena *arena,
+                                                        ermia::OrderedIndex *index)> op)
+      : _index(index), _txn(t), _version(schema_version), _op(op) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const varstr &value) {
     MARK_REFERENCED(value);
     // _arena->reset();
@@ -49,10 +57,10 @@ public:
     varstr *d_v = _arena->next(sizeof(str2));
     */
 
-    order_line::key k_ol_temp;
+    /*order_line::key k_ol_temp;
     const order_line::key *k_ol_test = Decode(*k, k_ol_temp);
 
-    /*if (k_ol_test->ol_w_id == 2 && k_ol_test->ol_d_id == 7 && k_ol_test->ol_o_id == 2 && k_ol_test->ol_number == 2) {
+    if (k_ol_test->ol_w_id == 2 && k_ol_test->ol_d_id == 7 && k_ol_test->ol_o_id == 2 && k_ol_test->ol_number == 2) {
       printf("DDL find this, k_ol_test->ol_o_id: %u, k_ol_test->ol_number: %u\n", k_ol_test->ol_o_id, k_ol_test->ol_number);
     }*/
 
@@ -76,7 +84,9 @@ public:
       d_v = _arena->next(order_line_sz);
     }
     d_v = &Encode(*d_v, v_ol_1);
-
+    
+    //varstr *d_v = _op(keyp, keylen, value, _version, _txn, _arena, nullptr);
+    //printf("d_v size: %u\n", d_v->size());
 #if defined(BLOCKDDL) || defined(SIDDL)
     invoke_status = _index->UpdateRecord(_txn, *k, *d_v);
     if (invoke_status._val != RC_TRUE) {
@@ -90,7 +100,7 @@ public:
       return false;
     }
 #endif
-    /*rc_t rc = rc_t{RC_INVALID};
+    rc_t rc = rc_t{RC_INVALID};
     ermia::varstr valptr;
     order_line_1::value v_ol_1_temp;
     _index->GetRecord(_txn, rc, *k, valptr);
@@ -98,7 +108,6 @@ public:
     const order_line_1::value *v_ol_2 = Decode(valptr, v_ol_1_temp);
     ALWAYS_ASSERT(v_ol_2->ol_tax == 0);
     ALWAYS_ASSERT(v_ol_2->v == _version);
-    */
     return true;
   }
   std::vector<varstr *> output;
@@ -106,6 +115,14 @@ public:
   transaction *_txn;
   uint64_t _version;
   ermia::str_arena *_arena = new ermia::str_arena(ermia::config::arena_size_mb);
+  std::function<ermia::varstr *(
+		const char *keyp,
+		size_t keylen,
+		const ermia::varstr &value,
+		uint64_t schema_version,
+		ermia::transaction *txn,
+		ermia::str_arena *arena,
+	        ermia::OrderedIndex *index)> _op;
   rc_t invoke_status = rc_t{RC_TRUE};
 };
 
@@ -141,7 +158,15 @@ void ConcurrentMasstreeIndex::ReadSchemaTable(transaction *t, rc_t &rc,
 
 rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
                                                OrderedIndex *index,
-                                               transaction *t, varstr &value) {
+                                               transaction *t, varstr &value,
+					       std::function<ermia::varstr *(
+                                                        const char *keyp,
+                                                        size_t keylen,
+                                                        const ermia::varstr &value,
+                                                        uint64_t schema_version,
+                                                        ermia::transaction *txn,
+                                                        ermia::str_arena *arena,
+                                                        ermia::OrderedIndex *index)> op) {
   rc_t r;
 #ifdef COPYDDL
   struct Schema_record schema;
@@ -151,7 +176,7 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
   memcpy(&schema, (char *)value.data(), sizeof(schema));
   uint64_t schema_version = schema.v;
 
-  ddl_add_column_scan_callback c_add_column(this, t, schema_version, arena);
+  ddl_add_column_scan_callback c_add_column(this, t, schema_version, arena, op);
 
   // Here we assume we can get table and index information
   // such as statistical info (MIN, MAX, AVG, etc.) and index key type
@@ -221,11 +246,19 @@ public:
                                          OrderedIndex *oorder_table_secondary_index,
 					 transaction *t,
                                          uint64_t schema_version,
-                                         ermia::str_arena *arena)
+                                         ermia::str_arena *arena,
+					 std::function<ermia::varstr *(
+                                                        const char *keyp,
+                                                        size_t keylen,
+                                                        const ermia::varstr &value,
+                                                        uint64_t schema_version,
+                                                        ermia::transaction *txn,
+                                                        ermia::str_arena *arena,
+                                                        ermia::OrderedIndex *index)> op)
       : _oorder_table_index(oorder_table_index),
         _order_line_table_index(order_line_table_index),
 	_oorder_table_secondary_index(oorder_table_secondary_index),
-	_txn(t), _version(schema_version) {}
+	_txn(t), _version(schema_version), _op(op) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const varstr &value) {
     MARK_REFERENCED(value);
 
@@ -240,7 +273,10 @@ public:
     oorder::key k_oo_temp;
     const oorder::key *k_oo = Decode(keyp, k_oo_temp);
 
-    credit_check_order_line_scan_callback c_ol(_version);
+    oorder::value v_oo_temp;
+    const oorder::value *v_oo = Decode(value, v_oo_temp);
+
+    /*credit_check_order_line_scan_callback c_ol(_version);
     const order_line::key k_ol_0(k_oo->o_w_id, k_oo->o_d_id, k_oo->o_id, 1);
     const order_line::key k_ol_1(k_oo->o_w_id, k_oo->o_d_id, k_oo->o_id, 15);
 
@@ -278,7 +314,9 @@ public:
       d_v = _arena->next(oorder_sz);
     }
     d_v = &Encode(*d_v, v_oo_pa);
+    */
 
+    varstr *d_v = _op(keyp, keylen, value, _version, _txn, _arena, _order_line_table_index);
 #if defined(BLOCKDDL) || defined(SIDDL)
     invoke_status = _oorder_table_index->UpdateRecord(_txn, *k, *d_v);
     if (invoke_status._val != RC_TRUE) {
@@ -314,13 +352,29 @@ public:
   transaction *_txn;
   uint64_t _version;
   ermia::str_arena *_arena = new ermia::str_arena(ermia::config::arena_size_mb);
+  std::function<ermia::varstr *(
+                  const char *keyp,
+                  size_t keylen,
+                  const ermia::varstr &value,
+                  uint64_t schema_version,
+                  ermia::transaction *txn,
+                  ermia::str_arena *arena,
+                  ermia::OrderedIndex *index)> _op;
   rc_t invoke_status = rc_t{RC_INVALID};
 };
 
 rc_t ConcurrentMasstreeIndex::WriteNormalTable1(
     str_arena *arena, OrderedIndex *old_oorder_table_index,
     OrderedIndex *order_line_table_index, 
-    OrderedIndex *oorder_table_secondary_index, transaction *t, varstr &value) {
+    OrderedIndex *oorder_table_secondary_index, transaction *t, varstr &value,
+    std::function<ermia::varstr *(
+                  const char *keyp,
+                  size_t keylen,
+                  const ermia::varstr &value,
+                  uint64_t schema_version,
+                  ermia::transaction *txn,
+                  ermia::str_arena *arena,
+                  ermia::OrderedIndex *index)> op) {
   rc_t r;
 #ifdef COPYDDL
   struct Schema_record schema;
@@ -332,11 +386,11 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable1(
 
 #ifdef COPYDDL
   ddl_precompute_aggregate_scan_callback c_precompute_aggregate(
-      this, order_line_table_index, oorder_table_secondary_index, t, schema_version, arena);
+      this, order_line_table_index, oorder_table_secondary_index, t, schema_version, arena, op);
 #else
   ddl_precompute_aggregate_scan_callback c_precompute_aggregate(
       old_oorder_table_index, order_line_table_index, oorder_table_secondary_index, 
-      t, schema_version, arena);
+      t, schema_version, arena, op);
 #endif
 
   const oorder::key k_oo_0(1, 1, 1);
@@ -861,7 +915,7 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
   OID oid = 0;
 #ifdef LAZYDDL
   // Search for OID
-  rc_t rc = {RC_INVALID};
+  /*rc_t rc = {RC_INVALID};
   AWAIT GetOID(key, rc, t->xc, oid);
 
   if (rc._val == RC_TRUE) {
@@ -870,7 +924,7 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
     }
 
     RETURN rc_t{RC_TRUE};  
-  }
+  }*/
 #endif
 
   // Insert to the table first
@@ -950,7 +1004,7 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
   AWAIT GetOID(key, rc, t->xc, oid);
 
 #ifdef LAZYDDL
-  if (rc._val != RC_TRUE) {
+  if (rc._val != RC_TRUE && old_table_descriptor) {
     return rc_t{RC_TRUE};
   }
 #endif
