@@ -140,7 +140,7 @@ public:
   inline uint64_t get_latency() { return tcommitter.get_latency(); }
  
   // reset this committer
-  inline void reset_committer() { tcommitter.reset();  }
+  inline void reset_committer(bool set_zero) { tcommitter.reset(set_zero);  }
   
   // Commit (insert) a log block to the log - [block] must *not* be allocated
   // using allocate_log_block.
@@ -158,7 +158,7 @@ public:
   void enqueue_committed_xct(uint64_t csn, uint64_t start_time);
 
   // Dequeue commit queue
-  void last_dequeue_committed_xcts();
+  void wrap_dequeue_committed_xcts(bool is_last);
 
   // Last flush
   void last_flush();

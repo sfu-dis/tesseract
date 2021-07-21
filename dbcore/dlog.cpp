@@ -35,7 +35,16 @@ void flush_all() {
   for (uint i = 0; i < config::MAX_THREADS; i++) {
     tls_log *tlog = tlogs[i];
     if (tlog) {
-      tlog->last_dequeue_committed_xcts();
+      tlog->wrap_dequeue_committed_xcts(true);
+    }
+  }
+
+  // Reset tls durable csns to be 0
+  for (uint i = 0; i < config::MAX_THREADS; i++) {
+    tls_log *tlog = tlogs[i];
+    if (tlog) {
+      tlog->reset_committer(true);
+      break;
     }
   }
 }
@@ -82,6 +91,11 @@ void tls_log::uninitialize() {
 
 void tls_log::enqueue_flush() {
   CRITICAL_SECTION(cs, lock);
+  if (flushing) {
+    poll_flush();
+    flushing = false;
+  }
+
   if (logbuf_offset) {
     issue_flush(active_logbuf, logbuf_offset);
     active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
@@ -256,6 +270,7 @@ void tls_log::enqueue_committed_xct(uint64_t csn, uint64_t start_time) {
 
   bool flush = false;
   bool insert = true;
+  uint count = 0;
 retry :
   if (flush) {
     for (uint i = 0; i < config::MAX_THREADS; i++) {
@@ -264,24 +279,28 @@ retry :
         tlog->enqueue_flush();
       }
     }
+    wrap_dequeue_committed_xcts(false);
     flush = false;
   }
-  if (insert) {
+  tcommitter.enqueue_committed_xct(csn, start_time, &flush, &insert);
+  if (count >= 10) {
+    tcommitter.extend_queue();
     tcommitter.enqueue_committed_xct(csn, start_time, &flush, &insert);
-    if (flush) {
-      goto retry;
-    }
+    count = 0;
+  }
+  if (flush) {
+    goto retry;
   }
 }
 
-void tls_log::last_dequeue_committed_xcts() {
+void tls_log::wrap_dequeue_committed_xcts(bool is_last) {  
   // get the lowest tls durable csn
   uint64_t lowest_tls_durable_csn = tcommitter.get_lowest_tls_durable_csn();
 
   // dequeue some committed txns
   util::timer t;
   tcommitter.dequeue_committed_xcts(lowest_tls_durable_csn, t.get_start());
-  ALWAYS_ASSERT(tcommitter.get_queue_size() == 0);
+  if (is_last) ALWAYS_ASSERT(tcommitter.get_queue_size() == 0);
 }
 
 segment::segment(int dfd, const char *segname) : size(0), expected_size(0) {
