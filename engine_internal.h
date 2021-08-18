@@ -50,8 +50,10 @@ public:
                   ermia::transaction *txn,
                   ermia::str_arena *arena,
                   ermia::OrderedIndex *index)> op) = 0;
-  
-  virtual PROMISE(rc_t) CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t, std::function<bool(uint64_t)> op) = 0;
+
+  virtual PROMISE(rc_t)
+      CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t,
+                       std::function<bool(uint64_t)> op) = 0;
 
 #ifdef COPYDDL
   virtual PROMISE(void) changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn) = 0;

@@ -227,7 +227,9 @@ public:
                   ermia::str_arena *arena,
                   ermia::OrderedIndex *index)> op) override;
 
-  PROMISE(rc_t) CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t, std::function<bool(uint64_t)> op) override;
+  PROMISE(rc_t)
+  CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t,
+                   std::function<bool(uint64_t)> op) override;
 
 #ifdef COPYDDL
   PROMISE(void) changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn) override;

@@ -18,7 +18,7 @@ struct Schema_base : public Schema_base_ {
                   ermia::str_arena *arena,
                   ermia::OrderedIndex *index)> op;
   */
-  //std::function<bool(uint64_t)> op;
+  // std::function<bool(uint64_t)> op;
 };
 
 struct Schema_record : public Schema_base_ {
@@ -49,4 +49,3 @@ struct Schema2 : public Schema_base_ {
   uint64_t b;
   uint64_t c;
 };
-

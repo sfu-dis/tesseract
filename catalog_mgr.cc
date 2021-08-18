@@ -50,9 +50,7 @@ void schematable_loader::load() {
   };
 }
 
-static bool constraint_verification(uint64_t x) {
-  return true;
-}
+static bool constraint_verification(uint64_t x) { return true; }
 
 void microbenchmark_schematable_loader::load() {
   ermia::OrderedIndex *tbl = open_tables.at("SCHEMA");
@@ -64,7 +62,8 @@ void microbenchmark_schematable_loader::load() {
 
 #ifdef COPYDDL
   struct Schema_record usertable_schema;
-  usertable_schema.index = ermia::Catalog::GetTable("USERTABLE")->GetPrimaryIndex();
+  usertable_schema.index =
+      ermia::Catalog::GetTable("USERTABLE")->GetPrimaryIndex();
   usertable_schema.td = ermia::Catalog::GetTable("USERTABLE");
 #ifdef LAZYDDL
   usertable_schema.old_index = nullptr;
@@ -75,7 +74,7 @@ void microbenchmark_schematable_loader::load() {
 #else
   struct Schema_base usertable_schema;
   char str2[sizeof(Schema_base)];
-  //usertable_schema.op = constraint_verification;
+  // usertable_schema.op = constraint_verification;
 #endif
   usertable_schema.v = 0;
   memcpy(str2, &usertable_schema, sizeof(str2));

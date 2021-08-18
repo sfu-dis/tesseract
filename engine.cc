@@ -185,7 +185,7 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
 #endif
   memcpy(&schema, (char *)value.data(), sizeof(schema));
   uint64_t schema_version = schema.v;
-  
+
   ddl_add_column_scan_callback c_add_column(this, t, schema_version, arena, op);
 
   // Here we assume we can get table and index information
@@ -236,7 +236,7 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
   }
   start_key->copy_from(str1, sizeof(str1));
 
-  r = index->Scan(t, *start_key, nullptr, c_add_column, arena);  
+  r = index->Scan(t, *start_key, nullptr, c_add_column, arena);
 #else
   const order_line::key k_ol_0(1, 1, 1, 0);
   varstr *start_key = arena->next(::Size(k_ol_0));
@@ -252,7 +252,7 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
     return r;
   }*/
 #endif
-  
+
   if (r._val != RC_TRUE) {
     printf("DDL scan false\n");
     return r;
@@ -441,7 +441,7 @@ class ddl_add_constraint_scan_callback : public OrderedIndex::ScanCallback {
 public:
   ddl_add_constraint_scan_callback(OrderedIndex *index, transaction *t,
                                    ermia::str_arena *arena,
-				   std::function<bool(uint64_t)> op)
+                                   std::function<bool(uint64_t)> op)
       : _index(index), _txn(t), _arena(arena) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const varstr &value) {
     MARK_REFERENCED(value);
@@ -459,7 +459,8 @@ public:
     rc_t rc = rc_t{RC_INVALID};
     ermia::varstr valptr;
     _index->GetRecord(_txn, rc, *k, valptr);
-    if (rc._val != RC_TRUE) printf("Get record failed\n");
+    if (rc._val != RC_TRUE)
+      printf("Get record failed\n");
     struct Schema1 record;
     memcpy(&record, (char *)valptr.data(), sizeof(record));
     if (record.b < 0) {
@@ -478,10 +479,9 @@ public:
   rc_t invoke_status = rc_t{RC_TRUE};
 };
 
-rc_t ConcurrentMasstreeIndex::CheckNormalTable(str_arena *arena,
-                                               OrderedIndex *index,
-                                               transaction *t,
-					       std::function<bool(uint64_t)> op) {
+rc_t ConcurrentMasstreeIndex::CheckNormalTable(
+    str_arena *arena, OrderedIndex *index, transaction *t,
+    std::function<bool(uint64_t)> op) {
   rc_t r;
 
   ddl_add_constraint_scan_callback c_add_constraint(this, t, arena, op);
@@ -498,8 +498,7 @@ rc_t ConcurrentMasstreeIndex::CheckNormalTable(str_arena *arena,
     return r;
   }
 
-  printf("scan invoke status: %hu\n",
-         c_add_constraint.invoke_status._val);
+  printf("scan invoke status: %hu\n", c_add_constraint.invoke_status._val);
 
   return c_add_constraint.invoke_status;
 }
@@ -869,10 +868,10 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
         if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
           struct Schema1 record1;
           memcpy(&record1, value.data(), sizeof(record1));
-	  
-	  struct Schema2 record2;
-	  record2.v = record1.v + 1;
-	  record2.a = record1.v + 1;
+
+          struct Schema2 record2;
+          record2.v = record1.v + 1;
+          record2.a = record1.v + 1;
           record2.b = record1.v + 1;
           record2.c = record1.v + 1;
 
@@ -881,14 +880,14 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
           varstr *v2 = t->string_allocator().next(sizeof(str2));
           v2->copy_from(str2, sizeof(str2));
 
-	  rc = InsertRecord(t, key, *v2);
-	  if (rc._val != RC_TRUE) {
-	    volatile_write(rc._val, RC_ABORT_INTERNAL);
-	    return;
-	  } else {
-	    value = *v2;
-	  }
-	}
+          rc = InsertRecord(t, key, *v2);
+          if (rc._val != RC_TRUE) {
+            volatile_write(rc._val, RC_ABORT_INTERNAL);
+            return;
+          } else {
+            value = *v2;
+          }
+        }
       }
     }
 #endif

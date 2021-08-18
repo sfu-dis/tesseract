@@ -91,10 +91,10 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     xc->begin = log->get_committer()->get_lowest_tls_durable_csn();
   */} else {
     xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
-  //  xc->begin = get_lowest_tls_commit_csn();
-  //  xc->begin = pcommit::lowest_csn.load(std::memory_order_relaxed);
-  //  xc->begin = log->get_committer()->get_lowest_tls_durable_csn();
-  //  printf("xc->begin: %lu\n", xc->begin);
+    //  xc->begin = get_lowest_tls_commit_csn();
+    //  xc->begin = pcommit::lowest_csn.load(std::memory_order_relaxed);
+    //  xc->begin = log->get_committer()->get_lowest_tls_durable_csn();
+    //  printf("xc->begin: %lu\n", xc->begin);
   }
 #endif
 }
@@ -267,7 +267,7 @@ rc_t transaction::si_commit() {
     fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
     object->SetCSN(csn_ptr);
     ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
-  
+
     // Do CDC
 #if !defined(LAZYDDL)
     new_td->GetPrimaryIndex()->changed_data_capture(this, xc->begin, xc->end);

@@ -41,12 +41,15 @@ uint32_t bench_worker::fetch_workload() {
     if ((i + 1) == workload.size() || d < workload[i].frequency) {
       if (i == workload.size() - 1) {
 	ddl_num++;
-#if defined(COPYDDL) && defined(MICROBENCH) 
-        if (ddl_num != 30) continue;
+#if defined(COPYDDL) && defined(MICROBENCH)
+        if (ddl_num != 30)
+          continue;
 #elif defined(COPYDDL)
-	if (ddl_num != 2) continue;
+        if (ddl_num != 2)
+          continue;
 #else
-	if (ddl_num != 20) continue;
+        if (ddl_num != 20)
+          continue;
 #endif
       }
       return i;
@@ -314,10 +317,10 @@ void bench_runner::start_measurement() {
   double total_util = 0;
   double sec_util = 0;
   uint32_t sleep_time = 1;
-  //uint32_t sleep_time = 500;
+  // uint32_t sleep_time = 500;
   auto gather_stats = [&]() {
     sleep(1);
-    //usleep(1000 * sleep_time);
+    // usleep(1000 * sleep_time);
     uint64_t sec_commits = 0, sec_aborts = 0;
     for (size_t i = 0; i < ermia::config::worker_threads; i++) {
       sec_commits += workers[i]->get_ntxn_commits();

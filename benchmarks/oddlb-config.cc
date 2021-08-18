@@ -1,7 +1,7 @@
-#include <getopt.h>
 #include "../engine.h"
 #include "bench.h"
 #include "oddlb.h"
+#include <getopt.h>
 
 uint oddl_reps_per_tx = 1;
 // uint g_initial_table_size = 30000000;
@@ -26,7 +26,7 @@ void oddlb_usertable_loader::load() {
   ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
   int64_t to_insert = oddl_initial_table_size / ermia::config::worker_threads;
   uint64_t start_key = loader_id * to_insert;
-  
+
   for (uint64_t i = 0; i < to_insert; ++i) {
     ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
     /*
@@ -34,7 +34,8 @@ void oddlb_usertable_loader::load() {
     BuildKey(start_key + i, k);
 
     ermia::varstr &v = str(sizeof(ycsb_kv::value));
-    new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
+    new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr),
+    sizeof(ycsb_kv::value));
     *(char*)v.p = 'a';
     */
 
@@ -89,8 +90,8 @@ void oddlb_usertable_loader::load() {
   }
 
   if (ermia::config::verbose) {
-    std::cerr << "[INFO] loader " << loader_id <<  " loaded "
-              << to_insert << " keys in USERTABLE" << std::endl;
+    std::cerr << "[INFO] loader " << loader_id << " loaded " << to_insert
+              << " keys in USERTABLE" << std::endl;
   }
 }
 
@@ -105,27 +106,29 @@ void oddlb_parse_options(int argc, char **argv) {
 
     int option_index = 0;
     int c = getopt_long(argc, argv, "r:s:", long_options, &option_index);
-    if (c == -1) break;
+    if (c == -1)
+      break;
     switch (c) {
-      case 0:
-        if (long_options[option_index].flag != 0) break;
-        abort();
+    case 0:
+      if (long_options[option_index].flag != 0)
         break;
+      abort();
+      break;
 
-      case 'r':
-        oddl_reps_per_tx = strtoul(optarg, NULL, 10);
-        break;
+    case 'r':
+      oddl_reps_per_tx = strtoul(optarg, NULL, 10);
+      break;
 
-      case 's':
-        oddl_initial_table_size = strtoul(optarg, NULL, 10);
-        break;
+    case 's':
+      oddl_initial_table_size = strtoul(optarg, NULL, 10);
+      break;
 
-      case '?':
-        /* getopt_long already printed an error message. */
-        exit(1);
+    case '?':
+      /* getopt_long already printed an error message. */
+      exit(1);
 
-      default:
-        abort();
+    default:
+      abort();
     }
   }
 
@@ -133,7 +136,9 @@ void oddlb_parse_options(int argc, char **argv) {
 
   if (ermia::config::verbose) {
     std::cerr << "oddlb settings:" << std::endl
-         << "  initial user table size:    " << oddl_initial_table_size << std::endl
-         << "  operations per transaction: " << oddl_reps_per_tx << std::endl;
+              << "  initial user table size:    " << oddl_initial_table_size
+              << std::endl
+              << "  operations per transaction: " << oddl_reps_per_tx
+              << std::endl;
   }
 }

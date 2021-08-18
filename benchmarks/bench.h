@@ -358,13 +358,14 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
   if (r.IsAbort()) __abort_txn_coro(r);            \
 }
 
-#define TryCatchUnblock(r)			\
-{						\
-    db->Abort(txn);				\
-    db->WriteUnlock(std::string("SCHEMA"));	\
-    if (!r.IsAbort()) return {RC_ABORT_USER};	\
-    return r;					\
-}
+#define TryCatchUnblock(r)                                                     \
+  {                                                                            \
+    db->Abort(txn);                                                            \
+    db->WriteUnlock(std::string("SCHEMA"));                                    \
+    if (!r.IsAbort())                                                          \
+      return {RC_ABORT_USER};                                                  \
+    return r;                                                                  \
+  }
 
 // No abort is allowed, usually for loading
 inline void TryVerifyStrict(rc_t rc) {
