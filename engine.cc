@@ -46,7 +46,9 @@ public:
     ASSERT(k);
     k->copy_from(keyp, keylen);
 
-    /*
+    varstr *d_v = nullptr;
+
+#ifdef MICROBENCH
     char str2[sizeof(Schema2)];
     struct Schema2 record2;
     record2.v = _version;
@@ -54,8 +56,13 @@ public:
     record2.b = _version;
     record2.c = _version;
     memcpy(str2, &record2, sizeof(str2));
-    varstr *d_v = _arena->next(sizeof(str2));
-    */
+    d_v = _arena->next(sizeof(str2));
+    if (!d_v) {
+      _arena = new ermia::str_arena(ermia::config::arena_size_mb);
+      d_v = _arena->next(sizeof(str2));
+    }
+    d_v->copy_from(str2, sizeof(str2));
+#else
 
     /*order_line::key k_ol_temp;
     const order_line::key *k_ol_test = Decode(*k, k_ol_temp);
@@ -77,14 +84,15 @@ public:
     v_ol_1.ol_tax = 0;
 
     const size_t order_line_sz = Size(v_ol_1);
-    varstr *d_v = _arena->next(order_line_sz);
+    d_v = _arena->next(order_line_sz);
 
     if (!d_v) {
       _arena = new ermia::str_arena(ermia::config::arena_size_mb);
       d_v = _arena->next(order_line_sz);
     }
     d_v = &Encode(*d_v, v_ol_1);
-    
+#endif
+
     //varstr *d_v = _op(keyp, keylen, value, _version, _txn, _arena, nullptr);
     //printf("d_v size: %u\n", d_v->size());
 #if defined(BLOCKDDL) || defined(SIDDL)
@@ -100,6 +108,7 @@ public:
       return false;
     }
 #endif
+#if !defined(MICROBENCH)
     rc_t rc = rc_t{RC_INVALID};
     ermia::varstr valptr;
     order_line_1::value v_ol_1_temp;
@@ -108,6 +117,7 @@ public:
     const order_line_1::value *v_ol_2 = Decode(valptr, v_ol_1_temp);
     ALWAYS_ASSERT(v_ol_2->ol_tax == 0);
     ALWAYS_ASSERT(v_ol_2->v == _version);
+#endif
     return true;
   }
   std::vector<varstr *> output;
@@ -175,7 +185,7 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
 #endif
   memcpy(&schema, (char *)value.data(), sizeof(schema));
   uint64_t schema_version = schema.v;
-
+  
   ddl_add_column_scan_callback c_add_column(this, t, schema_version, arena, op);
 
   // Here we assume we can get table and index information
@@ -215,6 +225,19 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
     }
   }*/
 
+#ifdef MICROBENCH
+  char str1[sizeof(uint64_t)];
+  uint64_t start = 0;
+  memcpy(str1, &start, sizeof(str1));
+  varstr *start_key = arena->next(sizeof(str1));
+  if (!start_key) {
+    arena = new ermia::str_arena(ermia::config::arena_size_mb);
+    start_key = arena->next(sizeof(str1));
+  }
+  start_key->copy_from(str1, sizeof(str1));
+
+  r = index->Scan(t, *start_key, nullptr, c_add_column, arena);  
+#else
   const order_line::key k_ol_0(1, 1, 1, 0);
   varstr *start_key = arena->next(::Size(k_ol_0));
   if (!start_key) {
@@ -222,16 +245,18 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
     start_key = arena->next(::Size(k_ol_0));
   }
   r = index->Scan(t, Encode(*start_key, k_ol_0), nullptr, c_add_column, arena);
-  if (r._val != RC_TRUE) {
-    printf("DDL scan false\n");
-    return r;
-  }
 
   /*r = index->Scan(t, *start_key, nullptr, c_add_column, arena);
   if (r._val != RC_TRUE) {
     printf("DDL scan false\n");
     return r;
   }*/
+#endif
+  
+  if (r._val != RC_TRUE) {
+    printf("DDL scan false\n");
+    return r;
+  }
 
   printf("scan invoke status: %hu\n", c_add_column.invoke_status._val);
 
@@ -415,17 +440,34 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable1(
 class ddl_add_constraint_scan_callback : public OrderedIndex::ScanCallback {
 public:
   ddl_add_constraint_scan_callback(OrderedIndex *index, transaction *t,
-                                   ermia::str_arena *arena)
+                                   ermia::str_arena *arena,
+				   std::function<bool(uint64_t)> op)
       : _index(index), _txn(t), _arena(arena) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const varstr &value) {
     MARK_REFERENCED(value);
-    /*
-    _arena->reset();
+    //_arena->reset();
 
     varstr *k = _arena->next(keylen);
     ASSERT(k);
+    if (!k) {
+      _arena = new ermia::str_arena(ermia::config::arena_size_mb);
+      k = _arena->next(keylen);
+    }
     k->copy_from(keyp, keylen);
-    */
+
+#ifdef MICROBENCH
+    rc_t rc = rc_t{RC_INVALID};
+    ermia::varstr valptr;
+    _index->GetRecord(_txn, rc, *k, valptr);
+    if (rc._val != RC_TRUE) printf("Get record failed\n");
+    struct Schema1 record;
+    memcpy(&record, (char *)valptr.data(), sizeof(record));
+    if (record.b < 0) {
+      invoke_status = rc_t{RC_ABORT_INTERNAL};
+      printf("Constraint violation\n");
+      return false;
+    }
+#endif
 
     return true;
   }
@@ -438,10 +480,11 @@ public:
 
 rc_t ConcurrentMasstreeIndex::CheckNormalTable(str_arena *arena,
                                                OrderedIndex *index,
-                                               transaction *t) {
+                                               transaction *t,
+					       std::function<bool(uint64_t)> op) {
   rc_t r;
 
-  ddl_add_constraint_scan_callback c_add_constraint(this, t, arena);
+  ddl_add_constraint_scan_callback c_add_constraint(this, t, arena, op);
 
   char str1[sizeof(uint64_t)];
   uint64_t start = 0;
@@ -454,6 +497,9 @@ rc_t ConcurrentMasstreeIndex::CheckNormalTable(str_arena *arena,
     printf("DDL scan false\n");
     return r;
   }
+
+  printf("scan invoke status: %hu\n",
+         c_add_constraint.invoke_status._val);
 
   return c_add_constraint.invoke_status;
 }
@@ -821,9 +867,26 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
         found = false;
       } else {
         if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
-	  if (InsertRecord(t, key, value)._val != RC_TRUE) {
-	    volatile_write(rc._val, RC_FALSE);
-            return;
+          struct Schema1 record1;
+          memcpy(&record1, value.data(), sizeof(record1));
+	  
+	  struct Schema2 record2;
+	  record2.v = record1.v + 1;
+	  record2.a = record1.v + 1;
+          record2.b = record1.v + 1;
+          record2.c = record1.v + 1;
+
+          char str2[sizeof(Schema2)];
+          memcpy(str2, &record2, sizeof(str2));
+          varstr *v2 = t->string_allocator().next(sizeof(str2));
+          v2->copy_from(str2, sizeof(str2));
+
+	  rc = InsertRecord(t, key, *v2);
+	  if (rc._val != RC_TRUE) {
+	    volatile_write(rc._val, RC_ABORT_INTERNAL);
+	    return;
+	  } else {
+	    value = *v2;
 	  }
 	}
       }

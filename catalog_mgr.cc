@@ -50,6 +50,46 @@ void schematable_loader::load() {
   };
 }
 
+static bool constraint_verification(uint64_t x) {
+  return true;
+}
+
+void microbenchmark_schematable_loader::load() {
+  ermia::OrderedIndex *tbl = open_tables.at("SCHEMA");
+  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
+
+  char str1[] = "USERTABLE";
+  ermia::varstr &k1 = str(sizeof(str1));
+  k1.copy_from(str1, sizeof(str1));
+
+#ifdef COPYDDL
+  struct Schema_record usertable_schema;
+  usertable_schema.index = ermia::Catalog::GetTable("USERTABLE")->GetPrimaryIndex();
+  usertable_schema.td = ermia::Catalog::GetTable("USERTABLE");
+#ifdef LAZYDDL
+  usertable_schema.old_index = nullptr;
+  usertable_schema.old_td = nullptr;
+#endif
+
+  char str2[sizeof(Schema_record)];
+#else
+  struct Schema_base usertable_schema;
+  char str2[sizeof(Schema_base)];
+  //usertable_schema.op = constraint_verification;
+#endif
+  usertable_schema.v = 0;
+  memcpy(str2, &usertable_schema, sizeof(str2));
+  ermia::varstr &v1 = str(sizeof(str2));
+  v1.copy_from(str2, sizeof(str2));
+
+  TryVerifyStrict(tbl->InsertRecord(txn, k1, v1));
+  TryVerifyStrict(db->Commit(txn));
+
+  if (ermia::config::verbose) {
+    std::cerr << "[INFO] schema table loaded" << std::endl;
+  };
+}
+
 void create_schema_table(ermia::Engine *db, const char *name) {
   ermia::thread::Thread *thread = ermia::thread::GetThread(true);
   ALWAYS_ASSERT(thread);

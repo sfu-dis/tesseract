@@ -281,6 +281,8 @@ int main(int argc, char **argv) {
 #endif
   } else if (FLAGS_benchmark == "tpce") {
     LOG(FATAL) << "Not supported in this build";
+  } else if (FLAGS_benchmark == "oddl") {
+    test_fn = oddlb_do_test;
   } else {
     LOG(FATAL) << "Invalid benchmark: " << FLAGS_benchmark;
   }

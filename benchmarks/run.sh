@@ -25,7 +25,7 @@ runtime=$1; shift
 
 bench=${workload:0:4}
 
-if [[ "$bench" != "tpce" && "$bench" != "ycsb" && "$bench" != "tpcc" ]]; then
+if [[ "$bench" != "oddl" && "$bench" != "tpce" && "$bench" != "ycsb" && "$bench" != "tpcc" ]]; then
   echo "Unsupported benchmark $bench."
 fi
 
@@ -54,7 +54,7 @@ if [ "$bench" == "tpcc" ]; then
     if [ "$workload" == "tpcc_contention" ]; then
       wh_spread="100"
     fi
-    $options -benchmark_options "--workload-mix="41,43,4,4,4,4,0,0" --warehouse-spread=$wh_spread $2"
+    $options -benchmark_options "--workload-mix="45,43,0,4,4,4,0,0" --warehouse-spread=$wh_spread $2"
   fi
 elif [ "$bench" == "tpce" ]; then
   if [ "$workload" == "tpce_org" ]; then
@@ -64,6 +64,8 @@ elif [ "$bench" == "tpce" ]; then
     $options -benchmark_options "--query-range $query_rng --egen-dir ./benchmarks/egen/flat/egen_flat_in --customer 5000 --working-days 10 --workload-mix="4.9,8,1,13,14,8,10.1,10,9,2,20" $2"
   fi
 elif [ "$bench" == "ycsb" ]; then
+  $options -benchmark_options "$2"
+elif [ "$bench" == "oddl" ]; then
   $options -benchmark_options "$2"
 else
   echo "Unspported benchmark $bench."

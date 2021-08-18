@@ -41,10 +41,12 @@ uint32_t bench_worker::fetch_workload() {
     if ((i + 1) == workload.size() || d < workload[i].frequency) {
       if (i == workload.size() - 1) {
 	ddl_num++;
-#ifdef COPYDDL
-        if (ddl_num != 8) continue;
+#if defined(COPYDDL) && defined(MICROBENCH) 
+        if (ddl_num != 30) continue;
+#elif defined(COPYDDL)
+	if (ddl_num != 2) continue;
 #else
-	if (ddl_num != 40) continue;
+	if (ddl_num != 20) continue;
 #endif
       }
       return i;
@@ -117,8 +119,6 @@ void bench_worker::MyWork(char *) {
     // Reset the tls committer
     tlog = ermia::GetLog();
     tlog->reset_committer(false);
-    ermia::volatile_write(ermia::_tls_commit_csn[ermia::thread::MyId()], 
-		   ermia::pcommit::lowest_csn.load(std::memory_order_relaxed));
     workload = get_workload();
     txn_counts.resize(workload.size());
     barrier_a->count_down();
@@ -313,11 +313,11 @@ void bench_runner::start_measurement() {
 
   double total_util = 0;
   double sec_util = 0;
-  //uint32_t sleep_time = 1;
-  uint32_t sleep_time = 500;
+  uint32_t sleep_time = 1;
+  //uint32_t sleep_time = 500;
   auto gather_stats = [&]() {
-    //sleep(1);
-    usleep(1000 * sleep_time);
+    sleep(1);
+    //usleep(1000 * sleep_time);
     uint64_t sec_commits = 0, sec_aborts = 0;
     for (size_t i = 0; i < ermia::config::worker_threads; i++) {
       sec_commits += workers[i]->get_ntxn_commits();
@@ -339,7 +339,7 @@ void bench_runner::start_measurement() {
   };
 
   // Backups run forever until told to stop.
-  while (slept < ermia::config::benchmark_seconds * 1000) {
+  while (slept < ermia::config::benchmark_seconds) {
     gather_stats();
   }
   running = false;

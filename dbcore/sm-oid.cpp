@@ -889,9 +889,12 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
       ASSERT(owner == holder_xid);
       // holder has finished SetClsn()
       if (holder_lsn != 0 && holder_lsn < xc->begin) {
-        // retry = true;
-	// return false;
+        //retry = true;
+	//return false;
         return true;
+      } else {
+        retry = true;
+	return false;
       }
     }*/
 

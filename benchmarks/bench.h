@@ -11,6 +11,7 @@
 #include "../dbcore/sm-coroutine.h"
 #include "../dbcore/sm-thread.h"
 
+extern void oddlb_do_test(ermia::Engine *db, int argc, char **argv);
 extern void ycsb_do_test(ermia::Engine *db, int argc, char **argv);
 extern void ycsb_cs_do_test(ermia::Engine *db, int argc, char **argv);
 extern void ycsb_cs_advance_do_test(ermia::Engine *db, int argc, char **argv);
@@ -355,6 +356,14 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
   LOG_IF(FATAL, r._val != RC_TRUE && !r.IsAbort()) \
     << "Wrong return value " << r._val;            \
   if (r.IsAbort()) __abort_txn_coro(r);            \
+}
+
+#define TryCatchUnblock(r)			\
+{						\
+    db->Abort(txn);				\
+    db->WriteUnlock(std::string("SCHEMA"));	\
+    if (!r.IsAbort()) return {RC_ABORT_USER};	\
+    return r;					\
 }
 
 // No abort is allowed, usually for loading

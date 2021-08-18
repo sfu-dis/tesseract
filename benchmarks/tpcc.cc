@@ -279,7 +279,7 @@ rc_t tpcc_worker::txn_new_order() {
 
   TryCatch(db->Commit(txn));
   // printf("new_order commit ok\n");
-  if (oorder_schema.v != 0) printf("ddl new_order commit ok\n");
+  // if (oorder_schema.v != 0) printf("ddl new_order commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
   db->WriteUnlock("order_line");
@@ -621,8 +621,27 @@ rc_t tpcc_worker::txn_delivery() {
                    ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
                           &Encode(str(Size(k_oo_1)), k_oo_1), c));
 
-      if (c.size() != c1.size() && c.size() == 0) {
-        TryCatch({RC_ABORT_USER});
+      if (c.size() != c1.size()) {
+        //printf("delivery abort\n");
+#ifdef LAZYDDL
+        ermia::ConcurrentMasstreeIndex *old_order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.old_index;
+
+
+        order_line_nop_callback c_order_line_1(order_line_schema.v - 1, true, txn,
+                                               s_arena.get(), order_line_table_index);
+
+        TryCatch(old_order_line_table_index
+                   ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
+                          &Encode(str(Size(k_oo_1)), k_oo_1), c_order_line_1));
+
+        TryCatch(c_order_line_1.invoke_status);
+	
+	if (c1.size() != c_order_line_1.n) {
+	  TryCatch({RC_ABORT_USER});
+	}
+#else
+	TryCatch({RC_ABORT_USER});
+#endif
       } 
     }
 
@@ -733,7 +752,7 @@ rc_t tpcc_worker::txn_delivery() {
   }
   TryCatch(db->Commit(txn));
   // printf("delivery commit ok\n");
-  if (oorder_schema.v != 0) printf("delivery commit ok\n");
+  // if (oorder_schema.v != 0) printf("delivery commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
   db->WriteUnlock("order_line");
@@ -759,7 +778,12 @@ rc_t tpcc_worker::txn_order_status() {
   //   max_read_set_size : 81
   //   max_write_set_size : 0
   //   num_txn_contexts : 4
-  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+  ermia::transaction *txn = nullptr;
+#if !defined(LAZYDDL)
+  txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+#else
+  txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
+#endif
   ermia::scoped_str_arena s_arena(arena);
   // NB: since txn_order_status() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
@@ -927,37 +951,52 @@ rc_t tpcc_worker::txn_order_status() {
     TryCatch(order_line_table_index
                  ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
                         &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line));
-#ifdef LAZYDDL
-    /*order_line_nop_callback c_order_line(order_line_schema.v - 1, true, txn,
-                                           s_arena.get(), order_line_table_index);
-    */
-    if (c_order_line.n < 5 || c_order_line.n > 15) {
-      /*ermia::ConcurrentMasstreeIndex *old_order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.old_index;
     
+    if (c_order_line.n < 5 || c_order_line.n > 15) {
+#ifdef LAZYDDL      
+      ermia::ConcurrentMasstreeIndex *old_order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.old_index;
+    
+      order_line_nop_callback c_order_line_1(order_line_schema.v - 1, true, txn,
+                                           s_arena.get(), order_line_table_index);
+
       TryCatch(old_order_line_table_index
                  ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                        &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line));
+                        &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line_1));
 
-      TryCatch(c_order_line.invoke_status);
+      TryCatch(c_order_line_1.invoke_status);
 
-      order_line_nop_callback c_order_line(order_line_schema.v, false, txn,
+      if (c_order_line_1.n < 5 || c_order_line_1.n > 15) {
+        printf("c_order_line_1.n < 5 || c_order_line_1.n > 15\n");
+      }
+      ALWAYS_ASSERT(c_order_line_1.n >= 5 && c_order_line_1.n <= 15);
+      
+      /*order_line_nop_callback c_order_line_2(order_line_schema.v, false, txn,
                                        s_arena.get(), nullptr);
 
       TryCatch(order_line_table_index
                  ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                        &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line));
+                        &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line_2));
+      
+      TryCatch(c_order_line_2.invoke_status);
+
+      if (c_order_line_2.n < 5 || c_order_line_2.n > 15) {
+        printf("c_order_line_2.n < 5 || c_order_line_2.n > 15\n");
+      }
+      ALWAYS_ASSERT(c_order_line_2.n >= 5 && c_order_line_2.n <= 15);
       */
-      TryCatch({RC_ABORT_USER});
-    }
-#endif
+      //TryCatch({RC_ABORT_USER});
+#else
     ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
+    // TryCatch({RC_ABORT_USER});
+#endif
+    }
   }
 
-  if (c_order_line.n < 5 || c_order_line.n > 15) {
+  /*if (c_order_line.n < 5 || c_order_line.n > 15) {
     // printf("c_order_line.n: %zu, w: %d, d: %d, o_id: %d\n", c_order_line.n, warehouse_id, districtID, o_id);
     // printf("txn begin: %lu\n", txn->GetXIDContext()->begin);
 #ifdef COPYDDL
-    /*ermia::ConcurrentMasstreeIndex *order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
+    ermia::ConcurrentMasstreeIndex *order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
     const order_line::key k_ol_test(2, 7, 2, 2);
     ermia::varstr valptr;
     rc = rc_t{RC_INVALID};
@@ -966,16 +1005,16 @@ rc_t tpcc_worker::txn_order_status() {
       printf("Yes, no value got\n");
     } else {
       printf("value got\n");
-    }*/
+    }
 #endif
     TryCatch({RC_ABORT_USER});
     // TryCatch({RC_FALSE});
-  }
+  }*/
   // ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
 
   TryCatch(db->Commit(txn));
   // printf("order_status commit ok\n");
-  if (oorder_schema.v != 0) printf("order_status commit ok\n");
+  // if (oorder_schema.v != 0) printf("order_status commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
   db->WriteUnlock("order_line");
@@ -1003,7 +1042,12 @@ rc_t tpcc_worker::txn_stock_level() {
   //   n_node_scan_large_instances : 1
   //   n_read_set_large_instances : 2
   //   num_txn_contexts : 3
-  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+  ermia::transaction *txn = nullptr;
+#if !defined(LAZYDDL)
+  txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+#else
+  txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
+#endif
   ermia::scoped_str_arena s_arena(arena);
 
   // Read schema tables first 
@@ -1044,7 +1088,8 @@ rc_t tpcc_worker::txn_stock_level() {
       : v_d->d_next_o_id;
 
   // manual joins are fun!
-  order_line_scan_callback c(order_line_schema.v);
+  order_line_scan_callback c(order_line_schema.v, false, txn,
+                                       s_arena.get(), nullptr);
   const int32_t lower = cur_next_o_id >= 20 ? (cur_next_o_id - 20) : 0;
   const order_line::key k_ol_0(warehouse_id, districtID, lower, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, cur_next_o_id, 0);
@@ -1056,7 +1101,8 @@ rc_t tpcc_worker::txn_stock_level() {
 #ifdef COPYDDL
     ermia::ConcurrentMasstreeIndex *order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
 #endif
-    order_line_scan_callback c1(0);
+    order_line_scan_callback c1(order_line_schema.v - 1, false, txn,
+                                       s_arena.get(), nullptr);
     TryCatch(tbl_order_line(warehouse_id)
                  ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
                         &Encode(str(Size(k_ol_1)), k_ol_1), c1));
@@ -1065,8 +1111,24 @@ rc_t tpcc_worker::txn_stock_level() {
                  ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
                         &Encode(str(Size(k_ol_1)), k_ol_1), c));
   
-    if (c.n != c1.n && c.n == 0) {
+    if (c.n != c1.n) {
+      //printf("stock abort\n");
+#ifdef LAZYDDL
+      ermia::ConcurrentMasstreeIndex *old_order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.old_index;
+
+      order_line_scan_callback c2(order_line_schema.v - 1, true, txn,
+                                           s_arena.get(), order_line_table_index);
+
+      TryCatch(old_order_line_table_index
+                 ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
+                        &Encode(str(Size(k_ol_1)), k_ol_1), c2));
+
+      if (c1.n != c2.n) {
+        TryCatch({RC_ABORT_USER});
+      }
+#else
       TryCatch({RC_ABORT_USER});
+#endif
     }
   }
   {
@@ -1288,7 +1350,7 @@ rc_t tpcc_worker::txn_credit_check() {
 
   TryCatch(db->Commit(txn));
   // printf("credit check commit ok\n");
-  if (oorder_schema.v != 0) printf("credit check commit ok\n");
+  // if (oorder_schema.v != 0) printf("credit check commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
   db->WriteUnlock("order_line");
@@ -1631,7 +1693,7 @@ rc_t tpcc_worker::txn_ddl() {
   db->WriteLock("order_line");
   db->WriteLock("oorder");
 
-  /*ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
+  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
   
   char str1[] = "order_line";
   ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1);
@@ -1658,13 +1720,13 @@ rc_t tpcc_worker::txn_ddl() {
   rc = schema_index->WriteSchemaTable(txn, rc, k1, v2);
   TryCatch(rc);
   
-  rc = order_line_table_index->WriteNormalTable(arena, order_line_table_index, txn, v2);
+  rc = order_line_table_index->WriteNormalTable(arena, order_line_table_index, txn, v2, add_column_op);
   TryCatch(rc);
   
   TryCatch(db->Commit(txn));
-  */
+  
 
-  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
+  /*ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
   // Read schema tables first 
   char str1[] = "order_line", str2[] = "oorder";
@@ -1710,7 +1772,7 @@ rc_t tpcc_worker::txn_ddl() {
   TryCatch(rc);
 
   TryCatch(db->Commit(txn));
-  
+  */
   db->WriteUnlock("SCHEMA");
   db->WriteUnlock("order_line");
   db->WriteUnlock("oorder");
@@ -1763,7 +1825,7 @@ rc_t tpcc_worker::txn_ddl() {
   str3 += ss.str();
   
   if (!db->BuildIndexMap(str3.c_str())) {
-    printf("Duplicate table creation\n");
+    //printf("Duplicate table creation\n");
     TryCatch({RC_ABORT_USER});
   }
 
