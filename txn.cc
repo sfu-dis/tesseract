@@ -270,7 +270,8 @@ rc_t transaction::si_commit() {
 
     // Do CDC
 #if !defined(LAZYDDL)
-    new_td->GetPrimaryIndex()->changed_data_capture(this, xc->begin, xc->end);
+    // new_td->GetPrimaryIndex()->changed_data_capture(this, xc->begin,
+    // xc->end);
 #endif  
   }
 #endif

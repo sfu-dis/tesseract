@@ -305,7 +305,8 @@ public:
 #else
     table_index->GetRecord(txn, rc, k2, v2, &oid);
 #endif
-    TryCatch(rc);
+    if (rc._val != RC_TRUE)
+      TryCatch(rc_t{RC_ABORT_USER});
 
     struct Schema_base record_test;
     memcpy(&record_test, (char *)v2.data(), sizeof(record_test));
@@ -320,7 +321,8 @@ public:
 
 #if !defined(NONEDDL)
     if (record_test.v != schema_version) {
-      printf("It should get %lu, but get %lu\n", schema_version, record_test.v);
+      printf("Read: It should get %lu, but get %lu\n", schema_version,
+             record_test.v);
       ALWAYS_ASSERT(record_test.v == schema_version);
     }
 #endif
@@ -331,6 +333,7 @@ public:
 
       ALWAYS_ASSERT(record1_test.a == a);
       ALWAYS_ASSERT(record1_test.b == a);
+
     } else {
       struct Schema2 record2_test;
 #ifdef NONEDDL
@@ -405,10 +408,11 @@ public:
     rc = rc_t{RC_INVALID};
     oid = ermia::INVALID_OID;
 
-    // table_index->GetRecord(txn, rc, k1, v1, &oid);
-    // TryCatch(rc);
+    /*table_index->GetRecord(txn, rc, k1, v1, &oid);
+    //TryVerifyRelaxed(rc);
+    if (rc._val != RC_TRUE) TryCatch(rc_t{RC_ABORT_USER});
 
-    /*struct Schema_base record_test;
+    struct Schema_base record_test;
     memcpy(&record_test, (char *)v1.data(), sizeof(record_test));
 
 #ifdef SIDDL
@@ -417,13 +421,20 @@ public:
       //db->Abort(txn);
       goto retry;
     }
+#endif
+
+#if !defined(NONEDDL)
+    if (schema_version != record_test.v) {
+      printf("Write: It should get %lu, but get %lu\n", schema_version,
+record_test.v); ALWAYS_ASSERT(record_test.v == schema_version);
+    }
 #endif*/
 
     if (schema_version == 0) {
-      /*struct Schema1 record1;
-      memcpy(&record1, (char *)v1.data(), sizeof(record1));
-      record1.a = schema_version;
-      record1.b = schema_version;
+      struct Schema1 record1;
+      record1.v = schema_version;
+      record1.a = a;
+      record1.b = a;
 
       char str2[sizeof(Schema1)];
       memcpy(str2, &record1, sizeof(str2));
@@ -431,23 +442,21 @@ public:
       v2.copy_from(str2, sizeof(str2));
 
       TryCatch(table_index->UpdateRecord(txn, k1, v2));
-      */
+
     } else {
       struct Schema2 record2;
 #ifdef NONEDDL
-      struct Schema1 record1;
+      /*struct Schema1 record1;
       memcpy(&record1, (char *)v1.data(), sizeof(record1));
 
       record2.a = record1.a;
       record2.b = record1.b;
+      */
 #else
       // memcpy(&record2, (char *)v1.data(), sizeof(record2));
 #endif
 
-#ifdef LAZYDDL
       record2.v = schema_version;
-#endif
-
       record2.a = schema_version;
       record2.b = schema_version;
       record2.c = schema_version;

@@ -185,7 +185,7 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
 #endif
   memcpy(&schema, (char *)value.data(), sizeof(schema));
   uint64_t schema_version = schema.v;
-
+  printf("schema v: %lu\n", schema_version);
   ddl_add_column_scan_callback c_add_column(this, t, schema_version, arena, op);
 
   // Here we assume we can get table and index information
@@ -885,7 +885,20 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
             volatile_write(rc._val, RC_ABORT_INTERNAL);
             return;
           } else {
-            value = *v2;
+            memcpy(&value, v2, sizeof(str2));
+
+            if (found) {
+              volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
+            } else if (config::phantom_prot) {
+              volatile_write(rc._val,
+                             DoNodeRead(t, sinfo.first, sinfo.second)._val);
+            }
+
+            if (out_oid) {
+              *out_oid = oid;
+            }
+
+            return;
           }
         }
       }
