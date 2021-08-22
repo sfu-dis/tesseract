@@ -93,6 +93,11 @@ public:
 #ifdef LAZYDDL
     schema.old_index = old_table_index;
     schema.old_td = old_td;
+    schema.old_tds[old_schema_version] = old_td;
+    /*if (schema_version == 1) schema.old_tds[0] = old_td;
+    if (schema_version == 2) schema.old_tds[1] = old_td;
+    if (schema_version == 2) ALWAYS_ASSERT(schema.old_tds[0] != nullptr);
+    */
 #endif
     memcpy(str2, &schema, sizeof(str2));
     ermia::varstr &v2 = str(sizeof(str2));
@@ -296,10 +301,12 @@ public:
     } else {
       table_index->GetRecord(txn, rc, k2, v2, &oid);
       if (rc._val != RC_TRUE) {
-        ermia::TableDescriptor *old_table_descriptor =
-            (ermia::TableDescriptor *)schema.old_td;
-        ALWAYS_ASSERT(old_table_descriptor != nullptr);
-        table_index->GetRecord(txn, rc, k2, v2, &oid, old_table_descriptor);
+        // ermia::TableDescriptor *old_table_descriptor =
+        //    (ermia::TableDescriptor *)schema.old_td;
+        // ermia::TableDescriptor *old_table_descriptors[16] = schema.old_tds;
+        // ALWAYS_ASSERT(old_table_descriptor != nullptr);
+        table_index->GetRecord(txn, rc, k2, v2, &oid, schema.old_td,
+                               schema.old_tds, schema_version);
       }
     }
 #else

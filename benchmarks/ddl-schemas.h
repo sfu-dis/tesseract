@@ -27,6 +27,7 @@ struct Schema_record : public Schema_base {
 #ifdef LAZYDDL
   ermia::OrderedIndex *old_index;
   ermia::TableDescriptor *old_td;
+  ermia::TableDescriptor *old_tds[16];
 #endif
   /*std::function<ermia::varstr *(
 		  const char *keyp,

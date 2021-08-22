@@ -825,7 +825,9 @@ std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
 PROMISE(void)
 ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
                                    varstr &value, OID *out_oid,
-				   TableDescriptor *old_table_descriptor) {
+                                   TableDescriptor *old_table_descriptor,
+                                   TableDescriptor *old_table_descriptors[],
+                                   uint64_t version) {
   OID oid = INVALID_OID;
   rc = {RC_INVALID};
   ConcurrentMasstree::versioned_node_t sinfo;
@@ -850,14 +852,30 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 
 #ifdef LAZYDDL
     if (!found && old_table_descriptor) {
+      int total = version;
+      /*for (uint i = 0; i < 16; i++) {
+        total++;
+        if (old_table_descriptors[i] == old_table_descriptor) {
+          break;
+        }
+      }*/
+    retry:
       rc = {RC_INVALID};
       oid = INVALID_OID;
+      // old_table_descriptor = old_table_descriptors[total - 1];
       AWAIT old_table_descriptor->GetPrimaryIndex()->GetOID(key, rc, t->xc, oid);
 
       if (rc._val == RC_TRUE) {
         tuple = AWAIT oidmgr->oid_get_version(old_table_descriptor->GetTupleArray(),
                                               oid, t->xc);
       } else {
+        total--;
+        if (total > 0) {
+          // printf("retry with total: %d\n", total);
+          old_table_descriptor = old_table_descriptors[total - 1];
+          ALWAYS_ASSERT(old_table_descriptor != nullptr);
+          goto retry;
+        }
         volatile_write(rc._val, RC_FALSE);
         return;
       }
@@ -866,14 +884,42 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
         found = false;
       } else {
         if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
-          struct Schema1 record1;
-          memcpy(&record1, value.data(), sizeof(record1));
+          struct Schema_base record_test;
+          memcpy(&record_test, value.data(), sizeof(record_test));
 
           struct Schema2 record2;
-          record2.v = record1.v + 1;
-          record2.a = record1.v + 1;
-          record2.b = record1.v + 1;
-          record2.c = record1.v + 1;
+
+          if (record_test.v == 0) {
+            struct Schema1 record;
+            memcpy(&record, value.data(), sizeof(record));
+
+            if (version == record_test.v + 1) {
+              record2.v = record.v + 1;
+              record2.a = record.v + 1;
+              record2.b = record.v + 1;
+              record2.c = record.v + 1;
+            } else {
+              record2.v = version;
+              record2.a = version;
+              record2.b = version;
+              record2.c = version;
+            }
+          } else {
+            struct Schema2 record;
+            memcpy(&record, value.data(), sizeof(record));
+
+            if (version == record_test.v + 1) {
+              record2.v = record.v + 1;
+              record2.a = record.v + 1;
+              record2.b = record.v + 1;
+              record2.c = record.v + 1;
+            } else {
+              record2.v = version;
+              record2.a = version;
+              record2.b = version;
+              record2.c = version;
+            }
+          }
 
           char str2[sizeof(Schema2)];
           memcpy(str2, &record2, sizeof(str2));
@@ -885,10 +931,11 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
             volatile_write(rc._val, RC_ABORT_INTERNAL);
             return;
           } else {
+            found = true;
             memcpy(&value, v2, sizeof(str2));
 
             if (found) {
-              volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
+              volatile_write(rc._val, RC_TRUE);
             } else if (config::phantom_prot) {
               volatile_write(rc._val,
                              DoNodeRead(t, sinfo.first, sinfo.second)._val);

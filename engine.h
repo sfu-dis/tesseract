@@ -235,7 +235,12 @@ public:
   PROMISE(void) changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn) override;
 #endif
 
-  PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr, TableDescriptor *old_table_descriptor = nullptr) override;
+  PROMISE(void)
+  GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+            OID *out_oid = nullptr,
+            TableDescriptor *old_table_descriptor = nullptr,
+            TableDescriptor *old_table_descriptors[] = nullptr,
+            uint64_t version = 0) override;
   PROMISE(rc_t) UpdateRecord(transaction *t, const varstr &key, varstr &value, TableDescriptor *old_table_descriptor = nullptr) override;
   PROMISE(rc_t) InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   PROMISE(rc_t) RemoveRecord(transaction *t, const varstr &key, TableDescriptor *old_table_descriptor = nullptr) override;

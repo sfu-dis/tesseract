@@ -61,9 +61,12 @@ public:
 
   // Get a record with a key of length keylen. The underlying DB does not manage
   // the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
-  virtual PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-                                  OID *out_oid = nullptr, 
-				  TableDescriptor *old_table_descriptor = nullptr) = 0;
+  virtual PROMISE(void)
+      GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+                OID *out_oid = nullptr,
+                TableDescriptor *old_table_descriptor = nullptr,
+                TableDescriptor *old_table_descriptors[] = nullptr,
+                uint64_t version = 0) = 0;
 
   // Return the OID that corresponds the given key
   virtual PROMISE(void) GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
