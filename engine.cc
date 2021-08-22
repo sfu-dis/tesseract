@@ -1085,7 +1085,10 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
 
 PROMISE(rc_t)
 ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
-                                      varstr &value, TableDescriptor *old_table_descriptor) {
+                                      varstr &value,
+                                      TableDescriptor *old_table_descriptor,
+                                      TableDescriptor *old_table_descriptors[],
+                                      uint64_t version) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
@@ -1096,12 +1099,21 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
 
 #ifdef LAZYDDL
   if (rc._val != RC_TRUE && old_table_descriptor) {
+    int total = version;
+  retry:
     oid = 0;
     rc = {RC_INVALID};
     AWAIT old_table_descriptor->GetPrimaryIndex()->GetOID(key, rc, t->xc, oid);
     if (rc._val == RC_TRUE) {
       return InsertRecord(t, key, value);
     } else {
+      total--;
+      if (total > 0) {
+        // printf("retry with total: %d\n", total);
+        old_table_descriptor = old_table_descriptors[total - 1];
+        ALWAYS_ASSERT(old_table_descriptor != nullptr);
+        goto retry;
+      }
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
   }

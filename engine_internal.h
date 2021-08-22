@@ -77,8 +77,11 @@ public:
   // value (a copy is made).
   //
   // If the does not already exist and config::upsert is set to true, insert.
-  virtual PROMISE(rc_t) UpdateRecord(transaction *t, const varstr &key, varstr &value,
-                                     TableDescriptor *old_table_descriptor = nullptr) = 0;
+  virtual PROMISE(rc_t)
+      UpdateRecord(transaction *t, const varstr &key, varstr &value,
+                   TableDescriptor *old_table_descriptor = nullptr,
+                   TableDescriptor *old_table_descriptors[] = nullptr,
+                   uint64_t version = 0) = 0;
 
   // Insert a record with a key of length keylen.
   virtual PROMISE(rc_t) InsertRecord(transaction *t, const varstr &key, varstr &value,

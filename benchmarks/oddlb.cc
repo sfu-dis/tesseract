@@ -301,10 +301,7 @@ public:
     } else {
       table_index->GetRecord(txn, rc, k2, v2, &oid);
       if (rc._val != RC_TRUE) {
-        // ermia::TableDescriptor *old_table_descriptor =
-        //    (ermia::TableDescriptor *)schema.old_td;
-        // ermia::TableDescriptor *old_table_descriptors[16] = schema.old_tds;
-        // ALWAYS_ASSERT(old_table_descriptor != nullptr);
+        ALWAYS_ASSERT(schema.old_td != nullptr);
         table_index->GetRecord(txn, rc, k2, v2, &oid, schema.old_td,
                                schema.old_tds, schema_version);
       }
@@ -475,10 +472,9 @@ record_test.v); ALWAYS_ASSERT(record_test.v == schema_version);
 
 #ifdef LAZYDDL
       if (table_index->UpdateRecord(txn, k1, v2)._val != RC_TRUE) {
-        ermia::TableDescriptor *old_table_descriptor =
-            (ermia::TableDescriptor *)schema.old_td;
-        ALWAYS_ASSERT(old_table_descriptor != nullptr);
-        TryCatch(table_index->UpdateRecord(txn, k1, v2, old_table_descriptor));
+        ALWAYS_ASSERT(schema.old_td != nullptr);
+        TryCatch(table_index->UpdateRecord(txn, k1, v2, schema.old_td,
+                                           schema.old_tds, schema_version));
       }
 #else
       TryCatch(table_index->UpdateRecord(txn, k1, v2));
