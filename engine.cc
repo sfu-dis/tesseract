@@ -49,10 +49,21 @@ public:
     varstr *d_v = nullptr;
 
 #ifdef MICROBENCH
+    uint64_t a = 0;
+    if (_version == 1) {
+      struct Schema1 record;
+      memcpy(&record, (char *)value.data(), sizeof(record));
+      a = record.a;
+    } else {
+      struct Schema2 record;
+      memcpy(&record, (char *)value.data(), sizeof(record));
+      a = record.a;
+    }
+
     char str2[sizeof(Schema2)];
     struct Schema2 record2;
     record2.v = _version;
-    record2.a = _version;
+    record2.a = a;
     record2.b = _version;
     record2.c = _version;
     memcpy(str2, &record2, sizeof(str2));
@@ -622,8 +633,41 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
                 dbtuple *tuple = (dbtuple *)(logrec->data);
                 // printf("cdc update, tuple->size: %u\n", tuple->size);
                 varstr value(tuple->get_value_start(), tuple->size);
-                
-		order_line::value v_ol_temp;
+
+                varstr *d_v = nullptr;
+#ifdef MICROBENCH
+                struct Schema_base record_test;
+                memcpy(&record_test, (char *)value.data(), sizeof(record_test));
+                uint64_t version = record_test.v;
+                uint64_t a = 0;
+                if (version == 0) {
+                  struct Schema1 record;
+                  memcpy(&record, (char *)value.data(), sizeof(record));
+                  a = record.a;
+                } else {
+                  struct Schema2 record;
+                  memcpy(&record, (char *)value.data(), sizeof(record));
+                  a = record.a;
+                }
+
+                version++;
+                ALWAYS_ASSERT(version != 0);
+
+                char str2[sizeof(Schema2)];
+                struct Schema2 record2;
+                record2.v = version;
+                record2.a = a;
+                record2.b = version;
+                record2.c = version;
+                memcpy(str2, &record2, sizeof(str2));
+                d_v = arena->next(sizeof(str2));
+                if (!d_v) {
+                  arena = new ermia::str_arena(ermia::config::arena_size_mb);
+                  d_v = arena->next(sizeof(str2));
+                }
+                d_v->copy_from(str2, sizeof(str2));
+#else
+                order_line::value v_ol_temp;
                 const order_line::value *v_ol = Decode(value, v_ol_temp);
 
                 order_line_1::value v_ol_1;
@@ -643,15 +687,16 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
                 // printf("cdc update, ol_w_id: %u, ol_d_id: %u, ol_o_id: %u\n", k_ol->ol_w_id, k_ol->ol_d_id, k_ol->ol_o_id);
 
                 const size_t order_line_sz = ::Size(v_ol_1);
-                varstr *d_v = arena->next(order_line_sz);
+                d_v = arena->next(order_line_sz);
 
                 if (!d_v) {
                   arena = new ermia::str_arena(ermia::config::arena_size_mb);
                   d_v = arena->next(order_line_sz);
                 }
                 d_v = &Encode(*d_v, v_ol_1);
+#endif
 
-		update_total++;
+                update_total++;
 		rc_t rc = this->UpdateRecord(t, *update_key, *d_v);
                 if (rc._val != RC_TRUE) {
 		  // printf("cdc update fail\n");
@@ -660,14 +705,22 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
 		//}
               } else if (logrec->type ==
                          dlog::log_record::logrec_type::INSERT_KEY) {
+#ifdef MICROBENCH
+                insert_key = new varstr(logrec->data + sizeof(varstr), 8);
+#else
                 insert_key = new varstr(logrec->data + sizeof(varstr), 16);
+#endif
               } else if (logrec->type ==
                          dlog::log_record::logrec_type::UPDATE_KEY) {
+#ifdef MICROBENCH
+                update_key = new varstr(logrec->data + sizeof(varstr), 8);
+#else
                 update_key = new varstr(logrec->data + sizeof(varstr), 16);
+#endif
               } else if (logrec->type ==
                          dlog::log_record::logrec_type::INVALID) {
                 printf("Invalid type\n");
-	      } else {
+              } else {
                 printf("unknown type\n");
               }
 
@@ -895,12 +948,12 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 
             if (version == record_test.v + 1) {
               record2.v = record.v + 1;
-              record2.a = record.v + 1;
+              record2.a = record.a;
               record2.b = record.v + 1;
               record2.c = record.v + 1;
             } else {
               record2.v = version;
-              record2.a = version;
+              record2.a = record.a;
               record2.b = version;
               record2.c = version;
             }
@@ -910,12 +963,12 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 
             if (version == record_test.v + 1) {
               record2.v = record.v + 1;
-              record2.a = record.v + 1;
+              record2.a = record.a;
               record2.b = record.v + 1;
               record2.c = record.v + 1;
             } else {
               record2.v = version;
-              record2.a = version;
+              record2.a = record.a;
               record2.b = version;
               record2.c = version;
             }

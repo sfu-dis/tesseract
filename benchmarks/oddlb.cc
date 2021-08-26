@@ -94,10 +94,6 @@ public:
     schema.old_index = old_table_index;
     schema.old_td = old_td;
     schema.old_tds[old_schema_version] = old_td;
-    /*if (schema_version == 1) schema.old_tds[0] = old_td;
-    if (schema_version == 2) schema.old_tds[1] = old_td;
-    if (schema_version == 2) ALWAYS_ASSERT(schema.old_tds[0] != nullptr);
-    */
 #endif
     memcpy(str2, &schema, sizeof(str2));
     ermia::varstr &v2 = str(sizeof(str2));
@@ -197,7 +193,8 @@ public:
     TryCatch(rc);
 
     rc = rc_t{RC_INVALID};
-    rc = table_index->WriteNormalTable(arena, table_index, txn, v, NULL);
+    // rc = table_index->WriteNormalTable(arena, table_index, txn, v, NULL);
+    rc = table_index->CheckNormalTable(arena, table_index, txn, NULL);
     if (rc._val != RC_TRUE) {
       count++;
       db->Abort(txn);
@@ -337,21 +334,20 @@ public:
 
       ALWAYS_ASSERT(record1_test.a == a);
       ALWAYS_ASSERT(record1_test.b == a);
-
     } else {
       struct Schema2 record2_test;
 #ifdef NONEDDL
       struct Schema1 record1_test;
       memcpy(&record1_test, (char *)v2.data(), sizeof(record1_test));
 
-      record2_test.a = schema_version;
+      record2_test.a = a;
       record2_test.b = schema_version;
       record2_test.c = schema_version;
 #else
       memcpy(&record2_test, (char *)v2.data(), sizeof(record2_test));
 #endif
 
-      ALWAYS_ASSERT(record2_test.a == schema_version);
+      ALWAYS_ASSERT(record2_test.a == a);
       ALWAYS_ASSERT(record2_test.b == schema_version);
       ALWAYS_ASSERT(record2_test.c == schema_version);
     }
@@ -449,19 +445,9 @@ record_test.v); ALWAYS_ASSERT(record_test.v == schema_version);
 
     } else {
       struct Schema2 record2;
-#ifdef NONEDDL
-      /*struct Schema1 record1;
-      memcpy(&record1, (char *)v1.data(), sizeof(record1));
-
-      record2.a = record1.a;
-      record2.b = record1.b;
-      */
-#else
-      // memcpy(&record2, (char *)v1.data(), sizeof(record2));
-#endif
 
       record2.v = schema_version;
-      record2.a = schema_version;
+      record2.a = a;
       record2.b = schema_version;
       record2.c = schema_version;
 

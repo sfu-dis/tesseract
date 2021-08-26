@@ -707,7 +707,7 @@ install:
   // Note for this to be correct we shouldn't allow multiple txs
   // working on the same tuple at the same time.
 
-  *new_obj_ptr = Object::Create(value, false, updater_xc->begin_epoch);
+  *new_obj_ptr = Object::Create(value, true, updater_xc->begin_epoch);
   ASSERT(new_obj_ptr->asi_type() == 0);
   Object *new_object = (Object *)new_obj_ptr->offset();
   new_object->SetCSN(updater_xc->owner.to_ptr());
@@ -720,9 +720,9 @@ install:
     return head;
   } else {
     fat_ptr pa = old_desc->GetPersistentAddress();
-    while (pa == NULL_PTR) {
+    /*while (pa == NULL_PTR) {
       pa = old_desc->GetPersistentAddress();
-    }
+    }*/
     new_object->SetNextPersistent(pa);
     new_object->SetNextVolatile(head);
     if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr,
@@ -885,7 +885,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
       return false;
     }
 
-    if (state == TXN::TXN_COMMITTING) {
+    /*if (state == TXN::TXN_COMMITTING) {
       ASSERT(owner == holder_xid);
       // holder has finished SetClsn()
       if (holder_lsn != 0 && holder_lsn < xc->begin) {
@@ -896,7 +896,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
         retry = true;
         return false;
       }
-    }
+    }*/
 
     if (state == TXN::TXN_CMMTD) {
       ASSERT(volatile_read(holder->end));

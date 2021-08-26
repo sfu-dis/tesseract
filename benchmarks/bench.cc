@@ -42,13 +42,16 @@ uint32_t bench_worker::fetch_workload() {
       if (i == workload.size() - 1) {
 	ddl_num++;
 #if defined(COPYDDL) && defined(MICROBENCH)
-        if (ddl_num != 10 && ddl_num != 20 && ddl_num != 40)
+        if (ddl_num != 20)
           continue;
 #elif defined(COPYDDL)
         if (ddl_num != 2)
           continue;
+#elif defined(BLOCKDDL)
+        if (ddl_num != 10 && ddl_num != 20)
+          continue;
 #else
-        if (ddl_num != 15 && ddl_num != 40)
+        if (ddl_num != 20 && ddl_num != 50)
           continue;
 #endif
       }

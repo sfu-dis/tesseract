@@ -91,10 +91,10 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     xc->begin = log->get_committer()->get_lowest_tls_durable_csn();
   */} else {
     xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
-    //  xc->begin = get_lowest_tls_commit_csn();
-    //  xc->begin = pcommit::lowest_csn.load(std::memory_order_relaxed);
-    //  xc->begin = log->get_committer()->get_lowest_tls_durable_csn();
-    //  printf("xc->begin: %lu\n", xc->begin);
+    // xc->begin = get_lowest_tls_commit_csn();
+    // xc->begin = pcommit::lowest_csn.load(std::memory_order_relaxed);
+    // xc->begin = log->get_committer()->get_lowest_tls_durable_csn();
+    // printf("xc->begin: %lu\n", xc->begin);
   }
 #endif
 }
@@ -196,7 +196,7 @@ rc_t transaction::commit() {
 
 #if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
 rc_t transaction::si_commit() {
-  if (flags & TXN_FLAG_READ_ONLY) {
+  if ((flags & TXN_FLAG_READ_ONLY) || (write_set.size() == 0)) {
     volatile_write(xc->state, TXN::TXN_CMMTD);
     return rc_t{RC_TRUE};
   }
@@ -237,7 +237,7 @@ rc_t transaction::si_commit() {
     write_record_t w = write_set.get(is_ddl(), 0);
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
-    tuple->DoWrite();
+    // tuple->DoWrite();
 
     uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
     uint64_t log_str_size = sizeof(varstr) + w.str->size();
@@ -267,12 +267,17 @@ rc_t transaction::si_commit() {
     fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
     object->SetCSN(csn_ptr);
     ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
+  }
+#endif
 
+  volatile_write(xc->state, TXN::TXN_CMMTD);
+
+#ifdef COPYDDL
+  if (is_ddl()) {
     // Do CDC
 #if !defined(LAZYDDL)
-    // new_td->GetPrimaryIndex()->changed_data_capture(this, xc->begin,
-    // xc->end);
-#endif  
+    new_td->GetPrimaryIndex()->changed_data_capture(this, xc->begin, xc->end);
+#endif
   }
 #endif
 
@@ -306,7 +311,7 @@ rc_t transaction::si_commit() {
     ALWAYS_ASSERT(w.type != dlog::log_record::logrec_type::OID_KEY);
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
-    tuple->DoWrite();
+    // tuple->DoWrite();
 
     uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
     if (lb->payload_size + align_up(log_tuple_size + sizeof(dlog::log_record)) + align_up(log_str_size + sizeof(dlog::log_record)) > lb->capacity) {
@@ -349,11 +354,12 @@ rc_t transaction::si_commit() {
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!
   // This is when (committed) tuple data are made visible to readers
-  volatile_write(xc->state, TXN::TXN_CMMTD);
-  log->set_dirty(false);
-  if (config::state == config::kStateForwardProcessing) {
+  // volatile_write(xc->state, TXN::TXN_CMMTD);
+  if (write_set.size())
+    log->set_dirty(false);
+  /*if (config::state == config::kStateForwardProcessing) {
     volatile_write(_tls_commit_csn[thread::MyId()], xc->end);
-  }
+  }*/
   return rc_t{RC_TRUE};
 }
 #endif
@@ -417,7 +423,8 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
   Object *prev_obj = (Object *)prev_obj_ptr.offset();
 
   if (prev_obj) {  // succeeded
-    dbtuple *tuple = ((Object *)new_obj_ptr.offset())->GetPinnedTuple();
+    Object *new_obj = (Object *)new_obj_ptr.offset();
+    dbtuple *tuple = new_obj->GetPinnedTuple();
     ASSERT(tuple);
     dbtuple *prev = prev_obj->GetPinnedTuple();
     ASSERT((uint64_t)prev->GetObject() == prev_obj_ptr.offset());
@@ -502,6 +509,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
     ASSERT((uint64_t)prev->GetObject() == prev_obj_ptr.offset());
     fat_ptr prev_csn = prev->GetObject()->GetCSN();
     fat_ptr prev_persistent_ptr = NULL_PTR;
+    fat_ptr prev_Volatile_ptr = NULL_PTR;
     if (prev_csn.asi_type() == fat_ptr::ASI_XID and
         XID::from_ptr(prev_csn) == xid) {
       // updating my own updates!
@@ -509,10 +517,13 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
       ASSERT(((Object *)prev_obj_ptr.offset())->GetAllocateEpoch() ==
              xc->begin_epoch);
       prev_persistent_ptr = prev_obj->GetNextPersistent();
+      new_obj->SetNextPersistent(prev_persistent_ptr);
+      prev_Volatile_ptr = prev_obj->GetNextVolatile();
+      new_obj->SetNextVolatile(prev_Volatile_ptr);
       // FIXME(tzwang): 20190210: seems the deallocation here is too early,
       // causing readers to not find any visible version. Fix this together with
       // GC later.
-      //MM::deallocate(prev_obj_ptr);
+      MM::deallocate(prev_obj_ptr);
     } else {  // prev is committed (or precommitted but in post-commit now) head
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       volatile_write(prev->sstamp, xc->owner.to_ptr());
@@ -582,7 +593,7 @@ OID transaction::Insert(TableDescriptor *td, const varstr *k, varstr *value, dbt
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
 
-  fat_ptr new_head = Object::Create(value, false, xc->begin_epoch);
+  fat_ptr new_head = Object::Create(value, true, xc->begin_epoch);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   auto *tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();

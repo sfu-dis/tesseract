@@ -1910,7 +1910,8 @@ bench_worker::workload_desc_vec tpcc_worker::get_workload() const {
   for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
     m += g_txn_workload_mix[i];
   // ALWAYS_ASSERT(m == 100);
-  double base = 1000000.0;
+  // double base = 1000000.0;
+  double base = 100.0;
   if (g_txn_workload_mix[0])
     w.push_back(workload_desc(
         "NewOrder", double(g_txn_workload_mix[0]) / base, TxnNewOrder));
@@ -1939,7 +1940,7 @@ bench_worker::workload_desc_vec tpcc_worker::get_workload() const {
                               double(g_txn_workload_mix[7]) / base,
                               TxnMicroBenchRandom));
 
-  w.push_back(workload_desc("DDL", double(1) / base, TxnDDL));
+  // w.push_back(workload_desc("DDL", double(1) / base, TxnDDL));
 
   return w;
 }
