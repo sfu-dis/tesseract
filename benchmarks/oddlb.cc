@@ -5,6 +5,9 @@
 #include "bench.h"
 #include <sstream>
 
+volatile bool ddl_running = true;
+volatile bool ddl_end = false;
+
 class oddlb_sequential_worker : public oddlb_base_worker {
 public:
   oddlb_sequential_worker(
@@ -103,6 +106,24 @@ public:
 
     txn->set_table_descriptors(schema.td, old_td);
 
+    ermia::thread::Thread *thread = ermia::thread::GetThread(true);
+    ALWAYS_ASSERT(thread);
+
+    uint32_t thread_id = ermia::thread::MyId();
+    auto parallel_changed_data_capture = [=](char *) {
+      while (ddl_running) {
+        // printf("txn->GetXIDContext()->end: %lu\n",
+        // ermia::volatile_read(txn->GetXIDContext()->end));
+        schema.td->GetPrimaryIndex()->changed_data_capture(
+            txn, txn->GetXIDContext()->begin, txn->GetXIDContext()->end,
+            thread_id);
+        usleep(10000);
+      }
+      // ddl_end = true;
+    };
+
+    thread->StartTask(parallel_changed_data_capture);
+
     rc = rc_t{RC_INVALID};
     schema_index->WriteSchemaTable(txn, rc, k1, v2);
     TryCatch(rc);
@@ -112,10 +133,27 @@ public:
         (ermia::ConcurrentMasstreeIndex *)schema.index;
     rc = rc_t{RC_INVALID};
     rc = table_index->WriteNormalTable(arena, old_table_index, txn, v2, NULL);
+    if (rc._val != RC_TRUE) {
+      // ddl_end = true;
+      ddl_running = false;
+      thread->Join();
+      ermia::thread::PutThread(thread);
+      printf("thread joined\n");
+    }
     TryCatch(rc);
 #endif
 
+    ddl_running = false;
+    thread->Join();
+    ermia::thread::PutThread(thread);
+    printf("thread joined\n");
+
     TryCatch(db->Commit(txn));
+
+    /*thread->Join();
+    ermia::thread::PutThread(thread);
+    printf("thread joined\n");
+    */
 #elif defined(BLOCKDDL)
     // CRITICAL_SECTION(cs, lock);
     db->WriteLock(std::string("SCHEMA"));

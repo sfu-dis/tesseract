@@ -11,8 +11,6 @@
 
 namespace ermia {
 
-extern bool is_loading;
-
 dlog::tls_log *GetLog();
 
 class Table;
@@ -232,7 +230,9 @@ public:
                    std::function<bool(uint64_t)> op) override;
 
 #ifdef COPYDDL
-  PROMISE(void) changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn) override;
+  PROMISE(void)
+  changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn,
+                       uint32_t thread_id) override;
 #endif
 
   PROMISE(void)

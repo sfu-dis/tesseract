@@ -517,10 +517,11 @@ rc_t ConcurrentMasstreeIndex::CheckNormalTable(
 #ifdef COPYDDL
 void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
                                                    uint64_t begin_csn,
-                                                   uint64_t end_csn) {
-  printf("cdc begins\n");
+                                                   uint64_t end_csn,
+                                                   uint32_t thread_id) {
+  // printf("cdc begins\n");
   FID fid = t->old_td->GetTupleFid();
-  printf("cdc on fid: %u\n", fid);
+  // printf("cdc on fid: %u\n", fid);
   ermia::str_arena *arena = new ermia::str_arena(ermia::config::arena_size_mb);
   ermia::ConcurrentMasstreeIndex *table_secondary_index = nullptr;
   if (t->new_td->GetSecIndexes().size()) {
@@ -528,38 +529,46 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
               (ermia::ConcurrentMasstreeIndex *) (*(t->new_td->GetSecIndexes().begin()));
     ALWAYS_ASSERT(table_secondary_index);
   }
+  uint index = 0;
   for (uint i = 0; i < config::MAX_THREADS; i++) {
     dlog::tls_log *tlog = dlog::tlogs[i];
     uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
-    if (tlog && i != thread::MyId() && csn) {
+    if (tlog && i != thread::MyId() && i != thread_id && csn) {
+      // printf("i: %d, index: %u\n", i, index);
       tlog->last_flush();
       std::vector<dlog::segment> *segments = tlog->get_segments();
       // printf("log %u cdc, seg size: %lu\n", tlog->get_id(), segments->size());
+      if (segments->size() > 1)
+        printf("> 1 files at log %u\n", tlog->get_id());
       bool stop_scan = false;
+      uint64_t offset_in_seg = t->cdc_offsets[index];
+      uint64_t offset_increment = 0;
+      // printf("offset_in_seg: %lu\n", offset_in_seg);
       for (std::vector<dlog::segment>::reverse_iterator seg =
                segments->rbegin();
            seg != segments->rend(); seg++) {
-        uint64_t offset_in_seg = 0;
         uint64_t data_sz = seg->size;
         // printf("seg size: %lu\n", data_sz);
-        char *data_buf = (char *)malloc(data_sz);
+        char *data_buf = (char *)malloc(data_sz - offset_in_seg);
         t->get_bufs().emplace_back(data_buf);
-        size_t m = os_pread(seg->fd, (char *)data_buf, data_sz, offset_in_seg);
+        size_t m = os_pread(seg->fd, (char *)data_buf, data_sz - offset_in_seg,
+                            offset_in_seg);
         uint64_t block_sz = sizeof(dlog::log_block),
                  logrec_sz = sizeof(dlog::log_record),
                  tuple_sc = sizeof(dbtuple);
 
 	int insert_total = 0, update_total = 0;
 	int insert_fail = 0, update_fail = 0;
-        while (offset_in_seg < data_sz) {
+        while (offset_increment < data_sz - offset_in_seg) {
           dlog::log_block *header =
-              (dlog::log_block *)(data_buf + offset_in_seg);
-          if (begin_csn < header->csn && header->csn < end_csn) {
+              (dlog::log_block *)(data_buf + offset_increment);
+          if ((end_csn && begin_csn < header->csn && header->csn < end_csn) ||
+              (begin_csn < header->csn)) {
             uint64_t offset_in_block = 0;
             varstr *insert_key, *update_key, *insert_key_idx;
             while (offset_in_block < header->payload_size) {
               dlog::log_record *logrec =
-                  (dlog::log_record *)(data_buf + offset_in_seg + block_sz +
+                  (dlog::log_record *)(data_buf + offset_increment + block_sz +
                                        offset_in_block);
               ALWAYS_ASSERT(logrec->oid);
               ALWAYS_ASSERT(logrec->fid);
@@ -734,25 +743,32 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
               offset_in_block += logrec->rec_size;
             }
           } else {
-            // stop_scan = true;
+            stop_scan = true;
             /*if (header->csn > end_csn) {
               // printf("header->csn > end_csn\n");
               break;
             }*/
           }
-          offset_in_seg += header->payload_size + block_sz;
+          offset_increment += header->payload_size + block_sz;
           // printf("payload_size: %u\n", header->payload_size);
         }
-	// printf("insert total: %d, insert fail: %d, update total: %d, update fail: %d\n", insert_total, insert_fail, update_total, update_fail);
+        // printf("insert total: %d, insert fail: %d, update total: %d, update fail: %d\n", insert_total, insert_fail, update_total, update_fail);
 
         // printf("offset_in_seg: %lu\n", offset_in_seg);
 
         if (stop_scan)
           break;
       }
+
+      uint64_t &offset = t->cdc_offsets.at(index);
+      offset = offset_in_seg + offset_increment;
+      index++;
+      // printf("index: %u\n", index);
+      if (index >= t->cdc_offsets.size() - 1)
+        break;
     }
   }
-  printf("cdc finished\n");
+  // printf("cdc finished\n");
 }
 #endif
 
@@ -930,7 +946,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
           goto retry;
         }
         volatile_write(rc._val, RC_FALSE);
-        return;
+        RETURN;
       }
 
       if (!tuple) {
@@ -982,7 +998,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
           rc = InsertRecord(t, key, *v2);
           if (rc._val != RC_TRUE) {
             volatile_write(rc._val, RC_ABORT_INTERNAL);
-            return;
+            RETURN;
           } else {
             found = true;
             memcpy(&value, v2, sizeof(str2));
@@ -998,7 +1014,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
               *out_oid = oid;
             }
 
-            return;
+            RETURN;
           }
         }
       }
@@ -1088,6 +1104,20 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
   t->ensure_active();
 
   OID oid = 0;
+
+  if (t->is_ddl()) {
+    rc_t rc = {RC_INVALID};
+    AWAIT GetOID(key, rc, t->xc, oid);
+
+    if (rc._val == RC_TRUE) {
+      if (out_oid) {
+        *out_oid = oid;
+      }
+
+      RETURN rc_t{RC_TRUE};
+    }
+  }
+
 #ifdef LAZYDDL
   // Search for OID
   /*rc_t rc = {RC_INVALID};
@@ -1158,7 +1188,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
     rc = {RC_INVALID};
     AWAIT old_table_descriptor->GetPrimaryIndex()->GetOID(key, rc, t->xc, oid);
     if (rc._val == RC_TRUE) {
-      return InsertRecord(t, key, value);
+      RETURN InsertRecord(t, key, value);
     } else {
       total--;
       if (total > 0) {
@@ -1175,6 +1205,9 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   if (rc._val == RC_TRUE) {
     RETURN t->Update(table_descriptor, oid, &key, &value);
   } else {
+    if (t->is_ddl()) {
+      RETURN InsertRecord(t, key, value);
+    }
     RETURN rc_t{RC_ABORT_INTERNAL};
   }
 }

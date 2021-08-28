@@ -5,6 +5,8 @@
 #include "engine.h"
 
 extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
+extern volatile bool ddl_running;
+extern volatile bool ddl_end;
 
 namespace ermia {
 
@@ -28,7 +30,14 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     masstree_absent_set.set_empty_key(NULL);  // google dense map
     masstree_absent_set.clear();
   }
-  if (is_ddl()) write_set.init_large_write_set();
+  if (is_ddl()) {
+    write_set.init_large_write_set();
+#if defined(COPYDDL) && !defined(LAZYDDL)
+    for (uint i = 0; i < config::worker_threads - 1; i++) {
+      cdc_offsets.push_back(0);
+    }
+#endif
+  }
   write_set.clear();
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
  read_set.clear();
@@ -207,9 +216,30 @@ rc_t transaction::si_commit() {
 
   ASSERT(log);
   // Precommit: obtain a CSN
-  xc->end = dlog::current_csn.fetch_add(1);  
+  xc->end = dlog::current_csn.fetch_add(1);
 
 #ifdef COPYDDL
+  ermia::thread::Thread *thread = nullptr;
+  ermia::transaction *txn = this;
+  if (is_ddl()) {
+    thread = ermia::thread::GetThread(true);
+    ALWAYS_ASSERT(thread);
+
+    uint32_t thread_id = ermia::thread::MyId();
+    auto parallel_changed_data_capture = [=](char *) {
+      while (ddl_running) {
+        // printf("txn->GetXIDContext()->end: %lu\n",
+        // ermia::volatile_read(txn->GetXIDContext()->end));
+        txn->new_td->GetPrimaryIndex()->changed_data_capture(txn, xc->begin,
+                                                             xc->end, 1000);
+        usleep(10000);
+      }
+      // ddl_end = true;
+    };
+
+    thread->StartTask(parallel_changed_data_capture);
+  }
+
   if (is_dml() && DMLConsistencyHandler()) {
     // printf("DML failed\n");
     return rc_t{RC_ABORT_SI_CONFLICT};
@@ -270,14 +300,28 @@ rc_t transaction::si_commit() {
   }
 #endif
 
-  volatile_write(xc->state, TXN::TXN_CMMTD);
+  // volatile_write(xc->state, TXN::TXN_CMMTD);
 
 #ifdef COPYDDL
   if (is_ddl()) {
     // Do CDC
 #if !defined(LAZYDDL)
-    new_td->GetPrimaryIndex()->changed_data_capture(this, xc->begin, xc->end);
+    // new_td->GetPrimaryIndex()->changed_data_capture(this, xc->begin, xc->end,
+    // 1000);
 #endif
+  }
+#endif
+
+  volatile_write(xc->state, TXN::TXN_CMMTD);
+
+#if defined(COPYDDL) && !defined(LAZYDDL)
+  if (is_ddl()) {
+    ddl_running = false;
+    // while (!ddl_end) {}
+
+    thread->Join();
+    ermia::thread::PutThread(thread);
+    printf("thread joined\n");
   }
 #endif
 
@@ -523,7 +567,9 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
       // FIXME(tzwang): 20190210: seems the deallocation here is too early,
       // causing readers to not find any visible version. Fix this together with
       // GC later.
-      MM::deallocate(prev_obj_ptr);
+      // MM::deallocate(prev_obj_ptr);
+      add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid,
+                       tuple->size, dlog::log_record::logrec_type::UPDATE, k);
     } else {  // prev is committed (or precommitted but in post-commit now) head
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       volatile_write(prev->sstamp, xc->owner.to_ptr());

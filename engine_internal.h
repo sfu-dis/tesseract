@@ -56,7 +56,9 @@ public:
                        std::function<bool(uint64_t)> op) = 0;
 
 #ifdef COPYDDL
-  virtual PROMISE(void) changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn) = 0;
+  virtual PROMISE(void)
+      changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn,
+                           uint32_t thread_id) = 0;
 #endif
 
   // Get a record with a key of length keylen. The underlying DB does not manage

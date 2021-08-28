@@ -57,9 +57,11 @@ struct write_set_t {
   uint32_t num_entries;
   write_record_t entries[kMaxEntries];
   write_record_t *entries_;
+  mcs_lock lock;
   write_set_t() : num_entries(0) {}
   inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid, uint32_t size, dlog::log_record::logrec_type type, const varstr *str) {
     if (is_ddl) {
+      CRITICAL_SECTION(cs, lock);
       if (num_entries >= kMaxEntries_) { printf("beyond\n"); }
       ALWAYS_ASSERT(num_entries < kMaxEntries_);
       new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, type, str);
@@ -219,6 +221,7 @@ public:
   TableDescriptor *new_td;
   TableDescriptor *old_td;
   std::vector<char *> bufs;
+  std::vector<uint64_t> cdc_offsets;
 #endif
   util::timer t;
   write_set_t write_set;
