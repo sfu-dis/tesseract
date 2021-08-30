@@ -229,10 +229,11 @@ public:
   CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t,
                    std::function<bool(uint64_t)> op) override;
 
-#ifdef COPYDDL
-  PROMISE(void)
+#if defined(COPYDDL) && !defined(LAZYDDL)
+  PROMISE(bool)
   changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn,
-                       uint32_t thread_id) override;
+                       uint32_t thread_id, uint32_t begin_log,
+                       uint32_t end_log) override;
 #endif
 
   PROMISE(void)

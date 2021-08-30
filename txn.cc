@@ -5,8 +5,9 @@
 #include "engine.h"
 
 extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
-extern volatile bool ddl_running;
-extern volatile bool ddl_end;
+extern volatile bool ddl_running_1;
+extern volatile bool ddl_running_2;
+extern std::atomic<uint64_t> ddl_end;
 
 namespace ermia {
 
@@ -219,26 +220,43 @@ rc_t transaction::si_commit() {
   xc->end = dlog::current_csn.fetch_add(1);
 
 #ifdef COPYDDL
-  ermia::thread::Thread *thread = nullptr;
-  ermia::transaction *txn = this;
+#if !defined(LAZYDDL)
+  std::vector<ermia::thread::Thread *> cdc_workers;
+  uint32_t cdc_threads = ermia::config::cdc_threads;
   if (is_ddl()) {
-    thread = ermia::thread::GetThread(true);
-    ALWAYS_ASSERT(thread);
+    ddl_running_2 = true;
+    ermia::transaction *txn = this;
+    uint logs_per_cdc_thread =
+        (ermia::config::worker_threads - 1) / cdc_threads;
+    for (uint i = 0; i < cdc_threads; i++) {
+      ermia::thread::Thread *thread = ermia::thread::GetThread(true);
+      ALWAYS_ASSERT(thread);
+      cdc_workers.push_back(thread);
 
-    uint32_t thread_id = ermia::thread::MyId();
-    auto parallel_changed_data_capture = [=](char *) {
-      while (ddl_running) {
+      uint32_t thread_id = ermia::thread::MyId();
+      auto parallel_changed_data_capture = [=](char *) {
         // printf("txn->GetXIDContext()->end: %lu\n",
-        // ermia::volatile_read(txn->GetXIDContext()->end));
-        txn->new_td->GetPrimaryIndex()->changed_data_capture(txn, xc->begin,
-                                                             xc->end, 1000);
-        usleep(10000);
-      }
-      // ddl_end = true;
-    };
+        // txn->GetXIDContext()->end); printf("thread_id: %u, my_thread_id:
+        // %u\n", thread_id, ermia::thread::MyId());
+        uint32_t begin_log = i * logs_per_cdc_thread;
+        uint32_t end_log = (i + 1) * logs_per_cdc_thread - 1;
+        ;
+        if (i == cdc_threads - 1)
+          end_log = ermia::config::MAX_THREADS;
+        bool ddl_end_local = false;
+        while (ddl_running_1 || !ddl_end_local) {
+          ddl_end_local = txn->new_td->GetPrimaryIndex()->changed_data_capture(
+              txn, txn->GetXIDContext()->begin, txn->GetXIDContext()->end,
+              thread_id, begin_log, end_log);
+          // usleep(1000);
+        }
+        ddl_end++;
+      };
 
-    thread->StartTask(parallel_changed_data_capture);
+      thread->StartTask(parallel_changed_data_capture);
+    }
   }
+#endif
 
   if (is_dml() && DMLConsistencyHandler()) {
     // printf("DML failed\n");
@@ -300,30 +318,46 @@ rc_t transaction::si_commit() {
   }
 #endif
 
-  // volatile_write(xc->state, TXN::TXN_CMMTD);
-
-#ifdef COPYDDL
+#if defined(COPYDDL) && !defined(LAZYDDL)
   if (is_ddl()) {
-    // Do CDC
-#if !defined(LAZYDDL)
-    // new_td->GetPrimaryIndex()->changed_data_capture(this, xc->begin, xc->end,
-    // 1000);
-#endif
+    while (ddl_end != cdc_threads) {
+    }
+    ddl_running_2 = false;
+    for (std::vector<ermia::thread::Thread *>::const_iterator it =
+             cdc_workers.begin();
+         it != cdc_workers.end(); ++it) {
+      (*it)->Join();
+      ermia::thread::PutThread(*it);
+      // printf("thread joined\n");
+    }
   }
 #endif
 
   volatile_write(xc->state, TXN::TXN_CMMTD);
 
-#if defined(COPYDDL) && !defined(LAZYDDL)
-  if (is_ddl()) {
-    ddl_running = false;
-    // while (!ddl_end) {}
+  /*#ifdef COPYDDL
+    if (is_ddl()) {
+      // Do CDC
+  #if !defined(LAZYDDL)
+      // new_td->GetPrimaryIndex()->changed_data_capture(this, xc->begin,
+  xc->end,
+      // 1000);
+  #endif
+    }
+  #endif*/
 
-    thread->Join();
-    ermia::thread::PutThread(thread);
-    printf("thread joined\n");
-  }
-#endif
+  /*#if defined(COPYDDL) && !defined(LAZYDDL)
+    if (is_ddl()) {
+      while (!ddl_end) {}
+      ddl_running_2 = false;
+
+      thread->Join();
+      ermia::thread::PutThread(thread);
+      printf("thread joined\n");
+    }
+  #endif*/
+
+  // volatile_write(xc->state, TXN::TXN_CMMTD);
 
   // Normally, we'd generate it along the way or here first before toggling the
   // CSN's "committed" bit. But we can actually do it first, and generate the
@@ -553,7 +587,6 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
     ASSERT((uint64_t)prev->GetObject() == prev_obj_ptr.offset());
     fat_ptr prev_csn = prev->GetObject()->GetCSN();
     fat_ptr prev_persistent_ptr = NULL_PTR;
-    fat_ptr prev_Volatile_ptr = NULL_PTR;
     if (prev_csn.asi_type() == fat_ptr::ASI_XID and
         XID::from_ptr(prev_csn) == xid) {
       // updating my own updates!
@@ -561,16 +594,27 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
       ASSERT(((Object *)prev_obj_ptr.offset())->GetAllocateEpoch() ==
              xc->begin_epoch);
       prev_persistent_ptr = prev_obj->GetNextPersistent();
-      new_obj->SetNextPersistent(prev_persistent_ptr);
-      prev_Volatile_ptr = prev_obj->GetNextVolatile();
-      new_obj->SetNextVolatile(prev_Volatile_ptr);
       // FIXME(tzwang): 20190210: seems the deallocation here is too early,
       // causing readers to not find any visible version. Fix this together with
       // GC later.
       // MM::deallocate(prev_obj_ptr);
-      add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid,
-                       tuple->size, dlog::log_record::logrec_type::UPDATE, k);
-    } else {  // prev is committed (or precommitted but in post-commit now) head
+      // add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid,
+      //                  tuple->size, dlog::log_record::logrec_type::UPDATE,
+      //                  k);
+    }      /*else if (prev_csn.asi_type() == fat_ptr::ASI_XID and
+                    XID::from_ptr(prev_csn) != xid) {
+           prev_persistent_ptr = prev_obj->GetPersistentAddress();
+           TXN::xid_context *prev_holder =
+         TXN::xid_get_context(XID::from_ptr(prev_csn));      auto state =
+         volatile_read(prev_holder->state);      if (state != TXN::TXN_CMMTD) {
+             MM::deallocate(new_obj_ptr);
+             return rc_t{RC_ABORT_SI_CONFLICT};
+           } else {
+             add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid,
+         tuple->size, dlog::log_record::logrec_type::UPDATE, k);
+           }
+         }*/
+    else { // prev is committed (or precommitted but in post-commit now) head
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       volatile_write(prev->sstamp, xc->owner.to_ptr());
       ASSERT(prev->sstamp.asi_type() == fat_ptr::ASI_XID);

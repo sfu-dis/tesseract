@@ -5,8 +5,9 @@
 #include "bench.h"
 #include <sstream>
 
-volatile bool ddl_running = true;
-volatile bool ddl_end = false;
+volatile bool ddl_running_1 = true;
+volatile bool ddl_running_2 = false;
+std::atomic<uint64_t> ddl_end(0);
 
 class oddlb_sequential_worker : public oddlb_base_worker {
 public:
@@ -24,8 +25,8 @@ public:
     // w.push_back(workload_desc("Read", 0.9499985, TxnRead));
     // w.push_back(workload_desc("RMW", 0.05, TxnRMW));
 
-    w.push_back(workload_desc("Read", 0.6999985, TxnRead));
-    w.push_back(workload_desc("RMW", 0.3, TxnRMW));
+    w.push_back(workload_desc("Read", 0.2, TxnRead));
+    w.push_back(workload_desc("RMW", 0.7999985, TxnRMW));
     w.push_back(workload_desc("DDL", 0.0000015, TxnDDL));
 
     return w;
@@ -106,23 +107,37 @@ public:
 
     txn->set_table_descriptors(schema.td, old_td);
 
-    ermia::thread::Thread *thread = ermia::thread::GetThread(true);
-    ALWAYS_ASSERT(thread);
+#if !defined(LAZYDDL)
+    uint32_t cdc_threads = ermia::config::cdc_threads;
+    uint logs_per_cdc_thread =
+        (ermia::config::worker_threads - 1) / cdc_threads;
+    std::vector<ermia::thread::Thread *> cdc_workers;
+    for (uint i = 0; i < cdc_threads; i++) {
+      ermia::thread::Thread *thread = ermia::thread::GetThread(true);
+      ALWAYS_ASSERT(thread);
+      cdc_workers.push_back(thread);
 
-    uint32_t thread_id = ermia::thread::MyId();
-    auto parallel_changed_data_capture = [=](char *) {
-      while (ddl_running) {
-        // printf("txn->GetXIDContext()->end: %lu\n",
-        // ermia::volatile_read(txn->GetXIDContext()->end));
-        schema.td->GetPrimaryIndex()->changed_data_capture(
-            txn, txn->GetXIDContext()->begin, txn->GetXIDContext()->end,
-            thread_id);
-        usleep(10000);
-      }
-      // ddl_end = true;
-    };
+      uint32_t thread_id = ermia::thread::MyId();
+      auto parallel_changed_data_capture = [=](char *) {
+        // printf("thread_id: %u, my_thread_id: %u\n", thread_id,
+        // ermia::thread::MyId());
+        uint32_t begin_log = i * logs_per_cdc_thread;
+        uint32_t end_log = (i + 1) * logs_per_cdc_thread - 1;
+        ;
+        if (i == cdc_threads - 1)
+          end_log = ermia::config::MAX_THREADS;
+        bool ddl_end_local = false;
+        while (ddl_running_1 || !ddl_end_local) {
+          ddl_end_local = schema.td->GetPrimaryIndex()->changed_data_capture(
+              txn, txn->GetXIDContext()->begin, txn->GetXIDContext()->end,
+              thread_id, begin_log, end_log);
+          // usleep(1000);
+        }
+      };
 
-    thread->StartTask(parallel_changed_data_capture);
+      thread->StartTask(parallel_changed_data_capture);
+    }
+#endif
 
     rc = rc_t{RC_INVALID};
     schema_index->WriteSchemaTable(txn, rc, k1, v2);
@@ -134,19 +149,28 @@ public:
     rc = rc_t{RC_INVALID};
     rc = table_index->WriteNormalTable(arena, old_table_index, txn, v2, NULL);
     if (rc._val != RC_TRUE) {
-      // ddl_end = true;
-      ddl_running = false;
-      thread->Join();
-      ermia::thread::PutThread(thread);
-      printf("thread joined\n");
+      ddl_running_1 = false;
+      for (std::vector<ermia::thread::Thread *>::const_iterator it =
+               cdc_workers.begin();
+           it != cdc_workers.end(); ++it) {
+        (*it)->Join();
+        ermia::thread::PutThread(*it);
+        // printf("thread joined\n");
+      }
     }
     TryCatch(rc);
 #endif
 
-    ddl_running = false;
-    thread->Join();
-    ermia::thread::PutThread(thread);
-    printf("thread joined\n");
+#if !defined(LAZYDDL)
+    ddl_running_1 = false;
+    for (std::vector<ermia::thread::Thread *>::const_iterator it =
+             cdc_workers.begin();
+         it != cdc_workers.end(); ++it) {
+      (*it)->Join();
+      ermia::thread::PutThread(*it);
+      // printf("thread joined\n");
+    }
+#endif
 
     TryCatch(db->Commit(txn));
 

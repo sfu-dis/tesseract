@@ -65,6 +65,9 @@ extern bool coro_batch_schedule;
 
 extern bool scan_with_it;
 
+// CDC settings
+extern uint32_t cdc_threads;
+
 // Create an object for each version and install directly on the main
 // indirection arrays only; for experimental purpose only to see the
 // difference between pipelined/sync replay which use the pdest array.

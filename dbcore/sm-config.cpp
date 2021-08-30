@@ -59,6 +59,7 @@ uint32_t threads = 0;
 bool index_probe_only = false;
 bool amac_version_chain = false;
 bool numa_spread = false;
+uint32_t cdc_threads = 3;
 
 void init() {
   ALWAYS_ASSERT(threads);

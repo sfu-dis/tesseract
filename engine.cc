@@ -113,10 +113,14 @@ public:
       return false;
     }
 #elif defined(COPYDDL)
-    invoke_status = _index->InsertRecord(_txn, *k, *d_v);
+    /*invoke_status = _index->InsertRecord(_txn, *k, *d_v);
     if (invoke_status._val != RC_TRUE) {
       printf("DDL normal record insert false\n");
       return false;
+    }*/
+    if (_index->InsertRecord(_txn, *k, *d_v)._val != RC_TRUE) {
+      printf("DDL normal record insert false\n");
+      return true;
     }
 #endif
 #if !defined(MICROBENCH)
@@ -514,12 +518,12 @@ rc_t ConcurrentMasstreeIndex::CheckNormalTable(
   return c_add_constraint.invoke_status;
 }
 
-#ifdef COPYDDL
-void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
-                                                   uint64_t begin_csn,
-                                                   uint64_t end_csn,
-                                                   uint32_t thread_id) {
+#if defined(COPYDDL) && !defined(LAZYDDL)
+bool ConcurrentMasstreeIndex::changed_data_capture(
+    transaction *t, uint64_t begin_csn, uint64_t end_csn, uint32_t thread_id,
+    uint32_t begin_log, uint32_t end_log) {
   // printf("cdc begins\n");
+  bool ddl_end_tmp = true;
   FID fid = t->old_td->GetTupleFid();
   // printf("cdc on fid: %u\n", fid);
   ermia::str_arena *arena = new ermia::str_arena(ermia::config::arena_size_mb);
@@ -529,8 +533,8 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
               (ermia::ConcurrentMasstreeIndex *) (*(t->new_td->GetSecIndexes().begin()));
     ALWAYS_ASSERT(table_secondary_index);
   }
-  uint index = 0;
-  for (uint i = 0; i < config::MAX_THREADS; i++) {
+  uint index = begin_log;
+  for (uint i = begin_log; i <= end_log; i++) {
     dlog::tls_log *tlog = dlog::tlogs[i];
     uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
     if (tlog && i != thread::MyId() && i != thread_id && csn) {
@@ -543,6 +547,7 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
       bool stop_scan = false;
       uint64_t offset_in_seg = t->cdc_offsets[index];
       uint64_t offset_increment = 0;
+      uint64_t last_csn = 0;
       // printf("offset_in_seg: %lu\n", offset_in_seg);
       for (std::vector<dlog::segment>::reverse_iterator seg =
                segments->rbegin();
@@ -562,6 +567,7 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
         while (offset_increment < data_sz - offset_in_seg) {
           dlog::log_block *header =
               (dlog::log_block *)(data_buf + offset_increment);
+          last_csn = header->csn;
           if ((end_csn && begin_csn < header->csn && header->csn < end_csn) ||
               (begin_csn < header->csn)) {
             uint64_t offset_in_block = 0;
@@ -743,18 +749,25 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
               offset_in_block += logrec->rec_size;
             }
           } else {
-            stop_scan = true;
-            /*if (header->csn > end_csn) {
-              // printf("header->csn > end_csn\n");
+            // stop_scan = true;
+            if (end_csn && header->csn >= end_csn) {
+              printf("header->csn > end_csn\n");
+              stop_scan = true;
               break;
-            }*/
+            }
           }
           offset_increment += header->payload_size + block_sz;
           // printf("payload_size: %u\n", header->payload_size);
         }
+        if (insert_total != 0 || update_total != 0)
+          ddl_end_tmp = false;
         // printf("insert total: %d, insert fail: %d, update total: %d, update fail: %d\n", insert_total, insert_fail, update_total, update_fail);
+        if (update_fail > 0)
+          printf("CDC conflicts with DMLs, %d\n", update_fail);
 
         // printf("offset_in_seg: %lu\n", offset_in_seg);
+
+        // printf("csn: %lu\n", last_csn);
 
         if (stop_scan)
           break;
@@ -764,11 +777,13 @@ void ConcurrentMasstreeIndex::changed_data_capture(transaction *t,
       offset = offset_in_seg + offset_increment;
       index++;
       // printf("index: %u\n", index);
-      if (index >= t->cdc_offsets.size() - 1)
+      if (index > end_log || index >= t->cdc_offsets.size() - 1)
         break;
     }
   }
+  // if (ddl_end_tmp) printf("all log captured\n");
   // printf("cdc finished\n");
+  return ddl_end_tmp;
 }
 #endif
 
@@ -1105,6 +1120,7 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
 
   OID oid = 0;
 
+#if defined(COPYDDL) && !defined(LAZYDDL)
   if (t->is_ddl()) {
     rc_t rc = {RC_INVALID};
     AWAIT GetOID(key, rc, t->xc, oid);
@@ -1117,6 +1133,7 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
       RETURN rc_t{RC_TRUE};
     }
   }
+#endif
 
 #ifdef LAZYDDL
   // Search for OID
@@ -1205,9 +1222,11 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   if (rc._val == RC_TRUE) {
     RETURN t->Update(table_descriptor, oid, &key, &value);
   } else {
+#if defined(COPYDDL) && !defined(LAZYDDL)
     if (t->is_ddl()) {
       RETURN InsertRecord(t, key, value);
     }
+#endif
     RETURN rc_t{RC_ABORT_INTERNAL};
   }
 }
