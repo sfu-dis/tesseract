@@ -118,10 +118,9 @@ public:
       printf("DDL normal record insert false\n");
       return false;
     }*/
-    if (_index->InsertRecord(_txn, *k, *d_v)._val != RC_TRUE) {
-      printf("DDL normal record insert false\n");
-      return true;
+    while (_index->InsertRecord(_txn, *k, *d_v)._val != RC_TRUE) {
     }
+    return true;
 #endif
 #if !defined(MICROBENCH)
     rc_t rc = rc_t{RC_INVALID};
@@ -763,7 +762,7 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
           ddl_end_tmp = false;
         // printf("insert total: %d, insert fail: %d, update total: %d, update fail: %d\n", insert_total, insert_fail, update_total, update_fail);
         if (update_fail > 0)
-          printf("CDC conflicts with DMLs, %d\n", update_fail);
+          printf("CDC conflicts with copy, %d\n", update_fail);
 
         // printf("offset_in_seg: %lu\n", offset_in_seg);
 

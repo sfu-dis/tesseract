@@ -25,8 +25,8 @@ public:
     // w.push_back(workload_desc("Read", 0.9499985, TxnRead));
     // w.push_back(workload_desc("RMW", 0.05, TxnRMW));
 
-    w.push_back(workload_desc("Read", 0.2, TxnRead));
-    w.push_back(workload_desc("RMW", 0.7999985, TxnRMW));
+    w.push_back(workload_desc("Read", 0.7999985, TxnRead));
+    w.push_back(workload_desc("RMW", 0.2, TxnRMW));
     w.push_back(workload_desc("DDL", 0.0000015, TxnDDL));
 
     return w;
@@ -123,7 +123,6 @@ public:
         // ermia::thread::MyId());
         uint32_t begin_log = i * logs_per_cdc_thread;
         uint32_t end_log = (i + 1) * logs_per_cdc_thread - 1;
-        ;
         if (i == cdc_threads - 1)
           end_log = ermia::config::MAX_THREADS;
         bool ddl_end_local = false;

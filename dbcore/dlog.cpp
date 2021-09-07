@@ -167,15 +167,15 @@ void tls_log::poll_flush() {
   current_segment()->size += size;
 
   if (!dirty) {
-  // get last tls durable csn
-  uint64_t last_tls_durable_csn =
-      (active_logbuf == logbuf[0]) ? last_csns[1] : last_csns[0];
+    // get last tls durable csn
+    uint64_t last_tls_durable_csn =
+        (active_logbuf == logbuf[0]) ? last_csns[1] : last_csns[0];
 
-  // set tls durable csn
-  tcommitter.set_tls_durable_csn(last_tls_durable_csn);
-  ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == last_tls_durable_csn);
+    // set tls durable csn
+    tcommitter.set_tls_durable_csn(last_tls_durable_csn);
+    ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == last_tls_durable_csn);
 
-  wrap_dequeue_committed_xcts(false);
+    wrap_dequeue_committed_xcts(false);
   }
 }
 

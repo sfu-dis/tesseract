@@ -712,18 +712,19 @@ install:
   Object *new_object = (Object *)new_obj_ptr->offset();
   new_object->SetCSN(updater_xc->owner.to_ptr());
   if (overwrite) {
-    new_object->SetNextPersistent(old_desc->GetNextPersistent());
+    // new_object->SetNextPersistent(old_desc->GetNextPersistent());
     new_object->SetNextVolatile(old_desc->GetNextVolatile());
     // I already claimed it, no need to use cas then
     volatile_write(ptr->_ptr, new_obj_ptr->_ptr);
     __sync_synchronize();
     return head;
   } else {
-    fat_ptr pa = old_desc->GetPersistentAddress();
-    /*while (pa == NULL_PTR) {
+    /*fat_ptr pa = old_desc->GetPersistentAddress();
+    while (pa == NULL_PTR) {
       pa = old_desc->GetPersistentAddress();
-    }*/
+    }
     new_object->SetNextPersistent(pa);
+    */
     new_object->SetNextVolatile(head);
     if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr,
                                      new_obj_ptr->_ptr)) {
@@ -885,7 +886,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
       return false;
     }
 
-    if (state == TXN::TXN_COMMITTING) {
+    /*if (state == TXN::TXN_COMMITTING) {
       ASSERT(owner == holder_xid);
       // holder has finished SetClsn()
       if (holder_lsn != 0 && holder_lsn < xc->begin) {
@@ -896,7 +897,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
         retry = true;
         return false;
       }
-    }
+    }*/
 
     if (state == TXN::TXN_CMMTD) {
       ASSERT(volatile_read(holder->end));

@@ -224,7 +224,6 @@ rc_t transaction::si_commit() {
   std::vector<ermia::thread::Thread *> cdc_workers;
   uint32_t cdc_threads = ermia::config::cdc_threads;
   if (is_ddl()) {
-    ddl_running_2 = true;
     ermia::transaction *txn = this;
     uint logs_per_cdc_thread =
         (ermia::config::worker_threads - 1) / cdc_threads;
@@ -240,11 +239,10 @@ rc_t transaction::si_commit() {
         // %u\n", thread_id, ermia::thread::MyId());
         uint32_t begin_log = i * logs_per_cdc_thread;
         uint32_t end_log = (i + 1) * logs_per_cdc_thread - 1;
-        ;
         if (i == cdc_threads - 1)
           end_log = ermia::config::MAX_THREADS;
         bool ddl_end_local = false;
-        while (ddl_running_1 || !ddl_end_local) {
+        while (!ddl_end_local) {
           ddl_end_local = txn->new_td->GetPrimaryIndex()->changed_data_capture(
               txn, txn->GetXIDContext()->begin, txn->GetXIDContext()->end,
               thread_id, begin_log, end_log);
@@ -275,7 +273,7 @@ rc_t transaction::si_commit() {
     } else {
       lb = log->allocate_log_block(log_size, &lb_lsn, &segnum, xc->end);
     }
-    log->set_dirty(true);
+    // log->set_dirty(true);
   }
 
 #ifdef COPYDDL
@@ -322,14 +320,13 @@ rc_t transaction::si_commit() {
   if (is_ddl()) {
     while (ddl_end != cdc_threads) {
     }
-    ddl_running_2 = false;
-    for (std::vector<ermia::thread::Thread *>::const_iterator it =
+    /*for (std::vector<ermia::thread::Thread *>::const_iterator it =
              cdc_workers.begin();
          it != cdc_workers.end(); ++it) {
       (*it)->Join();
       ermia::thread::PutThread(*it);
       // printf("thread joined\n");
-    }
+    }*/
   }
 #endif
 
@@ -420,8 +417,19 @@ rc_t transaction::si_commit() {
   }
   // ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
 
-#ifdef COPYDDL
+  // if (write_set.size())
+  //  log->set_dirty(false);
+
+#if defined(COPYDDL) && !defined(LAZYDDL)
   if (is_ddl()) {
+    for (std::vector<ermia::thread::Thread *>::const_iterator it =
+             cdc_workers.begin();
+         it != cdc_workers.end(); ++it) {
+      (*it)->Join();
+      ermia::thread::PutThread(*it);
+      // printf("thread joined\n");
+    }
+
     //printf("free bufs\n");
     for (std::vector<char *>::iterator buf = bufs.begin(); buf != bufs.end(); buf++) {  
       free(*buf);
@@ -433,8 +441,6 @@ rc_t transaction::si_commit() {
   // otherwise readers will see inconsistent data!
   // This is when (committed) tuple data are made visible to readers
   // volatile_write(xc->state, TXN::TXN_CMMTD);
-  if (write_set.size())
-    log->set_dirty(false);
   /*if (config::state == config::kStateForwardProcessing) {
     volatile_write(_tls_commit_csn[thread::MyId()], xc->end);
   }*/
