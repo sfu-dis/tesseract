@@ -1,12 +1,26 @@
 #pragma once
 
-#include <experimental/coroutine>
 #include <array>
 #include <map>
 #include <numa.h>
+#include <limits.h>
 
 #include "../macros.h"
 #include "sm-defs.h"
+
+#ifdef __has_include(<coroutine>)
+#include <coroutine>
+using std::coroutine_handle;
+using std::noop_coroutine;
+using std::suspend_always;
+using std::suspend_never;
+#else
+#include <experimental/coroutine>
+using std::experimental::coroutine_handle;
+using std::experimental::noop_coroutine;
+using std::experimental::suspend_always;
+using std::experimental::suspend_never;
+#endif  // __has_include(<coroutine>)
 
 namespace ermia {
 namespace coro {
@@ -96,7 +110,7 @@ extern thread_local tcalloc coroutine_allocator;
 
 template <typename T = void> struct [[nodiscard]] generator {
   struct promise_type;
-  using handle = std::experimental::coroutine_handle<promise_type>;
+  using handle = coroutine_handle<promise_type>;
 
   struct promise_type {
     promise_type() {}
@@ -104,8 +118,8 @@ template <typename T = void> struct [[nodiscard]] generator {
       reinterpret_cast<T*>(&ret_val_buf_)->~T();
     }
     auto get_return_object() { return generator{handle::from_promise(*this)}; }
-    auto initial_suspend() { return std::experimental::suspend_never{}; }
-    auto final_suspend() noexcept { return std::experimental::suspend_always{}; }
+    auto initial_suspend() { return suspend_never{}; }
+    auto final_suspend() noexcept { return suspend_always{}; }
     void unhandled_exception() { std::terminate(); }
     void return_value(const T value) {
         new (&ret_val_buf_) T(std::move(value));
@@ -122,7 +136,7 @@ template <typename T = void> struct [[nodiscard]] generator {
       uint8_t buf[sizeof(T)];
     };
 
-    std::experimental::coroutine_handle<> callee_coro = nullptr;
+    coroutine_handle<> callee_coro = nullptr;
     T_Buf ret_val_buf_;
   };
 
@@ -174,15 +188,15 @@ template<> struct generator<void>::promise_type {
   promise_type() {}
   ~promise_type() {}
   auto get_return_object() { return generator{handle::from_promise(*this)}; }
-  auto initial_suspend() { return std::experimental::suspend_never{}; }
-  auto final_suspend() { return std::experimental::suspend_always{}; }
+  auto initial_suspend() { return suspend_never{}; }
+  auto final_suspend() { return suspend_always{}; }
   void unhandled_exception() { std::terminate(); }
   void return_void() {};
   void transfer_return_value() {};
   void *operator new(size_t sz) { return coroutine_allocator.alloc(sz); }
   void operator delete(void *p, size_t sz) { coroutine_allocator.free(p, sz); }
 
-  std::experimental::coroutine_handle<> callee_coro = nullptr;
+  coroutine_handle<> callee_coro = nullptr;
 };
 /*
  *  task<T> is implementation of coroutine promise. It supports chained
@@ -207,7 +221,7 @@ template<> struct generator<void>::promise_type {
  */
 namespace coro_task_private {
 
-using generic_coroutine_handle = std::experimental::coroutine_handle<void>;
+using generic_coroutine_handle = coroutine_handle<void>;
 
 // final_awaiter is the awaiter returned on task<T> coroutine's `final_suspend`.
 // It returns the control flow directly to the caller instead of the top-level
@@ -243,7 +257,7 @@ struct promise_base {
   promise_base(const promise_base &) = delete;
   promise_base(promise_base &&) = delete;
 
-  auto initial_suspend() { return std::experimental::suspend_always{}; }
+  auto initial_suspend() { return suspend_always{}; }
   auto final_suspend() noexcept {
     // For the first coroutine in the coroutine chain, it is started by
     // normal function through coroutine_handle.resume(). Therefore, it
@@ -252,7 +266,7 @@ struct promise_base {
     // returning std::experimental::noop_coroutine.
     if (!parent_) {
         return coro_task_private::final_awaiter(
-            std::experimental::noop_coroutine());
+            noop_coroutine());
     }
     
     ASSERT(root_);
@@ -307,11 +321,11 @@ template <typename T> class [[nodiscard]] task {
 public:
   struct promise_type;
   struct awaiter;
-  using coroutine_handle = std::experimental::coroutine_handle<promise_type>;
+  using coroutine_handle_t = coroutine_handle<promise_type>;
 
 
   task() : coroutine_(nullptr) {}
-  task(coroutine_handle coro) : coroutine_(coro) {}
+  task(coroutine_handle_t coro) : coroutine_(coro) {}
   ~task() {
     if (coroutine_) {
       destroy();
@@ -378,18 +392,18 @@ public:
   }
 
 private:
-  coroutine_handle coroutine_;
+  coroutine_handle_t coroutine_;
 };
 
 template <> struct task<void>::promise_type : coro_task_private::promise_base {
-  using coroutine_handle =
-      std::experimental::coroutine_handle<typename task<void>::promise_type>;
+  using coroutine_handle_t =
+      coroutine_handle<typename task<void>::promise_type>;
 
   promise_type() {}
   ~promise_type() {}
 
   auto get_return_object() {
-    auto coroutine_handle = coroutine_handle::from_promise(*this);
+    auto coroutine_handle = coroutine_handle_t::from_promise(*this);
     handle_ = coroutine_handle;
     return task{coroutine_handle};
   }
@@ -399,8 +413,8 @@ template <> struct task<void>::promise_type : coro_task_private::promise_base {
 
 template <typename T>
 struct task<T>::promise_type : coro_task_private::promise_base {
-  using coroutine_handle =
-      std::experimental::coroutine_handle<typename task<T>::promise_type>;
+  using coroutine_handle_t =
+      coroutine_handle<typename task<T>::promise_type>;
 
   friend struct task<T>::awaiter;
 
@@ -410,7 +424,7 @@ struct task<T>::promise_type : coro_task_private::promise_base {
   }
 
   auto get_return_object() {
-    auto coroutine_handle = coroutine_handle::from_promise(*this);
+    auto coroutine_handle = coroutine_handle_t::from_promise(*this);
     handle_ = coroutine_handle;
     return task{coroutine_handle};
   }
@@ -463,10 +477,10 @@ private:
  *
  */
 template <typename T> struct task<T>::awaiter {
-  using coroutine_handle =
-      std::experimental::coroutine_handle<typename task<T>::promise_type>;
+  using coroutine_handle_t =
+      coroutine_handle<typename task<T>::promise_type>;
 
-  awaiter(coroutine_handle task_coroutine)
+  awaiter(coroutine_handle_t task_coroutine)
       : suspended_task_coroutine_(task_coroutine) {}
   ~awaiter() {}
 
@@ -480,7 +494,7 @@ template <typename T> struct task<T>::awaiter {
   // awaiting_coroutine points to the coroutine running co_await
   // (i.e. it waiting for suspended_task_coroutine to complete first)
   template <typename awaiting_promise_t>
-  auto await_suspend(std::experimental::coroutine_handle<awaiting_promise_t>
+  auto await_suspend(coroutine_handle<awaiting_promise_t>
                          awaiting_coroutine) noexcept {
     suspended_task_coroutine_.promise().set_parent(&(awaiting_coroutine.promise()));
     return suspended_task_coroutine_;
@@ -506,7 +520,7 @@ template <typename T> struct task<T>::awaiter {
   }
 
 private:
-  coroutine_handle suspended_task_coroutine_;
+  coroutine_handle_t suspended_task_coroutine_;
 };
 
 
@@ -517,7 +531,7 @@ private:
   #define PROMISE(t) ermia::coro::task<t>
   #define RETURN co_return
   #define AWAIT co_await
-  #define SUSPEND co_await std::experimental::suspend_always{}
+  #define SUSPEND co_await generic_suspend_always
 
 template<typename T>
 inline T sync_wait_coro(ermia::coro::task<T> &&coro_task) {

@@ -4,7 +4,11 @@
 #include "varstr.h"
 #include "engine_internal.h"
 #include "../benchmarks/record/encoder.h"
+#if __has_include(<coroutine>)
+#include <coroutine>
+#else
 #include <experimental/coroutine>
+#endif
 
 namespace ermia {
 
@@ -153,11 +157,11 @@ public:
   // A multi-get interface using coroutines
   void simple_coro_MultiGet(transaction *t, std::vector<varstr *> &keys,
                             std::vector<varstr *> &values,
-                            std::vector<std::experimental::coroutine_handle<>> &handles);
+                            std::vector<coroutine_handle<>> &handles);
 
   // A multi-ops interface using coroutines
   static void simple_coro_MultiOps(std::vector<rc_t> &rcs,
-		                   std::vector<std::experimental::coroutine_handle<ermia::coro::generator<rc_t>::promise_type>> &handles);
+		                   std::vector<coroutine_handle<ermia::coro::generator<rc_t>::promise_type>> &handles);
 
   ermia::coro::generator<rc_t> coro_GetRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
   ermia::coro::generator<rc_t> coro_GetRecordSV(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);

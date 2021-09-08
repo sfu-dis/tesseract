@@ -6,7 +6,19 @@ endif("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
 project(corobase)
 cmake_minimum_required(VERSION 3.1)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++14 -fcoroutines-ts -stdlib=libc++ -Woverloaded-virtual -Werror=reorder -Werror=unused-result -Wno-address-of-packed-member")
+#if(${CMAKE_CXX_FLAGS} STREQUAL "Debug")
+#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g2 -Wall -Wextra -Wno-unused-parameter -fno-omit-frame-pointer -march=native -mtune=native")
+#else()
+#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -mtune=native")
+#endif()
+
+if(${CMAKE_C_COMPILER} MATCHES "clang+")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++14 -fcoroutines-ts -stdlib=libc++ -Woverloaded-virtual -Werror=reorder -Werror=unused-result -Wno-address-of-packed-member")
+else()
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++14 -fcoroutines -Woverloaded-virtual -Werror=reorder -Werror=unused-result -Wno-address-of-packed-member")
+endif()
+
+
 set(LINK_FLAGS "-lc++abi -lnuma -lpthread -pthread -lrt -lglog -lgflags -luring")
 link_libraries(${LINK_FLAGS})
 
