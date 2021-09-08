@@ -8,18 +8,18 @@
 #include "../macros.h"
 #include "sm-defs.h"
 
-#ifdef __has_include(<coroutine>)
-#include <coroutine>
-using std::coroutine_handle;
-using std::noop_coroutine;
-using std::suspend_always;
-using std::suspend_never;
-#else
+#ifdef __clang__
 #include <experimental/coroutine>
 using std::experimental::coroutine_handle;
 using std::experimental::noop_coroutine;
 using std::experimental::suspend_always;
 using std::experimental::suspend_never;
+#else
+#include <coroutine>
+using std::coroutine_handle;
+using std::noop_coroutine;
+using std::suspend_always;
+using std::suspend_never;
 #endif  // __has_include(<coroutine>)
 
 namespace ermia {

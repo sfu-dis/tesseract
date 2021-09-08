@@ -4,10 +4,19 @@
 #include "varstr.h"
 #include "engine_internal.h"
 #include "../benchmarks/record/encoder.h"
-#if __has_include(<coroutine>)
-#include <coroutine>
-#else
+
+#if __clang__
 #include <experimental/coroutine>
+using std::experimental::coroutine_handle;
+using std::experimental::noop_coroutine;
+using std::experimental::suspend_always;
+using std::experimental::suspend_never;
+#else
+#include <coroutine>
+using std::coroutine_handle;
+using std::noop_coroutine;
+using std::suspend_always;
+using std::suspend_never;
 #endif
 
 namespace ermia {
