@@ -59,29 +59,21 @@ struct write_set_t {
   write_record_t *entries_;
   mcs_lock lock;
   write_set_t() : num_entries(0) {}
-  inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid, uint32_t size, dlog::log_record::logrec_type type, const varstr *str) {
+  inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid, uint32_t size,
+                           dlog::log_record::logrec_type type, const varstr *str) {
+    ALWAYS_ASSERT(num_entries < kMaxEntries_);
     if (is_ddl) {
       CRITICAL_SECTION(cs, lock);
-      if (num_entries >= kMaxEntries_) { printf("beyond\n"); }
-      ALWAYS_ASSERT(num_entries < kMaxEntries_);
       new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, type, str);
       ++num_entries;
-      // ASSERT(entries_[num_entries - 1].entry == oe);
     } else {
-      ALWAYS_ASSERT(num_entries < kMaxEntries);
       new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type, str);
       ++num_entries;
-      // ASSERT(entries[num_entries - 1].entry == oe);
     }
   }
   inline uint32_t size() { return num_entries; }
   inline void clear() { num_entries = 0; }
-  inline write_record_t get(bool is_ddl, uint32_t idx) { 
-    if (is_ddl)
-      return entries_[idx]; 
-    else
-      return entries[idx]; 
-  }
+  inline write_record_t get(bool is_ddl, uint32_t idx) { return is_ddl ? entries_[idx] : entries[idx]; }
   inline void init_large_write_set() { entries_ = new write_record_t[kMaxEntries_]; }
 };
 
@@ -183,8 +175,8 @@ public:
 
   inline void add_to_write_set(bool is_ddl, fat_ptr *entry, FID fid, OID oid, uint64_t size, dlog::log_record::logrec_type type, const varstr *str) {
 #ifndef NDEBUG
-    for (uint32_t i = 0; i < write_set.size(); ++i) {
-      auto &w = write_set[i];
+    for (uint32_t i = 0; i < is_ddl && write_set.size(); ++i) {
+      auto &w = write_set.entries[i];
       ASSERT(w.entry);
       ASSERT(w.entry != entry);
     }
