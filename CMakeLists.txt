@@ -6,28 +6,22 @@ endif("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
 project(corobase)
 cmake_minimum_required(VERSION 3.1)
 
-#if(${CMAKE_CXX_FLAGS} STREQUAL "Debug")
-#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g2 -Wall -Wextra -Wno-unused-parameter -fno-omit-frame-pointer -march=native -mtune=native")
-#else()
-#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -mtune=native")
-#endif()
-
 if(${CMAKE_C_COMPILER} MATCHES "clang+")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++14 -fcoroutines-ts -stdlib=libc++ -Woverloaded-virtual -Werror=reorder -Werror=unused-result -Wno-address-of-packed-member")
 else()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++14 -fcoroutines -Woverloaded-virtual -Werror=reorder -Werror=unused-result -Wno-address-of-packed-member")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++14 -fcoroutines -Woverloaded-virtual -Werror=reorder -Wno-address-of-packed-member -Wno-format-truncation -Wno-unused-result")
 endif()
 
 
 set(LINK_FLAGS "-lc++abi -lnuma -lpthread -pthread -lrt -lglog -lgflags -luring")
 link_libraries(${LINK_FLAGS})
 
-include_directories(/opt/dis/llvm-libc++/include/c++/v1)
-link_directories(/opt/dis/llvm-libc++/lib)
+#include_directories(/opt/dis/llvm-libc++/include/c++/v1)
+#link_directories(/opt/dis/llvm-libc++/lib)
 
 # Pre-build glog and gflags with libc++
-link_directories(${CMAKE_CURRENT_SOURCE_DIR}/third-party/glog/lib)
-link_directories(${CMAKE_CURRENT_SOURCE_DIR}/third-party/gflags/lib)
+#link_directories(${CMAKE_CURRENT_SOURCE_DIR}/third-party/glog/lib)
+#link_directories(${CMAKE_CURRENT_SOURCE_DIR}/third-party/gflags/lib)
 
 # Store shared libraries under /lib
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -53,8 +47,8 @@ include_directories(masstree)
 include_directories(third-party/sparsehash/src)
 
 # The required headers for libc++.
-include_directories(third-party/glog/include)
-include_directories(third-party/gflags/include)
+#include_directories(third-party/glog/include)
+#include_directories(third-party/gflags/include)
 
 add_subdirectory(benchmarks)
 add_subdirectory(dbcore)
