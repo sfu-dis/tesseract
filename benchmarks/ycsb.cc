@@ -152,7 +152,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
       keys.emplace_back(&k);
     }
 
-    thread_local std::vector<std::experimental::coroutine_handle<>> handles(g_reps_per_tx);
+    thread_local std::vector<coroutine_handle<>> handles(g_reps_per_tx);
     table_index->simple_coro_MultiGet(txn, keys, values, handles);
 
     if (!ermia::config::index_probe_only) {
