@@ -139,7 +139,7 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::
   if (g_hybrid) {
     std::vector<rc_t> rcs;
     std::vector<ermia::varstr *> values;
-    std::vector<std::experimental::coroutine_handle<ermia::coro::generator<rc_t>::promise_type>> handles;
+    std::vector<coroutine_handle<ermia::coro::generator<rc_t>::promise_type>> handles;
     for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
       const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
       const uint ol_i_id = itemIDs[ol_number - 1];
@@ -329,7 +329,7 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::ep
   TryVerifyRelaxedCoro(rc);
 
   valptr.prefetch();
-  co_await std::experimental::suspend_always{};
+  co_await suspend_always{};
 
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
@@ -495,7 +495,7 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::e
     TryCatchCoro(rc);
 
     valptr.prefetch();
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
     const oorder::value *v_oo = Decode(valptr, v_oo_temp);
 #ifndef NDEBUG
     checker::SanityCheckOOrder(&k_oo, v_oo);
@@ -631,7 +631,7 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermi
     if (c.size() % 2 == 0) index--;
 
     ((ermia::varstr *)c.values[index].second)->prefetch();
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
     Decode(*c.values[index].second, v_c);
     k_c.c_w_id = warehouse_id;
     k_c.c_d_id = districtID;
@@ -646,7 +646,7 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermi
     tbl_customer(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
     TryVerifyRelaxedCoro(rc);
     valptr.prefetch();
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
     Decode(valptr, v_c);
   }
 #ifndef NDEBUG
@@ -690,7 +690,7 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermi
 
   oorder_c_id_idx::key k_oo_idx_temp;
   newest_o_c_id->prefetch();
-  co_await std::experimental::suspend_always{};
+  co_await suspend_always{};
   const oorder_c_id_idx::key *k_oo_idx = Decode(*newest_o_c_id, k_oo_idx_temp);
   const uint o_id = k_oo_idx->o_o_id;
 
@@ -768,7 +768,7 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia
     std::vector<rc_t> rcs;
     std::vector<ermia::varstr *> keys;
     std::vector<ermia::varstr *> values;
-    std::vector<std::experimental::coroutine_handle<ermia::coro::generator<rc_t>::promise_type>> handles;
+    std::vector<coroutine_handle<ermia::coro::generator<rc_t>::promise_type>> handles;
     uint total_count = c.s_i_ids.size();
     uint count = 0;
 
@@ -918,7 +918,7 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermi
     tbl_oorder(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_oo)), k_oo), valptr);
     TryCatchCondCoro(rc, continue);
     //valptr.prefetch();
-    //co_await std::experimental::suspend_always{};
+    //co_await suspend_always{};
     auto *vv = Decode(valptr, v);
 
     // Order line scan
@@ -1039,7 +1039,7 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epo
           std::vector<rc_t> rcs;
           std::vector<ermia::varstr *> keys;
           std::vector<ermia::varstr *> values;
-          std::vector<std::experimental::coroutine_handle<ermia::coro::generator<rc_t>::promise_type>> handles;
+          std::vector<coroutine_handle<ermia::coro::generator<rc_t>::promise_type>> handles;
           uint total_count = supp_stock_map[k_su.su_suppkey].size();
           uint count = 0;
 
