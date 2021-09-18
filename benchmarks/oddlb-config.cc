@@ -24,8 +24,16 @@ void oddlb_create_db(ermia::Engine *db) {
 
 void oddlb_usertable_loader::load() {
   ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
-  int64_t to_insert = oddl_initial_table_size / ermia::config::worker_threads;
+  uint32_t nloaders = std::thread::hardware_concurrency() /
+                      (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
+  int64_t to_insert = oddl_initial_table_size / nloaders;
+  // int64_t to_insert = oddl_initial_table_size /
+  // ermia::config::worker_threads;
   uint64_t start_key = loader_id * to_insert;
+
+  /*if (loader_id == ermia::config::worker_threads - 1) {
+    to_insert = oddl_initial_table_size - loader_id * to_insert;
+  }*/
 
   for (uint64_t i = 0; i < to_insert; ++i) {
     ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());

@@ -16,7 +16,12 @@ public:
       const std::map<std::string, ermia::OrderedIndex *> &open_tables,
       spin_barrier *barrier_a, spin_barrier *barrier_b)
       : oddlb_base_worker(worker_id, seed, db, open_tables, barrier_a,
-                          barrier_b) {}
+                          barrier_b) {
+    std::cerr << "Read/Write = " << read_ratio << "/" << write_ratio
+              << std::endl;
+  }
+
+  double read_ratio = 0.2, write_ratio = 0.7999985;
 
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
@@ -25,8 +30,8 @@ public:
     // w.push_back(workload_desc("Read", 0.9499985, TxnRead));
     // w.push_back(workload_desc("RMW", 0.05, TxnRMW));
 
-    w.push_back(workload_desc("Read", 0.7999985, TxnRead));
-    w.push_back(workload_desc("RMW", 0.2, TxnRMW));
+    w.push_back(workload_desc("Read", read_ratio, TxnRead));
+    w.push_back(workload_desc("RMW", write_ratio, TxnRMW));
     w.push_back(workload_desc("DDL", 0.0000015, TxnDDL));
 
     return w;
@@ -109,32 +114,77 @@ public:
 
 #if !defined(LAZYDDL)
     uint32_t cdc_threads = ermia::config::cdc_threads;
-    uint logs_per_cdc_thread =
-        (ermia::config::worker_threads - 1) / cdc_threads;
+    uint32_t logs_per_cdc_thread =
+        // (ermia::config::worker_threads - 1 - cdc_threads) / cdc_threads;
+        (ermia::config::worker_threads - 1) / cdc_threads + 1;
+    if (logs_per_cdc_thread == 1)
+      logs_per_cdc_thread++;
+    uint32_t thread_id = ermia::thread::MyId();
     std::vector<ermia::thread::Thread *> cdc_workers;
+    bool exit = false;
+    uint32_t increment = 0;
+    printf("thread_id: %u\n", thread_id);
     for (uint i = 0; i < cdc_threads; i++) {
+      uint32_t begin_log = i * logs_per_cdc_thread + increment;
+      uint32_t end_log = (i + 1) * logs_per_cdc_thread - 1 + increment;
+      if (thread_id == begin_log) {
+        increment++;
+        begin_log += increment;
+        end_log += increment;
+      } else if (thread_id > begin_log && thread_id <= end_log) {
+        increment++;
+        end_log += increment;
+      }
+      if (begin_log >= ermia::config::worker_threads - 1) {
+        begin_log = ermia::config::worker_threads - 1;
+        end_log = ermia::config::worker_threads - 1;
+        exit = true;
+      }
+      if (end_log >= ermia::config::worker_threads - 1 ||
+          i == cdc_threads - 1) {
+        end_log = ermia::config::worker_threads - 1;
+        exit = true;
+      }
+      printf("begin_log: %u, end_log: %u\n", begin_log, end_log);
+
       ermia::thread::Thread *thread = ermia::thread::GetThread(true);
       ALWAYS_ASSERT(thread);
       cdc_workers.push_back(thread);
 
-      uint32_t thread_id = ermia::thread::MyId();
       auto parallel_changed_data_capture = [=](char *) {
-        // printf("thread_id: %u, my_thread_id: %u\n", thread_id,
-        // ermia::thread::MyId());
-        uint32_t begin_log = i * logs_per_cdc_thread;
+        // uint32_t begin_log = i * logs_per_cdc_thread + cdc_threads;
+        /*uint32_t begin_log = i * logs_per_cdc_thread;
+        if (begin_log >= ermia::config::worker_threads - 1)
+          begin_log = ermia::config::worker_threads - 1;
+        //uint32_t end_log = (i + 1) * logs_per_cdc_thread + cdc_threads - 1;
         uint32_t end_log = (i + 1) * logs_per_cdc_thread - 1;
         if (i == cdc_threads - 1)
-          end_log = ermia::config::MAX_THREADS;
+          end_log = ermia::config::worker_threads - 1;
+        printf("begin_log: %u, end_log: %u\n", begin_log, end_log);
+        */
+        int count = 0;
         bool ddl_end_local = false;
-        while (ddl_running_1 || !ddl_end_local) {
+        while (ddl_running_1) {
           ddl_end_local = schema.td->GetPrimaryIndex()->changed_data_capture(
               txn, txn->GetXIDContext()->begin, txn->GetXIDContext()->end,
               thread_id, begin_log, end_log);
           // usleep(1000);
+          if (ddl_end_local)
+            count++;
+          if (ddl_end_local && ddl_running_2)
+            break;
         }
+        printf("cdc thread %u finishes with %d counts\n", ermia::thread::MyId(),
+               count);
+        ddl_end.fetch_add(1);
       };
 
       thread->StartTask(parallel_changed_data_capture);
+
+      if (exit) {
+        ermia::config::cdc_threads = i + 1;
+        break;
+      }
     }
 #endif
 
@@ -154,11 +204,12 @@ public:
            it != cdc_workers.end(); ++it) {
         (*it)->Join();
         ermia::thread::PutThread(*it);
-        // printf("thread joined\n");
       }
     }
     TryCatch(rc);
 #endif
+
+    TryCatch(db->Commit(txn));
 
 #if !defined(LAZYDDL)
     ddl_running_1 = false;
@@ -167,16 +218,9 @@ public:
          it != cdc_workers.end(); ++it) {
       (*it)->Join();
       ermia::thread::PutThread(*it);
-      // printf("thread joined\n");
     }
 #endif
 
-    TryCatch(db->Commit(txn));
-
-    /*thread->Join();
-    ermia::thread::PutThread(thread);
-    printf("thread joined\n");
-    */
 #elif defined(BLOCKDDL)
     // CRITICAL_SECTION(cs, lock);
     db->WriteLock(std::string("SCHEMA"));
@@ -254,8 +298,8 @@ public:
     TryCatch(rc);
 
     rc = rc_t{RC_INVALID};
-    // rc = table_index->WriteNormalTable(arena, table_index, txn, v, NULL);
-    rc = table_index->CheckNormalTable(arena, table_index, txn, NULL);
+    rc = table_index->WriteNormalTable(arena, table_index, txn, v, NULL);
+    // rc = table_index->CheckNormalTable(arena, table_index, txn, NULL);
     if (rc._val != RC_TRUE) {
       count++;
       db->Abort(txn);
@@ -297,7 +341,11 @@ public:
     TryCatch(db->Commit(txn));
 #endif
     printf("ddl commit ok\n");
+#if defined(COPYDDL) && !defined(LAZYDDL) && defined(MICROBENCH)
+    return {RC_DDL_TRUE};
+#else
     return {RC_TRUE};
+#endif
   }
 
   rc_t txn_read() {
@@ -307,7 +355,7 @@ public:
     // db->ReadLock(std::string("USERTABLE"));
 #endif
     uint64_t a =
-        rand() % oddl_initial_table_size; // 0 ~ oddl_initial_table_size-1
+        r.next() % oddl_initial_table_size; // 0 ~ oddl_initial_table_size-1
 
 #ifdef SIDDL
   retry:
@@ -428,7 +476,7 @@ public:
     // db->ReadLock(std::string("USERTABLE"));
 #endif
     uint64_t a =
-        rand() % oddl_initial_table_size; // 0 ~ oddl_initial_table_size-1
+        r.next() % oddl_initial_table_size; // 0 ~ oddl_initial_table_size-1
 
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
@@ -538,6 +586,7 @@ record_test.v); ALWAYS_ASSERT(record_test.v == schema_version);
 };
 
 void oddlb_do_test(ermia::Engine *db, int argc, char **argv) {
+  std::cerr << RAND_MAX << std::endl;
   oddlb_parse_options(argc, argv);
   oddlb_bench_runner<oddlb_sequential_worker> r(db);
   r.run();

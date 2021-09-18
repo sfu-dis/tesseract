@@ -90,16 +90,19 @@ protected:
         std::max<uint64_t>(1, oddl_initial_table_size / nloaders);
     oddl_initial_table_size = records_per_thread * nloaders;
 
-    if (ermia::config::verbose) {
-      std::cerr << "[INFO] requested for " << requested << ", will load "
-                << oddl_initial_table_size << std::endl;
-    }
+    std::cerr << "nloaders: " << nloaders
+              << ", records_per_thread: " << records_per_thread << std::endl;
+
+    // if (ermia::config::verbose) {
+    std::cerr << "[INFO] requested for " << requested << ", will load "
+              << oddl_initial_table_size << std::endl;
+    //}
 
     std::vector<bench_loader *> ret;
 
     ret.push_back(new microbenchmark_schematable_loader(0, db, open_tables));
 
-    for (uint32_t i = 0; i < ermia::config::worker_threads; ++i) {
+    for (uint32_t i = 0; i < nloaders; ++i) {
       ret.push_back(new oddlb_usertable_loader(0, db, open_tables, i));
     }
 
