@@ -59,7 +59,7 @@ uint32_t bench_worker::fetch_workload() {
         ddling = true;
 #endif
 #elif defined(COPYDDL)
-        if (ddl_num_local != 2)
+        if (ddl_num_local != 1)
           continue;
 #elif defined(BLOCKDDL)
         if (ddl_num_local != 20)

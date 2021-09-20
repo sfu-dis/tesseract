@@ -63,6 +63,8 @@ public:
            (uint64_t) px->data() + px->size() <= (uint64_t)str + n;
   }
 
+  inline char *get_str() { return str; }
+
 private:
   char *str;
   size_t n;

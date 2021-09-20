@@ -210,7 +210,7 @@ rc_t transaction::commit() {
 
 #if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
 rc_t transaction::si_commit() {
-  if ((flags & TXN_FLAG_READ_ONLY) || (write_set.size() == 0)) {
+  if ((flags & TXN_FLAG_READ_ONLY)) {
     volatile_write(xc->state, TXN::TXN_CMMTD);
     return rc_t{RC_TRUE};
   }
@@ -221,52 +221,91 @@ rc_t transaction::si_commit() {
 
   ASSERT(log);
   // Precommit: obtain a CSN
-  xc->end = dlog::current_csn.fetch_add(1);
+  xc->end = dlog::current_csn.load(std::memory_order_relaxed) + 1;
+  // xc->end = dlog::current_csn.fetch_add(1);
 
 #ifdef COPYDDL
-  /*#if !defined(LAZYDDL)
-    std::vector<ermia::thread::Thread *> cdc_workers;
-    uint32_t cdc_threads = ermia::config::cdc_threads;
-    if (is_ddl()) {
-      ermia::transaction *txn = this;
-      uint32_t logs_per_cdc_thread =
-          (ermia::config::worker_threads - 1 - cdc_threads) / cdc_threads;
-      for (uint i = 0; i < cdc_threads; i++) {
-        ermia::thread::Thread *thread = ermia::thread::GetThread(true);
-        ALWAYS_ASSERT(thread);
-        cdc_workers.push_back(thread);
-
-        uint32_t thread_id = ermia::thread::MyId();
-        auto parallel_changed_data_capture = [=](char *) {
-          // printf("txn->GetXIDContext()->end: %lu\n",
-          // txn->GetXIDContext()->end); printf("thread_id: %u, my_thread_id:
-          // %u\n", thread_id, ermia::thread::MyId());
-          uint32_t begin_log = i * logs_per_cdc_thread + cdc_threads;
-          uint32_t end_log = (i + 1) * logs_per_cdc_thread + cdc_threads - 1;
-          if (i == cdc_threads - 1)
-            end_log = ermia::config::MAX_THREADS;
-          printf("begin_log: %u, end_log: %u\n", begin_log, end_log);
-          bool ddl_end_local = false;
-          while (!ddl_end_local) {
-            ddl_end_local =
-  txn->new_td->GetPrimaryIndex()->changed_data_capture( txn,
-  txn->GetXIDContext()->begin, txn->GetXIDContext()->end, thread_id, begin_log,
-  end_log);
-            // usleep(1000);
-          }
-          ddl_end++;
-        };
-
-        thread->StartTask(parallel_changed_data_capture);
-      }
-    }
-  #endif*/
-
   if (is_dml() && DMLConsistencyHandler()) {
-    // printf("DML failed\n");
+    printf("DML failed\n");
     return rc_t{RC_ABORT_SI_CONFLICT};
   }
 #endif
+
+  xc->end = dlog::current_csn.fetch_add(1);
+
+  /*#ifdef COPYDDL
+  #if !defined(LAZYDDL)
+      std::vector<ermia::thread::Thread *> cdc_workers;
+      uint32_t cdc_threads = ermia::config::cdc_threads;
+      if (is_ddl()) {
+        ddl_running_1 = true;
+        ermia::transaction *txn = this;
+        ALWAYS_ASSERT(txn->GetXIDContext()->end == xc->end);
+        uint32_t logs_per_cdc_thread =
+            // (ermia::config::worker_threads - 1 - cdc_threads) / cdc_threads;
+            (ermia::config::worker_threads - 1) / cdc_threads;
+        //if (logs_per_cdc_thread == 1)
+        //  logs_per_cdc_thread++;
+        uint32_t thread_id = ermia::thread::MyId();
+        std::vector<ermia::thread::Thread *> cdc_workers;
+        bool exit = false;
+        uint32_t increment = 0;
+        printf("thread_id: %u\n", thread_id);
+        for (uint i = 0; i < cdc_threads; i++) {
+          uint32_t begin_log = i * logs_per_cdc_thread + increment;
+          uint32_t end_log = (i + 1) * logs_per_cdc_thread - 1 + increment;
+          if (thread_id == begin_log) {
+            increment++;
+            begin_log += increment;
+            end_log += increment;
+          } else if (thread_id > begin_log && thread_id <= end_log) {
+            increment++;
+            end_log += increment;
+          }
+          if (begin_log >= ermia::config::worker_threads - 1) {
+            begin_log = ermia::config::worker_threads - 1;
+            end_log = ermia::config::worker_threads - 1;
+            exit = true;
+          }
+          if (end_log >= ermia::config::worker_threads - 1 ||
+              i == cdc_threads - 1) {
+            end_log = ermia::config::worker_threads - 1;
+            exit = true;
+          }
+          printf("begin_log: %u, end_log: %u\n", begin_log, end_log);
+
+          ermia::thread::Thread *thread = ermia::thread::GetThread(true);
+          ALWAYS_ASSERT(thread);
+          cdc_workers.push_back(thread);
+
+          auto parallel_changed_data_capture = [=](char *) {
+            int count = 0;
+            bool ddl_end_local = false;
+            while (ddl_running_1) {
+              ddl_end_local =
+  txn->new_td->GetPrimaryIndex()->changed_data_capture( txn,
+  txn->GetXIDContext()->begin, txn->GetXIDContext()->end, thread_id, begin_log,
+  end_log);
+              // usleep(100);
+              if (ddl_end_local)
+                count++;
+              if (ddl_end_local && ddl_running_2)
+                break;
+            }
+            printf("cdc thread %u finishes with %d counts\n",
+  ermia::thread::MyId(), count); ddl_end.fetch_add(1);
+          };
+
+          thread->StartTask(parallel_changed_data_capture);
+
+          if (exit) {
+            ermia::config::cdc_threads = i + 1;
+            break;
+          }
+        }
+      }
+  #endif
+  #endif*/
 
   dlog::log_block *lb = nullptr;
   dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
@@ -338,6 +377,7 @@ rc_t transaction::si_commit() {
         break;
       count = 0;
     }
+    printf("lowest_csn: %lu\n", pcommit::lowest_csn.load());
     ddl_running_2 = true;
     while (ddl_end.load() != ermia::config::cdc_threads) {
     }
@@ -439,11 +479,12 @@ rc_t transaction::si_commit() {
   // ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
 
   // if (write_set.size())
-  //  log->set_dirty(false);
+  //   log->set_dirty(false);
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
   if (is_ddl()) {
-    /*for (std::vector<ermia::thread::Thread *>::const_iterator it =
+    /*ddl_running_1 = false;
+    for (std::vector<ermia::thread::Thread *>::const_iterator it =
              cdc_workers.begin();
          it != cdc_workers.end(); ++it) {
       (*it)->Join();

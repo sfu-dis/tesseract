@@ -1277,6 +1277,7 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
        ASSERT(keylen == sizeof(order_line_1::key));
        order_line_1::value v_ol_temp;
        const order_line_1::value *v_ol = Decode(value, v_ol_temp);
+       ALWAYS_ASSERT(v_ol->v != 0);
        s_i_ids[v_ol->ol_i_id] = 1;
      }
      n++;

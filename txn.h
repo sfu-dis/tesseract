@@ -53,7 +53,7 @@ struct write_record_t {
 };
 
 struct write_set_t {
-  static const uint32_t kMaxEntries = 256, kMaxEntries_ = 100000000;
+  static const uint32_t kMaxEntries = 256, kMaxEntries_ = 500000000;
   uint32_t num_entries;
   write_record_t entries[kMaxEntries];
   write_record_t *entries_;
@@ -61,6 +61,8 @@ struct write_set_t {
   write_set_t() : num_entries(0) {}
   inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid, uint32_t size,
                            dlog::log_record::logrec_type type, const varstr *str) {
+    if (num_entries >= kMaxEntries_)
+      printf("beyond\n");
     ALWAYS_ASSERT(num_entries < kMaxEntries_);
     if (is_ddl) {
       CRITICAL_SECTION(cs, lock);

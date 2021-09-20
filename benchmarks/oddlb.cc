@@ -5,10 +5,10 @@
 #include "bench.h"
 #include <sstream>
 
-volatile bool ddl_running_1 = true;
+/*volatile bool ddl_running_1 = true;
 volatile bool ddl_running_2 = false;
 std::atomic<uint64_t> ddl_end(0);
-
+*/
 class oddlb_sequential_worker : public oddlb_base_worker {
 public:
   oddlb_sequential_worker(
@@ -116,9 +116,9 @@ public:
     uint32_t cdc_threads = ermia::config::cdc_threads;
     uint32_t logs_per_cdc_thread =
         // (ermia::config::worker_threads - 1 - cdc_threads) / cdc_threads;
-        (ermia::config::worker_threads - 1) / cdc_threads + 1;
-    if (logs_per_cdc_thread == 1)
-      logs_per_cdc_thread++;
+        (ermia::config::worker_threads - 1) / cdc_threads;
+    // if (logs_per_cdc_thread == 1)
+    //  logs_per_cdc_thread++;
     uint32_t thread_id = ermia::thread::MyId();
     std::vector<ermia::thread::Thread *> cdc_workers;
     bool exit = false;
@@ -164,7 +164,7 @@ public:
         */
         int count = 0;
         bool ddl_end_local = false;
-        while (ddl_running_1) {
+        /*while (ddl_running_1) {
           ddl_end_local = schema.td->GetPrimaryIndex()->changed_data_capture(
               txn, txn->GetXIDContext()->begin, txn->GetXIDContext()->end,
               thread_id, begin_log, end_log);
@@ -177,6 +177,7 @@ public:
         printf("cdc thread %u finishes with %d counts\n", ermia::thread::MyId(),
                count);
         ddl_end.fetch_add(1);
+        */
       };
 
       thread->StartTask(parallel_changed_data_capture);
@@ -197,7 +198,7 @@ public:
         (ermia::ConcurrentMasstreeIndex *)schema.index;
     rc = rc_t{RC_INVALID};
     rc = table_index->WriteNormalTable(arena, old_table_index, txn, v2, NULL);
-    if (rc._val != RC_TRUE) {
+    /*if (rc._val != RC_TRUE) {
       ddl_running_1 = false;
       for (std::vector<ermia::thread::Thread *>::const_iterator it =
                cdc_workers.begin();
@@ -205,14 +206,14 @@ public:
         (*it)->Join();
         ermia::thread::PutThread(*it);
       }
-    }
+    }*/
     TryCatch(rc);
 #endif
 
     TryCatch(db->Commit(txn));
 
 #if !defined(LAZYDDL)
-    ddl_running_1 = false;
+    // ddl_running_1 = false;
     for (std::vector<ermia::thread::Thread *>::const_iterator it =
              cdc_workers.begin();
          it != cdc_workers.end(); ++it) {

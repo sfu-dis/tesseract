@@ -7,6 +7,10 @@
 
 #include "tpcc-common.h"
 
+volatile bool ddl_running_1 = true;
+volatile bool ddl_running_2 = false;
+std::atomic<uint64_t> ddl_end(0);
+
 rc_t tpcc_worker::txn_new_order() {
   // printf("new_order begin\n");
 #ifdef BLOCKDDL
@@ -621,7 +625,7 @@ rc_t tpcc_worker::txn_delivery() {
                    ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
                           &Encode(str(Size(k_oo_1)), k_oo_1), c));
 
-      if (c.size() != c1.size()) {
+      if ((c1.size() != 0 && c.size() != c1.size())) {
         // printf("delivery abort\n");
 #ifdef LAZYDDL
         ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
@@ -641,6 +645,13 @@ rc_t tpcc_worker::txn_delivery() {
           TryCatch({RC_ABORT_USER});
         }
 #else
+        /*if (ermia::test_map.find(k_no->no_o_id) != ermia::test_map.end())
+          printf("warehouse_id: %d, d: %d, c.size: %lu, c1.size: %lu, no
+        found\n", warehouse_id, d, c.size(), c1.size()); else
+          printf("warehouse_id: %d, d: %d, c.size: %lu, c1.size: %lu, but found
+        at %d\n", warehouse_id, d, c.size(), c1.size(),
+        ermia::test_map[k_no->no_o_id]);
+        */
         TryCatch({RC_ABORT_USER});
 #endif
       }
@@ -907,6 +918,8 @@ rc_t tpcc_worker::txn_order_status() {
     /*if (!c_oorder.size()) {
       TryCatch({RC_ABORT_INTERNAL});
     }*/
+    if (c_oorder.size() == 0)
+      printf("c_oorder.size() == 0");
     ALWAYS_ASSERT(c_oorder.size());
   } else {
     latest_key_callback c_oorder(*newest_o_c_id, 1);
@@ -945,6 +958,9 @@ rc_t tpcc_worker::txn_order_status() {
     TryCatch(tbl_order_line(warehouse_id)
                  ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
                         &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line));
+    if (c_order_line.n < 5 || c_order_line.n > 15) {
+      printf("c_order_line.n < 5 || c_order_line.n > 15\n");
+    }
     ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
   } else {
 #ifdef COPYDDL
@@ -990,8 +1006,9 @@ rc_t tpcc_worker::txn_order_status() {
       */
       // TryCatch({RC_ABORT_USER});
 #else
-      ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
-      // TryCatch({RC_ABORT_USER});
+      // printf("c_order_line.n < 5 || c_order_line.n > 15\n");
+      // ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
+      TryCatch({RC_ABORT_USER});
 #endif
     }
   }
@@ -1116,7 +1133,7 @@ rc_t tpcc_worker::txn_stock_level() {
                  ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
                         &Encode(str(Size(k_ol_1)), k_ol_1), c));
 
-    if (c.n != c1.n) {
+    if ((c1.n != 0 && c.n != c1.n)) {
       // printf("stock abort\n");
 #ifdef LAZYDDL
       ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
@@ -1871,6 +1888,73 @@ rc_t tpcc_worker::txn_ddl() {
 
   db->WriteUnlock(str3.c_str());
 
+#if !defined(LAZYDDL)
+  uint32_t cdc_threads = ermia::config::cdc_threads;
+  uint32_t logs_per_cdc_thread =
+      // (ermia::config::worker_threads - 1 - cdc_threads) / cdc_threads;
+      (ermia::config::worker_threads - 1) / cdc_threads;
+  // if (logs_per_cdc_thread == 1)
+  //  logs_per_cdc_thread++;
+  uint32_t thread_id = ermia::thread::MyId();
+  std::vector<ermia::thread::Thread *> cdc_workers;
+  bool exit = false;
+  uint32_t increment = 0;
+  printf("thread_id: %u\n", thread_id);
+  for (uint i = 0; i < cdc_threads; i++) {
+    uint32_t begin_log = i * logs_per_cdc_thread + increment;
+    uint32_t end_log = (i + 1) * logs_per_cdc_thread - 1 + increment;
+    if (thread_id == begin_log) {
+      increment++;
+      begin_log += increment;
+      end_log += increment;
+    } else if (thread_id > begin_log && thread_id <= end_log) {
+      increment++;
+      end_log += increment;
+    }
+    if (begin_log >= ermia::config::worker_threads - 1) {
+      begin_log = ermia::config::worker_threads - 1;
+      end_log = ermia::config::worker_threads - 1;
+      exit = true;
+    }
+    if (end_log >= ermia::config::worker_threads - 1 || i == cdc_threads - 1) {
+      end_log = ermia::config::worker_threads - 1;
+      exit = true;
+    }
+    printf("begin_log: %u, end_log: %u\n", begin_log, end_log);
+
+    ermia::thread::Thread *thread = ermia::thread::GetThread(true);
+    ALWAYS_ASSERT(thread);
+    cdc_workers.push_back(thread);
+
+    auto parallel_changed_data_capture = [=](char *) {
+      int count = 0;
+      bool ddl_end_local = false;
+      while (ddl_running_1) {
+        ddl_end_local =
+            order_line_schema.td->GetPrimaryIndex()->changed_data_capture(
+                txn, txn->GetXIDContext()->begin,
+                ermia::volatile_read(txn->GetXIDContext()->end), thread_id,
+                begin_log, end_log);
+        // usleep(100);
+        if (ddl_end_local)
+          count++;
+        if (ddl_end_local && ddl_running_2)
+          break;
+      }
+      printf("cdc thread %u finishes with %d counts\n", ermia::thread::MyId(),
+             count);
+      ddl_end.fetch_add(1);
+    };
+
+    thread->StartTask(parallel_changed_data_capture);
+
+    if (exit) {
+      ermia::config::cdc_threads = i + 1;
+      break;
+    }
+  }
+#endif
+
   //schema_index->WriteSchemaTable(txn, rc, k2, v3);
   schema_index->WriteSchemaTable(txn, rc, k1, v3);
   TryCatch(rc);
@@ -1881,15 +1965,36 @@ rc_t tpcc_worker::txn_ddl() {
   rc = rc_t{RC_INVALID};
   ermia::ConcurrentMasstreeIndex *new_order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
   ALWAYS_ASSERT(new_order_line_table_index);
-  rc = new_order_line_table_index->WriteNormalTable(arena, old_order_line_table_index, txn, v3, add_column_op);
+  rc = new_order_line_table_index->WriteNormalTable(
+      arena, old_order_line_table_index, txn, v3, add_column_op,
+      tbl_new_order(1));
   //ermia::ConcurrentMasstreeIndex *oorder_table_index = (ermia::ConcurrentMasstreeIndex *) oorder_schema.index;
   //ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index = (ermia::ConcurrentMasstreeIndex *) ermia::Catalog::GetIndex(secondary_index_name);
   //ALWAYS_ASSERT(oorder_table_secondary_index);
   //rc = oorder_table_index->WriteNormalTable1(arena, old_oorder_table_index, old_order_line_table_index, oorder_table_secondary_index, txn, v1, oorder_schema.op);
+  if (rc._val != RC_TRUE) {
+    ddl_running_1 = false;
+    for (std::vector<ermia::thread::Thread *>::const_iterator it =
+             cdc_workers.begin();
+         it != cdc_workers.end(); ++it) {
+      (*it)->Join();
+      ermia::thread::PutThread(*it);
+    }
+  }
   TryCatch(rc);
 #endif
 
   TryCatch(db->Commit(txn));
+
+#if !defined(LAZYDDL)
+  ddl_running_1 = false;
+  for (std::vector<ermia::thread::Thread *>::const_iterator it =
+           cdc_workers.begin();
+       it != cdc_workers.end(); ++it) {
+    (*it)->Join();
+    ermia::thread::PutThread(*it);
+  }
+#endif
 #endif
   printf("Commit OK\n");
   return {RC_TRUE};
@@ -1910,8 +2015,8 @@ bench_worker::workload_desc_vec tpcc_worker::get_workload() const {
   for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
     m += g_txn_workload_mix[i];
   // ALWAYS_ASSERT(m == 100);
-  // double base = 1000000.0;
-  double base = 100.0;
+  double base = 100000.0;
+  // double base = 100.0;
   if (g_txn_workload_mix[0])
     w.push_back(workload_desc(
         "NewOrder", double(g_txn_workload_mix[0]) / base, TxnNewOrder));
@@ -1940,7 +2045,7 @@ bench_worker::workload_desc_vec tpcc_worker::get_workload() const {
                               double(g_txn_workload_mix[7]) / base,
                               TxnMicroBenchRandom));
 
-  // w.push_back(workload_desc("DDL", double(1) / base, TxnDDL));
+  w.push_back(workload_desc("DDL", double(1) / base, TxnDDL));
 
   return w;
 }
