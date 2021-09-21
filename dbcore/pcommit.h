@@ -10,6 +10,7 @@ namespace pcommit {
 
 static const uint64_t DIRTY_FLAG = uint64_t{1} << 63;
 extern uint64_t *_tls_durable_csn CACHE_ALIGNED;
+extern std::atomic<uint64_t> lowest_csn;
 
 struct commit_queue {
   struct Entry {
@@ -23,12 +24,16 @@ struct commit_queue {
   uint32_t items;
   mcs_lock lock;
   uint64_t total_latency_us;
-  commit_queue(uint32_t _id) : id(_id), start(0), items(0), total_latency_us(0) {
-    queue = new Entry[config::group_commit_queue_length];
+  uint32_t group_commit_queue_length;
+  commit_queue(uint32_t _id)
+      : id(_id), start(0), items(0), total_latency_us(0),
+        group_commit_queue_length(config::group_commit_queue_length) {
+    queue = new Entry[group_commit_queue_length];
   }
   ~commit_queue() { delete[] queue; }
   void push_back(uint64_t csn, uint64_t start_time, bool *flush, bool *insert);
   inline uint32_t size() { return items; }
+  void extend();
 };
 
 class tls_committer {
@@ -64,7 +69,7 @@ public:
   void initialize(uint32_t id);
 
   // Reset a tls_committer to get a real latency for workloads
-  void reset();
+  void reset(bool set_zero);
 
   // Get the lowest tls durable csn among all threads
   uint64_t get_lowest_tls_durable_csn();
@@ -74,6 +79,9 @@ public:
 
   // Dequeue commit queue of this thread
   void dequeue_committed_xcts(uint64_t upto_csn, uint64_t end_time);
+
+  // Extend commit queue
+  void extend_queue();
 };
 
 } // namespace pcommit
