@@ -124,7 +124,9 @@ protected:
 
  public:
   transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx);
-  ~transaction();
+  ~transaction() {}
+
+  void uninitialize();
 
   inline void ensure_active() {
     volatile_write(xc->state, TXN::TXN_ACTIVE);
@@ -164,8 +166,6 @@ protected:
   }
 
   void LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key);
-
-  void enqueue_committed_xct();
 
 public:
   // Reads the contents of tuple into v within this transaction context
@@ -217,7 +217,7 @@ public:
   std::vector<char *> bufs;
   std::vector<uint64_t> cdc_offsets;
 #endif
-  util::timer t;
+  util::timer timer;
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t read_set;

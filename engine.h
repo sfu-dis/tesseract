@@ -68,19 +68,11 @@ public:
   }
 
   inline rc_t Commit(transaction *t) {
-    rc_t rc = t->commit();
-    if (!rc.IsAbort()) {
-      t->~transaction();
-    }
-    if (config::group_commit && config::state == config::kStateLoading) {
-      t->enqueue_committed_xct();
-    }
-    return rc;
+    return t->commit();
   }
 
   inline void Abort(transaction *t) {
     t->Abort();
-    t->~transaction();
   }
 
   inline bool BuildIndexMap(std::string table_name) {

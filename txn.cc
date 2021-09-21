@@ -11,23 +11,6 @@ extern std::atomic<uint64_t> ddl_end;
 
 namespace ermia {
 
-uint64_t *_tls_commit_csn =
-    (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
-
-uint64_t *_tls_begin_csn =
-    (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
-
-uint64_t get_lowest_tls_commit_csn() {
-  uint64_t min = std::numeric_limits<uint64_t>::max();
-  for (uint32_t i = 0; i < config::MAX_THREADS; i++) {
-    uint64_t csn = volatile_read(_tls_commit_csn[i]);
-    if (csn) {
-      min = std::min(csn, min);
-    }
-  }
-  return min;
-}
-
 transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     : flags(flags), log_size(0), sa(&sa), coro_batch_idx(coro_batch_idx) {
   if (config::phantom_prot) {
@@ -90,10 +73,9 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log))->data());
   xc->begin = logmgr->cur_lsn().offset() + 1;
 #else
-  // SI - see if it's read only. If so, skip logging etc.
-  if (flags & TXN_FLAG_READ_ONLY) {
-    log = nullptr;
-  } else {
+  // Give a log regardless - with pipelined commit, read-only tx needs
+  // to go through the queue as well
+  if (ermia::config::group_commit || !(flags & TXN_FLAG_READ_ONLY)) {
     log = GetLog();
   }
   
@@ -104,7 +86,6 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     xc->begin = log->get_committer()->get_lowest_tls_durable_csn();
   */} else {
     xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
-    volatile_write(_tls_begin_csn[thread::MyId()], xc->begin);
     // xc->begin = get_lowest_tls_commit_csn();
     // xc->begin = pcommit::lowest_csn.load(std::memory_order_relaxed);
     // xc->begin = log->get_committer()->get_lowest_tls_durable_csn();
@@ -113,7 +94,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
 #endif
 }
 
-transaction::~transaction() {
+void transaction::uninitialize() {
   // transaction shouldn't fall out of scope w/o resolution
   // resolution means TXN_CMMTD, and TXN_ABRTD
   ASSERT(state() != TXN::TXN_ACTIVE && state() != TXN::TXN_COMMITTING);
@@ -127,8 +108,7 @@ transaction::~transaction() {
       if (xc->end > coroutine_batch_end_epoch) {
         coroutine_batch_end_epoch = xc->end;
       }
-    }
-    else if (config::enable_safesnap && (flags & TXN_FLAG_READ_ONLY)) {
+    } else if (config::enable_safesnap && (flags & TXN_FLAG_READ_ONLY)) {
       MM::epoch_exit(0, xc->begin_epoch);
     } else {
       MM::epoch_exit(xc->end, xc->begin_epoch);
@@ -169,16 +149,18 @@ void transaction::Abort() {
 
     Object *obj = w.get_object();
     fat_ptr entry = *w.entry;
-    oidmgr->UnlinkTuple(w.entry);
     obj->SetCSN(NULL_PTR);
+    oidmgr->UnlinkTuple(w.entry);
     ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
     MM::deallocate(entry);
   }
+  uninitialize();
 }
 
 rc_t transaction::commit() {
   ALWAYS_ASSERT(state() == TXN::TXN_ACTIVE);
   volatile_write(xc->state, TXN::TXN_COMMITTING);
+  rc_t ret;
 #if defined(SSN) || defined(SSI)
   // Safe snapshot optimization for read-only transactions:
   // Use the begin ts as cstamp if it's a read-only transaction
@@ -188,24 +170,32 @@ rc_t transaction::commit() {
     ASSERT(write_set.size() == 0);
     xc->end = xc->begin;
     volatile_write(xc->state, TXN::TXN_CMMTD);
-    return {RC_TRUE};
+    ret = {RC_TRUE};
   } else {
     ASSERT(log);
     xc->end = log->pre_commit().offset();
     if (xc->end == 0) {
-      return rc_t{RC_ABORT_INTERNAL};
+      ret = rc_t{RC_ABORT_INTERNAL};
     }
 #ifdef SSN
-    return parallel_ssn_commit();
+    ret = parallel_ssn_commit();
 #elif defined SSI
-    return parallel_ssi_commit();
+    ret = parallel_ssi_commit();
 #endif
   }
 #elif defined(MVOCC)
-  return mvocc_commit();
+  ret = mvocc_commit();
 #else
-  return si_commit();
+  ret = si_commit();
 #endif
+
+  // Enqueue to pipelined commit queue, if enabled
+  if (log && ermia::config::group_commit) {
+    log->enqueue_committed_xct(xc->end, timer.get_start());
+  }
+
+  uninitialize();
+  return ret;
 }
 
 #if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
@@ -488,9 +478,6 @@ rc_t transaction::si_commit() {
   // otherwise readers will see inconsistent data!
   // This is when (committed) tuple data are made visible to readers
   // volatile_write(xc->state, TXN::TXN_CMMTD);
-  /*if (config::state == config::kStateForwardProcessing) {
-    volatile_write(_tls_commit_csn[thread::MyId()], xc->end);
-  }*/
   return rc_t{RC_TRUE};
 }
 #endif
@@ -757,16 +744,19 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
       rc = mvocc_read(tuple);
 #endif
     }
+<<<<<<< HEAD
     if (rc.IsAbort()) return rc;
   } // otherwise it's my own update/insert, just read it
+=======
+    if (rc.IsAbort()) {
+      return rc;
+    }
+  }  // otherwise it's my own update/insert, just read it
+>>>>>>> master
 #endif
 
   // do the actual tuple read
   return tuple->DoRead(out_v);
-}
-
-void transaction::enqueue_committed_xct() {
-  log->enqueue_committed_xct(log->get_latest_csn(), t.get_start());
 }
 
 }  // namespace ermia
