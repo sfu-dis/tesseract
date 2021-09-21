@@ -165,6 +165,12 @@ rc_t transaction::commit() {
 #else
   ret = si_commit();
 #endif
+
+  // Enqueue to pipelined commit queue, if enabled
+  if (log && ermia::config::group_commit) {
+    log->enqueue_committed_xct(xc->end, timer.get_start());
+  }
+
   uninitialize();
   return ret;
 }
@@ -445,10 +451,6 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
 
   // do the actual tuple read
   return tuple->DoRead(out_v);
-}
-
-void transaction::enqueue_committed_xct() {
-  log->enqueue_committed_xct(log->get_latest_csn(), t.get_start());
 }
 
 }  // namespace ermia
