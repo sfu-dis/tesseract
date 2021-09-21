@@ -612,12 +612,8 @@ fat_ptr sm_oid_mgr::free_oid(FID f, OID o) {
   return rval;
 }
 
-// For primary server only - guaranteed to have no gaps between versions,
-// i.e., pdest_next_ matches volatile_next_.
-fat_ptr sm_oid_mgr::UpdateTuple(oid_array *oa, OID o,
-                                       const varstr *value,
-                                       TXN::xid_context *updater_xc,
-                                       fat_ptr *new_obj_ptr) {
+fat_ptr sm_oid_mgr::UpdateTuple(oid_array *oa, OID o, const varstr *value,
+                                TXN::xid_context *updater_xc, fat_ptr *new_obj_ptr) {
   auto *ptr = oa->get(o);
 start_over:
   fat_ptr head = volatile_read(*ptr);
@@ -654,17 +650,13 @@ start_over:
 
     TXN::xid_context *holder = TXN::xid_get_context(holder_xid);
     if (not holder) {
-#ifndef NDEBUG
-      auto t = old_desc->GetCSN().asi_type();
-      ASSERT(t == fat_ptr::ASI_CSN || oid_get(oa, o) != head);
-#endif
+      ASSERT(old_desc->GetCSN().asi_type() == fat_ptr::ASI_CSN || oid_get(oa, o) != head);
       goto start_over;
     }
-    ASSERT(holder);
     auto state = volatile_read(holder->state);
     auto owner = volatile_read(holder->owner);
-    auto holder_lsn = volatile_read(holder->end);
-    holder = NULL;  // use cached values instead!
+    auto holder_csn = volatile_read(holder->end);
+    holder = NULL;
 
     // context still valid for this XID?
     if (unlikely(owner != holder_xid)) {
@@ -673,9 +665,10 @@ start_over:
     ASSERT(holder_xid != updater_xid);
     if (state == TXN::TXN_CMMTD) {
 #ifndef RC
-   if (holder_lsn >= updater_xc->begin) {
-     return NULL_PTR;
-   }
+      // SI can only update if we can see the latest version
+      if (holder_csn >= updater_xc->begin) {
+        return NULL_PTR;
+      }
 #endif
       // Allow installing a new version if the tx committed (might
       // still hasn't finished post-commit). Note that the caller
@@ -686,9 +679,8 @@ start_over:
       goto install;
     }
     return NULL_PTR;
-  }
-  // check dirty writes
-  else {
+  } else {
+    // check dirty writes
     ASSERT(csn.asi_type() == fat_ptr::ASI_CSN);
 #ifndef RC
     // First updater wins: if some concurrent tx committed first,
@@ -725,8 +717,7 @@ install:
     }
     new_object->SetNextPersistent(pa);
     new_object->SetNextVolatile(head);
-    if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr,
-                                     new_obj_ptr->_ptr)) {
+    if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr, new_obj_ptr->_ptr)) {
       // Succeeded installing a new version, now only I can modify the
       // chain, try recycle some objects
       if (config::enable_gc) {
