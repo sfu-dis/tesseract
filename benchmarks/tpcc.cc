@@ -7,10 +7,10 @@
 
 #include "tpcc-common.h"
 
-volatile bool ddl_running_1 = true;
+/*volatile bool ddl_running_1 = true;
 volatile bool ddl_running_2 = false;
 std::atomic<uint64_t> ddl_end(0);
-
+*/
 rc_t tpcc_worker::txn_new_order() {
   // printf("new_order begin\n");
 #ifdef BLOCKDDL
@@ -1929,7 +1929,7 @@ rc_t tpcc_worker::txn_ddl() {
     auto parallel_changed_data_capture = [=](char *) {
       int count = 0;
       bool ddl_end_local = false;
-      while (ddl_running_1) {
+      /*while (ddl_running_1) {
         ddl_end_local =
             order_line_schema.td->GetPrimaryIndex()->changed_data_capture(
                 txn, txn->GetXIDContext()->begin,
@@ -1944,6 +1944,7 @@ rc_t tpcc_worker::txn_ddl() {
       printf("cdc thread %u finishes with %d counts\n", ermia::thread::MyId(),
              count);
       ddl_end.fetch_add(1);
+      */
     };
 
     thread->StartTask(parallel_changed_data_capture);
@@ -1973,7 +1974,7 @@ rc_t tpcc_worker::txn_ddl() {
   //ALWAYS_ASSERT(oorder_table_secondary_index);
   //rc = oorder_table_index->WriteNormalTable1(arena, old_oorder_table_index, old_order_line_table_index, oorder_table_secondary_index, txn, v1, oorder_schema.op);
   if (rc._val != RC_TRUE) {
-    ddl_running_1 = false;
+    // ddl_running_1 = false;
     for (std::vector<ermia::thread::Thread *>::const_iterator it =
              cdc_workers.begin();
          it != cdc_workers.end(); ++it) {
@@ -1987,7 +1988,7 @@ rc_t tpcc_worker::txn_ddl() {
   TryCatch(db->Commit(txn));
 
 #if !defined(LAZYDDL)
-  ddl_running_1 = false;
+  // ddl_running_1 = false;
   for (std::vector<ermia::thread::Thread *>::const_iterator it =
            cdc_workers.begin();
        it != cdc_workers.end(); ++it) {

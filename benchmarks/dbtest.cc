@@ -116,11 +116,11 @@ int main(int argc, char **argv) {
   ermia::config::perf_record_event = FLAGS_perf_record_event;
   ermia::config::physical_workers_only = FLAGS_physical_workers_only;
   if (ermia::config::physical_workers_only)
-#if defined(COPYDDL) && !defined(LAZYDDL)
-    ermia::config::threads = 2 * FLAGS_threads - 1;
-#else
+    /*#if defined(COPYDDL) && !defined(LAZYDDL)
+        ermia::config::threads = 2 * FLAGS_threads - 1;
+    #else*/
     ermia::config::threads = FLAGS_threads;
-#endif
+  //#endif
   else
     ermia::config::threads = (FLAGS_threads + 1) / 2;
   ermia::config::index_probe_only = FLAGS_index_probe_only;

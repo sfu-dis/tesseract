@@ -228,6 +228,7 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(
   start_key->copy_from(str1, sizeof(str1));
 
   r = index->Scan(t, *start_key, nullptr, c_add_column, arena);
+  ALWAYS_ASSERT(c_add_column.n == 10000000);
 #else
   ddl_add_column_scan_callback c_add_column(this, t, schema_version, arena, op);
 
@@ -756,7 +757,7 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
                 d_v = arena->next(sizeof(str2));
                 if (!d_v) {
                   arena = new ermia::str_arena(ermia::config::arena_size_mb);
-                  arenas.emplace_back(arena);
+                  // arenas.emplace_back(arena);
                   d_v = arena->next(sizeof(str2));
                 }
                 d_v->copy_from(str2, sizeof(str2));
@@ -795,8 +796,8 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
 #endif
 
                 update_total++;
-                while (this->UpdateRecord(t, *update_key, *d_v)._val !=
-                       RC_TRUE) {
+                if (this->UpdateRecord(t, *update_key, *d_v)._val != RC_TRUE) {
+                  // update_fail++;
                 }
 
               } else if (logrec->type ==
@@ -1311,11 +1312,11 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   if (rc._val == RC_TRUE) {
     RETURN t->Update(table_descriptor, oid, &key, &value);
   } else {
-#if defined(COPYDDL) && !defined(LAZYDDL)
-    if (t->is_ddl()) {
-      RETURN InsertRecord(t, key, value);
-    }
-#endif
+    /*#if defined(COPYDDL) && !defined(LAZYDDL)
+        if (t->is_ddl()) {
+          RETURN InsertRecord(t, key, value);
+        }
+    #endif*/
     RETURN rc_t{RC_ABORT_INTERNAL};
   }
 }
