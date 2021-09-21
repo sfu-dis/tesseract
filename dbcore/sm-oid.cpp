@@ -798,8 +798,7 @@ void sm_oid_mgr::oid_get_version_amac(oid_array *oa,
 }
 
 // For tuple arrays only, i.e., entries are guaranteed to point to Objects.
-PROMISE(dbtuple *) sm_oid_mgr::oid_get_version(oid_array *oa, OID o,
-                                     TXN::xid_context *visitor_xc) {
+PROMISE(dbtuple *) sm_oid_mgr::oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc) {
   fat_ptr *entry = oa->get(o);
 start_over:
   fat_ptr ptr = volatile_read(*entry);
@@ -855,7 +854,6 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
 
   ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_CSN);
   if (asi_type == fat_ptr::ASI_XID) {  // in-flight
-
     XID holder_xid = XID::from_ptr(csn);
     // Dirty data made by me is visible!
     if (holder_xid == xc->owner) {
@@ -865,9 +863,10 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
                      .asi_type() == fat_ptr::ASI_CSN);
       return true;
     }
+
+  wait_for_commit:
     auto *holder = TXN::xid_get_context(holder_xid);
-    if (!holder) {  // invalid XID (dead tuple, must retry than goto next in the
-                    // chain)
+    if (!holder) {  // invalid XID (dead tuple, must retry than goto next in the chain)
       retry = true;
       return false;
     }
@@ -879,6 +878,11 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
     if (owner != holder_xid) {
       retry = true;
       return false;
+    }
+
+    // Wait if the transaction is finalizing for commit
+    if (state == TXN::TXN_COMMITTING) {
+      goto wait_for_commit;
     }
 
     if (state == TXN::TXN_CMMTD) {
