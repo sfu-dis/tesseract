@@ -56,6 +56,8 @@ struct log_block {
 
   // Size of this whole log block
   inline uint32_t total_size() { return sizeof(*this) + payload_size; }
+
+  inline char *get_payload() { return &payload[0]; }
 };
 }  // namespace dlog
 

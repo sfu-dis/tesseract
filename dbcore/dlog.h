@@ -32,6 +32,9 @@ void flush_all();
 struct segment {
   // File descriptor for the underlying file
   int fd;
+ 
+  // The (global) beginning address this segment covers
+  uint64_t start_offset;
 
   // Amount of data that has been written
   uint64_t size;
@@ -132,6 +135,7 @@ public:
   void uninitialize();
 
   inline uint32_t get_id() { return id; }
+  inline segment *get_segment(uint32_t segnum) { return &segments[segnum]; }
 
   inline uint64_t get_latest_csn() { return latest_csn; }
 
