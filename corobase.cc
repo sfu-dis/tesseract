@@ -823,7 +823,6 @@ forward:
         prev_persistent_ptr = prev_obj->GetPersistentAddress();
       }
 
-      ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
       ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_XID);
       ASSERT(oidmgr->oid_get_version(tuple_fid, oid, xc) == tuple);
       ASSERT(log);

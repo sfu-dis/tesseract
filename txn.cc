@@ -201,7 +201,6 @@ rc_t transaction::si_commit() {
     auto &w = write_set[i];
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
-    tuple->DoWrite();
 
     // Populate log block and obtain persistent address
     uint32_t off = lb->payload_size;
@@ -360,54 +359,11 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
       prev_persistent_ptr = prev_obj->GetPersistentAddress();
     }
 
-    ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
     ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_XID);
     ASSERT(sync_wait_coro(oidmgr->oid_get_version(tuple_fid, oid, xc)) == tuple);
     ASSERT(log);
 
     // FIXME(tzwang): mark deleted in all 2nd indexes as well?
-
-    // The varstr also encodes the pdest of the overwritten version.
-    // FIXME(tzwang): the pdest of the overwritten version doesn't belong to
-    // varstr.
-
-/*
-    bool is_delete = !v;
-    if (!v) {
-      // Get an empty varstr just to store the overwritten tuple's
-      // persistent address
-      v = string_allocator().next(0);
-      v->p = nullptr;
-      v->l = 0;
-    }
-    ASSERT(v);
-    v->ptr = prev_persistent_ptr;
-    ASSERT(is_delete || (v->ptr.offset() && v->ptr.asi_type() == fat_ptr::ASI_LOG));
-
-    // log the whole varstr so that recovery can figure out the real size
-    // of the tuple, instead of using the decoded (larger-than-real) size.
-    size_t data_size = v->size() + sizeof(varstr);
-    auto size_code = encode_size_aligned(data_size);
-
-    if (is_delete) {
-      log->log_enhanced_delete(tuple_fid, oid,
-                                 fat_ptr::make((void *)v, size_code),
-                                 DEFAULT_ALIGNMENT_BITS);
-    } else {
-      log->log_update(tuple_fid, oid, fat_ptr::make((void *)v, size_code),
-                        DEFAULT_ALIGNMENT_BITS,
-                        tuple->GetObject()->GetPersistentAddressPtr());
-
-      if (config::log_key_for_update) {
-        ALWAYS_ASSERT(k);
-        auto key_size = align_up(k->size() + sizeof(varstr));
-        auto key_size_code = encode_size_aligned(key_size);
-        log->log_update_key(tuple_fid, oid,
-                              fat_ptr::make((void *)k, key_size_code),
-                              DEFAULT_ALIGNMENT_BITS);
-      }
-    }
-    */
     return rc_t{RC_TRUE};
   } else {  // somebody else acted faster than we did
     return rc_t{RC_ABORT_SI_CONFLICT};
@@ -418,7 +374,7 @@ OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple)
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
 
-  fat_ptr new_head = Object::Create(value, false, xc->begin_epoch);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   auto *tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
@@ -462,7 +418,7 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
   ASSERT(!read_my_own || !(flags & TXN_FLAG_READ_ONLY));
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-  if (not read_my_own) {
+  if (!read_my_own) {
     rc_t rc = {RC_INVALID};
     if (flags & TXN_FLAG_READ_ONLY) {
 #if defined(SSI) || defined(SSN)
@@ -484,7 +440,7 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
 #endif
 
   // do the actual tuple read
-  return tuple->DoRead(out_v, !read_my_own);
+  return tuple->DoRead(out_v);
 }
 
 void transaction::enqueue_committed_xct() {

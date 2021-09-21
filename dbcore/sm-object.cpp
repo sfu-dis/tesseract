@@ -99,12 +99,7 @@ void Object::Pin() {
   SetStatus(final_status);
 }
 
-fat_ptr Object::Create(const varstr *tuple_value, bool do_write,
-                       epoch_num epoch) {
-  if (!tuple_value) {
-    do_write = false;
-  }
-
+fat_ptr Object::Create(const varstr *tuple_value, epoch_num epoch) {
   // Calculate tuple size
   const uint32_t data_sz = tuple_value ? tuple_value->size() : 0;
   size_t alloc_sz = sizeof(dbtuple) + sizeof(Object) + data_sz;
@@ -118,10 +113,8 @@ fat_ptr Object::Create(const varstr *tuple_value, bool do_write,
   // Tuple setup
   dbtuple *tuple = (dbtuple *)obj->GetPayload();
   new (tuple) dbtuple(data_sz);
-  ASSERT(tuple->pvalue == NULL);
-  tuple->pvalue = (varstr *)tuple_value;
-  if (do_write) {
-    tuple->DoWrite();
+  if (tuple_value) {
+    memcpy(tuple->get_value_start(), tuple_value->p, data_sz);
   }
 
   size_t size_code = encode_size_aligned(alloc_sz);

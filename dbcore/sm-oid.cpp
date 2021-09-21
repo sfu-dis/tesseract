@@ -707,7 +707,7 @@ install:
   // Note for this to be correct we shouldn't allow multiple txs
   // working on the same tuple at the same time.
 
-  *new_obj_ptr = Object::Create(value, false, updater_xc->begin_epoch);
+  *new_obj_ptr = Object::Create(value, updater_xc->begin_epoch);
   ASSERT(new_obj_ptr->asi_type() == 0);
   Object *new_object = (Object *)new_obj_ptr->offset();
   new_object->SetCSN(updater_xc->owner.to_ptr());
