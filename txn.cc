@@ -62,18 +62,16 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log))->data());
   xc->begin = logmgr->cur_lsn().offset() + 1;
 #else
-  // SI - see if it's read only. If so, skip logging etc.
-  if (flags & TXN_FLAG_READ_ONLY) {
-    log = nullptr;
-  } else {
+  // Give a log regardless - with pipelined commit, read-only tx needs
+  // to go through the queue as well
+  if (ermia::config::group_commit || !(flags & TXN_FLAG_READ_ONLY)) {
     log = GetLog();
   }
-
   xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
 #endif
 }
 
-transaction::~transaction() {
+void transaction::uninitialize() {
   // transaction shouldn't fall out of scope w/o resolution
   // resolution means TXN_CMMTD, and TXN_ABRTD
   ASSERT(state() != TXN::TXN_ACTIVE && state() != TXN::TXN_COMMITTING);
@@ -87,8 +85,7 @@ transaction::~transaction() {
       if (xc->end > coroutine_batch_end_epoch) {
         coroutine_batch_end_epoch = xc->end;
       }
-    }
-    else if (config::enable_safesnap && (flags & TXN_FLAG_READ_ONLY)) {
+    } else if (config::enable_safesnap && (flags & TXN_FLAG_READ_ONLY)) {
       MM::epoch_exit(0, xc->begin_epoch);
     } else {
       MM::epoch_exit(xc->end, xc->begin_epoch);
@@ -129,16 +126,18 @@ void transaction::Abort() {
 
     Object *obj = w.get_object();
     fat_ptr entry = *w.entry;
-    oidmgr->UnlinkTuple(w.entry);
     obj->SetCSN(NULL_PTR);
+    oidmgr->UnlinkTuple(w.entry);
     ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
     MM::deallocate(entry);
   }
+  uninitialize();
 }
 
 rc_t transaction::commit() {
   ALWAYS_ASSERT(state() == TXN::TXN_ACTIVE);
   volatile_write(xc->state, TXN::TXN_COMMITTING);
+  rc_t ret;
 #if defined(SSN) || defined(SSI)
   // Safe snapshot optimization for read-only transactions:
   // Use the begin ts as cstamp if it's a read-only transaction
@@ -148,24 +147,26 @@ rc_t transaction::commit() {
     ASSERT(write_set.size() == 0);
     xc->end = xc->begin;
     volatile_write(xc->state, TXN::TXN_CMMTD);
-    return {RC_TRUE};
+    ret = {RC_TRUE};
   } else {
     ASSERT(log);
     xc->end = log->pre_commit().offset();
     if (xc->end == 0) {
-      return rc_t{RC_ABORT_INTERNAL};
+      ret = rc_t{RC_ABORT_INTERNAL};
     }
 #ifdef SSN
-    return parallel_ssn_commit();
+    ret = parallel_ssn_commit();
 #elif defined SSI
-    return parallel_ssi_commit();
+    ret = parallel_ssi_commit();
 #endif
   }
 #elif defined(MVOCC)
-  return mvocc_commit();
+  ret = mvocc_commit();
 #else
-  return si_commit();
+  ret = si_commit();
 #endif
+  uninitialize();
+  return ret;
 }
 
 #if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
@@ -436,7 +437,9 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
       rc = mvocc_read(tuple);
 #endif
     }
-    if (rc.IsAbort()) return rc;
+    if (rc.IsAbort()) {
+      return rc;
+    }
   }  // otherwise it's my own update/insert, just read it
 #endif
 

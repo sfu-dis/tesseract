@@ -61,10 +61,7 @@ public:
 
   inline rc_t Commit(transaction *t) {
     rc_t rc = t->commit();
-    if (!rc.IsAbort()) {
-      t->~transaction();
-    }
-    if (config::group_commit && config::state == config::kStateLoading) {
+    if (rc._val == RC_TRUE && config::group_commit) {
       t->enqueue_committed_xct();
     }
     return rc;
@@ -72,7 +69,6 @@ public:
 
   inline void Abort(transaction *t) {
     t->Abort();
-    t->~transaction();
   }
 };
 

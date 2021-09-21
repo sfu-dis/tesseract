@@ -50,21 +50,21 @@ struct dbtuple {
   uint8_t value_start[0];  // must be last field
 
   dbtuple(uint32_t size)
-      :
+  :
 #if defined(SSN) || defined(SSI)
-        sstamp(NULL_PTR),
-        xstamp(0),
-        preader(0),
+    sstamp(NULL_PTR),
+    xstamp(0),
+    preader(0),
 #endif
 #ifdef SSI
-        s2(0),
+    s2(0),
 #endif
-        size(CheckBounds(size)) {
+    size(size) {
   }
 
   ~dbtuple() {}
 
-#if defined(SSN)
+#ifdef SSN
   /* return the tuple's age based on a safe_lsn provided by the calling tx.
    * safe_lsn usually = the calling tx's begin offset.
    *
@@ -105,8 +105,6 @@ struct dbtuple {
         not __sync_bool_compare_and_swap(&preader, pr, PERSISTENT_READER_MARK));
     return true;
   }
-#endif
-#if defined(SSN)
   ALWAYS_INLINE bool has_persistent_reader() {
     return volatile_read(preader) & PERSISTENT_READER_MARK;
   }
@@ -147,12 +145,6 @@ struct dbtuple {
     ASSERT(myobj->GetPayload() == (char *)this);
     Object *next_obj = (Object*)myobj->GetNextVolatile().offset();
     return next_obj ? next_obj->GetPinnedTuple() : nullptr;
-  }
-
- private:
-  static ALWAYS_INLINE uint32_t CheckBounds(uint32_t s) {
-    ASSERT(s <= std::numeric_limits<uint32_t>::max());
-    return s;
   }
 
  public:
