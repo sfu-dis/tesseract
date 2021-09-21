@@ -146,15 +146,11 @@ public:
   // reset this committer
   inline void reset_committer(bool set_zero) { tcommitter.reset(set_zero);  }
   
-  // Commit (insert) a log block to the log - [block] must *not* be allocated
-  // using allocate_log_block.
-  //void insert(log_block *block);
-
   // Allocate a log block in-place on the log buffer
   log_block *allocate_log_block(uint32_t payload_size,
                                 uint64_t *out_cur_lsn,
                                 uint64_t *out_seg_num,
-				uint64_t block_csn);
+                                uint64_t block_csn);
 
   void commit_log_block(log_block *block);
 
