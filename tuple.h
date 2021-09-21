@@ -47,23 +47,17 @@ struct dbtuple {
                 // and must abort.
 #endif
   uint32_t size;   // actual size of record
-  varstr *pvalue;  // points to the value that will be put into value_start if
-                   // committed
-                   // so that read-my-own-update can copy from here.
   uint8_t value_start[0];  // must be last field
 
   dbtuple(uint32_t size)
       :
 #if defined(SSN) || defined(SSI)
-        sstamp(NULL_PTR),
-        xstamp(0),
-        preader(0),
+        sstamp(NULL_PTR), xstamp(0), preader(0),
 #endif
 #ifdef SSI
         s2(0),
 #endif
-        size(CheckBounds(size)),
-        pvalue(NULL) {
+        size(CheckBounds(size)) {
   }
 
   ~dbtuple() {}
@@ -160,31 +154,11 @@ struct dbtuple {
   }
 
  public:
-  // Note: the stable=false option will try to read from pvalue,
-  // instead of the real data area; so giving stable=false is only
-  // safe for the updating transaction itself to read its own write.
-  inline rc_t DoRead(varstr *out_v, bool stable) const {
-    if (stable) {
-      out_v->p = get_value_start();
-    } else {
-      if (!pvalue) {  // so I just deleted this tuple... return empty?
-        ASSERT(size == 0);
-        return rc_t{RC_FALSE};
-      }
-      out_v->p = pvalue->data();
-      ASSERT(pvalue->size() == size);
-    }
-    out_v->l = size;
-    return size > 0 ? rc_t{RC_TRUE} : rc_t{RC_FALSE};
-  }
-
-  // move data from the user's varstr pvalue to this tuple
-  inline void DoWrite() const {
-    if (pvalue) {
-      ASSERT(pvalue->size() == size);
-      memcpy((void *)get_value_start(), pvalue->data(), pvalue->size());
-    }
-  }
+   inline rc_t DoRead(varstr *out_v) const {
+     out_v->p = get_value_start();
+     out_v->l = size;
+     return size > 0 ? rc_t{RC_TRUE} : rc_t{RC_FALSE};
+   }
 };
 
 }  // namespace ermia

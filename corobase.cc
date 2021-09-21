@@ -118,7 +118,7 @@ void ConcurrentMasstreeIndex::amac_MultiGet(
 
 void ConcurrentMasstreeIndex::simple_coro_MultiGet(
     transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
-    std::vector<std::experimental::coroutine_handle<>> &handles) {
+    std::vector<coroutine_handle<>> &handles) {
   ermia::epoch_num e;
   if (!t) {
     e = MM::epoch_enter();
@@ -190,7 +190,7 @@ retry:
   while (!v[sense].isleaf()) {
     const ConcurrentMasstree::internode_type* in = static_cast<const ConcurrentMasstree::internode_type*>(n[sense]);
     in->prefetch();
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
     int kp = ConcurrentMasstree::internode_type::bound_type::upper(lp.ka_, *in);
     n[!sense] = in->child_[kp];
     if (!n[!sense]) goto retry;
@@ -216,14 +216,14 @@ retry:
 forward:
   if (lp.v_.deleted()) goto retry;
 
-  //lp.n_->prefetch();
-  //co_await std::experimental::suspend_always{};
+  // lp.n_->prefetch();
+  // co_await suspend_always{};
   lp.perm_ = lp.n_->permutation();
   kx = ConcurrentMasstree::leaf_type::bound_type::lower(lp.ka_, lp);
   if (kx.p >= 0) {
     lp.lv_ = lp.n_->lv_[kx.p];
     lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
     match = lp.n_->ksuf_matches(kx.p, lp.ka_);
   } else
     match = 0;
@@ -251,7 +251,7 @@ forward:
     fat_ptr *entry = oa->get(oid);
 start_over:
     ::prefetch((const char*)entry);
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
 
     fat_ptr ptr = volatile_read(*entry);
     ASSERT(ptr.asi_type() == 0);
@@ -277,7 +277,7 @@ start_over:
       ASSERT(ptr.asi_type() == 0);
       cur_obj = (Object *)ptr.offset();
       Object::PrefetchHeader(cur_obj);
-      co_await std::experimental::suspend_always{};
+      co_await suspend_always{};
       tentative_next = cur_obj->GetNextVolatile();
       ASSERT(tentative_next.asi_type() == 0);
 
@@ -386,14 +386,14 @@ retry:
   while (!v[sense].isleaf()) {
     const ConcurrentMasstree::internode_type* in = static_cast<const ConcurrentMasstree::internode_type*>(n[sense]);
     in->prefetch();
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
     int kp = ConcurrentMasstree::internode_type::bound_type::upper(lp.ka_, *in);
     n[!sense] = in->child_[kp];
     if (!n[!sense]) goto retry;
 
-    //const ConcurrentMasstree::internode_type* in2 = static_cast<const ConcurrentMasstree::internode_type*>(n[!sense]);
-    //in2->prefetch();
-    //co_await std::experimental::suspend_always{};
+    // const ConcurrentMasstree::internode_type* in2 = static_cast<const
+    // ConcurrentMasstree::internode_type*>(n[!sense]); in2->prefetch(); co_await
+    // suspend_always{};
     v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
 
     if (likely(!in->has_changed(v[sense]))) {
@@ -417,14 +417,14 @@ forward:
   if (lp.v_.deleted()) goto retry;
 
   // XXX(tzwang): already working on this node, no need to prefetch+yield again?
-  //lp.n_->prefetch();
-  //co_await std::experimental::suspend_always{};
+  // lp.n_->prefetch();
+  // co_await suspend_always{};
   lp.perm_ = lp.n_->permutation();
   kx = ConcurrentMasstree::leaf_type::bound_type::lower(lp.ka_, lp);
   if (kx.p >= 0) {
     lp.lv_ = lp.n_->lv_[kx.p];
     lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
     match = lp.n_->ksuf_matches(kx.p, lp.ka_);
   } else
     match = 0;
@@ -452,7 +452,7 @@ forward:
     fat_ptr *entry = oa->get(oid);
 start_over:
     ::prefetch((const char*)entry);
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
 
     fat_ptr ptr = volatile_read(*entry);
     ASSERT(ptr.asi_type() == 0);
@@ -477,8 +477,8 @@ start_over:
       fat_ptr tentative_next = NULL_PTR;
       ASSERT(ptr.asi_type() == 0);
       cur_obj = (Object *)ptr.offset();
-      //Object::PrefetchHeader(cur_obj);
-      //co_await std::experimental::suspend_always{};
+      // Object::PrefetchHeader(cur_obj);
+      // co_await suspend_always{};
       tentative_next = cur_obj->GetNextVolatile();
       ASSERT(tentative_next.asi_type() == 0);
 
@@ -588,7 +588,7 @@ retry:
   while (!v[sense].isleaf()) {
     const ConcurrentMasstree::internode_type* in = static_cast<const ConcurrentMasstree::internode_type*>(n[sense]);
     in->prefetch();
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
     int kp = ConcurrentMasstree::internode_type::bound_type::upper(lp.ka_, *in);
     n[!sense] = in->child_[kp];
     if (!n[!sense]) goto retry;
@@ -614,14 +614,14 @@ retry:
 forward:
   if (lp.v_.deleted()) goto retry;
 
-  //lp.n_->prefetch();
-  //co_await std::experimental::suspend_always{};
+  // lp.n_->prefetch();
+  // co_await suspend_always{};
   lp.perm_ = lp.n_->permutation();
   kx = ConcurrentMasstree::leaf_type::bound_type::lower(lp.ka_, lp);
   if (kx.p >= 0) {
     lp.lv_ = lp.n_->lv_[kx.p];
     lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
     match = lp.n_->ksuf_matches(kx.p, lp.ka_);
   } else
     match = 0;
@@ -659,7 +659,7 @@ forward:
   start_over:
     auto *ptr = tuple_array->get(oid);
     ::prefetch((const char*)ptr);
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
 
     fat_ptr head = volatile_read(*ptr);
     ASSERT(head.asi_type() == 0);
@@ -668,7 +668,7 @@ forward:
     ASSERT(head.size_code() != INVALID_SIZE_CODE);
 
     Object::PrefetchHeader(old_desc);
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
     dbtuple *version = (dbtuple *)old_desc->GetPayload();
     bool overwrite = false;
 
@@ -785,7 +785,7 @@ forward:
     Object *prev_obj = (Object *)prev_obj_ptr.offset();
     if (prev_obj) {  // succeeded
       Object::PrefetchHeader(prev_obj);
-      co_await std::experimental::suspend_always{};
+      co_await suspend_always{};
       dbtuple *tuple = ((Object *)new_obj_ptr.offset())->GetPinnedTuple();
       ASSERT(tuple);
       dbtuple *prev = prev_obj->GetPinnedTuple();
@@ -823,7 +823,6 @@ forward:
         prev_persistent_ptr = prev_obj->GetPersistentAddress();
       }
 
-      ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
       ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_XID);
       ASSERT(oidmgr->oid_get_version(tuple_fid, oid, xc) == tuple);
       ASSERT(log);
@@ -905,7 +904,7 @@ retry:
   while (!v[sense].isleaf()) {
     const ConcurrentMasstree::internode_type* in = static_cast<const ConcurrentMasstree::internode_type*>(n[sense]);
     in->prefetch();
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
     int kp = ConcurrentMasstree::internode_type::bound_type::upper(lp.ka_, *in);
     n[!sense] = in->child_[kp];
     if (!n[!sense]) goto retry;
@@ -931,15 +930,15 @@ retry:
 forward:
   if (version.deleted()) goto retry;
 
-  //lp.n_->prefetch();
-  //co_await std::experimental::suspend_always{};
+  // lp.n_->prefetch();
+  // co_await suspend_always{};
   perm = lp.n_->permutation();
   fence();
   lp.kx_ = ConcurrentMasstree::leaf_type::bound_type::lower(lp.ka_, *lp.n_);
   if (lp.kx_.p >= 0) {
     ConcurrentMasstree::leafvalue_type lv = lp.n_->lv_[lp.kx_.p];
     lv.prefetch(lp.n_->keylenx_[lp.kx_.p]);
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
     lp.state_ = lp.n_->ksuf_matches(lp.kx_.p, lp.ka_);
     if (lp.state_ < 0 && !lp.n_->has_changed(version) && !lv.layer()->has_split()) {
       lp.ka_.shift_by(-lp.state_);
@@ -1092,7 +1091,7 @@ retry:
   while (!v[sense].isleaf()) {
     const ConcurrentMasstree::internode_type* in = static_cast<const ConcurrentMasstree::internode_type*>(n[sense]);
     in->prefetch();
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
     int kp = ConcurrentMasstree::internode_type::bound_type::upper(lp.ka_, *in);
     n[!sense] = in->child_[kp];
     if (!n[!sense]) goto retry;
@@ -1118,15 +1117,15 @@ retry:
 forward:
   if (version.deleted()) goto retry;
 
-  //lp.n_->prefetch();
-  //co_await std::experimental::suspend_always{};
+  // lp.n_->prefetch();
+  // co_await suspend_always{};
   perm = lp.n_->permutation();
   fence();
   lp.kx_ = ConcurrentMasstree::leaf_type::bound_type::lower(lp.ka_, *lp.n_);
   if (lp.kx_.p >= 0) {
     ConcurrentMasstree::leafvalue_type lv = lp.n_->lv_[lp.kx_.p];
     lv.prefetch(lp.n_->keylenx_[lp.kx_.p]);
-    co_await std::experimental::suspend_always{};
+    co_await suspend_always{};
     lp.state_ = lp.n_->ksuf_matches(lp.kx_.p, lp.ka_);
     if (lp.state_ < 0 && !lp.n_->has_changed(version) && !lv.layer()->has_split()) {
       lp.ka_.shift_by(-lp.state_);
@@ -1304,7 +1303,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
       while (!v[sense].isleaf()) {
         const ConcurrentMasstree::internode_type* in = static_cast<const ConcurrentMasstree::internode_type*>(n[sense]);
         in->prefetch();
-        co_await std::experimental::suspend_always{};
+        co_await suspend_always{};
         int kp = ConcurrentMasstree::internode_type::bound_type::upper(ka, *in);
         n[!sense] = in->child_[kp];
         if (!n[!sense]) goto __reach_leaf_retry;
@@ -1331,7 +1330,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
       if (s.v_.deleted())
         goto find_initial_retry_root;
       s.n_->prefetch();
-      co_await std::experimental::suspend_always{};
+      co_await suspend_always{};
 
       s.perm_ = s.n_->permutation();
 
@@ -1341,7 +1340,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
         fence();
         entry = s.n_->lv_[kp];
         entry.prefetch(keylenx);
-        co_await std::experimental::suspend_always{};
+        co_await suspend_always{};
 
         if (s.n_->keylenx_has_ksuf(keylenx)) {
           suffix = s.n_->ksuf(kp);
@@ -1396,7 +1395,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
         fat_ptr *oid_entry = table_descriptor->GetTupleArray()->get(entry.value());
       get_version_start_over:
         ::prefetch((const char*)oid_entry);
-        co_await std::experimental::suspend_always{};
+        co_await suspend_always{};
         fat_ptr ptr = volatile_read(*oid_entry);
         ASSERT(ptr.asi_type() == 0);
         Object *prev_obj = nullptr;
@@ -1406,7 +1405,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
           ASSERT(ptr.asi_type() == 0);
           cur_obj = (Object *)ptr.offset();
           Object::PrefetchHeader(cur_obj);
-          //co_await std::experimental::suspend_always{};
+          // co_await suspend_always{};
           tentative_next = cur_obj->GetNextVolatile();
           ASSERT(tentative_next.asi_type() == 0);
 
@@ -1446,7 +1445,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
         fence();
         entry = s.n_->lv_[kp];
         entry.prefetch(keylenx);
-        //co_await std::experimental::suspend_always{};
+        // co_await suspend_always{};
         if (s.n_->keylenx_has_ksuf(keylenx))
           keylen = ka.assign_store_suffix(s.n_->ksuf(kp));
 
@@ -1478,7 +1477,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
           goto __find_next_done;
         }
         s.n_->prefetch();
-        co_await std::experimental::suspend_always{};
+        co_await suspend_always{};
       }
 
     __find_next_changed:
@@ -1537,7 +1536,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
       while (!v[sense].isleaf()) {
         const ConcurrentMasstree::internode_type* in = static_cast<const ConcurrentMasstree::internode_type*>(n[sense]);
         in->prefetch();
-        //co_await std::experimental::suspend_always{};
+        // co_await suspend_always{};
         int kp = ConcurrentMasstree::internode_type::bound_type::upper(ka, *in);
         n[!sense] = in->child_[kp];
         if (!n[!sense]) goto __reach_leaf_retry2;
@@ -1565,7 +1564,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
       }
 
       s.n_->prefetch();
-      //co_await std::experimental::suspend_always{};
+      // co_await suspend_always{};
       s.perm_ = s.n_->permutation();
       s.ki_ = helper.lower(ka, &s);
       state = mystack_type::scan_find_next;
@@ -1577,8 +1576,10 @@ done:
   co_return c.return_code;
 }
 
-void ConcurrentMasstreeIndex::simple_coro_MultiOps(std::vector<rc_t> &rcs,
-                                                   std::vector<std::experimental::coroutine_handle<ermia::coro::generator<rc_t>::promise_type>> &handles) {
+void ConcurrentMasstreeIndex::simple_coro_MultiOps(
+    std::vector<rc_t> &rcs,
+    std::vector<coroutine_handle<ermia::coro::generator<rc_t>::promise_type>>
+        &handles) {
   int finished = 0;
   while (finished < handles.size()) {
     for (int i = 0; i < handles.size(); ++i) {

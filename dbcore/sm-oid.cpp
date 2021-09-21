@@ -612,12 +612,9 @@ fat_ptr sm_oid_mgr::free_oid(FID f, OID o) {
   return rval;
 }
 
-// For primary server only - guaranteed to have no gaps between versions,
-// i.e., pdest_next_ matches volatile_next_.
-fat_ptr sm_oid_mgr::UpdateTuple(oid_array *oa, OID o,
-                                       const varstr *value,
-                                       TXN::xid_context *updater_xc,
-                                       fat_ptr *new_obj_ptr) {
+fat_ptr sm_oid_mgr::UpdateTuple(oid_array *oa, OID o, const varstr *value,
+                                TXN::xid_context *updater_xc,
+                                fat_ptr *new_obj_ptr) {
   auto *ptr = oa->get(o);
 start_over:
   fat_ptr head = volatile_read(*ptr);
@@ -652,30 +649,34 @@ start_over:
       goto install;
     }
 
+  wait_for_commit:
     TXN::xid_context *holder = TXN::xid_get_context(holder_xid);
-    if (not holder) {
-#ifndef NDEBUG
-      auto t = old_desc->GetCSN().asi_type();
-      ASSERT(t == fat_ptr::ASI_CSN || oid_get(oa, o) != head);
-#endif
+    if (!holder) {
+      ASSERT(old_desc->GetCSN().asi_type() == fat_ptr::ASI_CSN ||
+             oid_get(oa, o) != head);
       goto start_over;
     }
-    ASSERT(holder);
     auto state = volatile_read(holder->state);
     auto owner = volatile_read(holder->owner);
-    auto holder_lsn = volatile_read(holder->end);
-    holder = NULL;  // use cached values instead!
 
     // context still valid for this XID?
     if (unlikely(owner != holder_xid)) {
       goto start_over;
     }
     ASSERT(holder_xid != updater_xid);
+
+    // Wait if the transaction is finalizing for commit
+    if (state == TXN::TXN_COMMITTING) {
+      goto wait_for_commit;
+    }
+
     if (state == TXN::TXN_CMMTD) {
 #ifndef RC
-   if (holder_lsn >= updater_xc->begin) {
-     return NULL_PTR;
-   }
+      auto holder_csn = volatile_read(holder->end);
+      // >= RC can only update if we can see the latest version
+      if (holder_csn >= updater_xc->begin) {
+        return NULL_PTR;
+      }
 #endif
       // Allow installing a new version if the tx committed (might
       // still hasn't finished post-commit). Note that the caller
@@ -686,9 +687,8 @@ start_over:
       goto install;
     }
     return NULL_PTR;
-  }
-  // check dirty writes
-  else {
+  } else {
+    // check dirty writes
     ASSERT(csn.asi_type() == fat_ptr::ASI_CSN);
 #ifndef RC
     // First updater wins: if some concurrent tx committed first,
@@ -707,7 +707,7 @@ install:
   // Note for this to be correct we shouldn't allow multiple txs
   // working on the same tuple at the same time.
 
-  *new_obj_ptr = Object::Create(value, true, updater_xc->begin_epoch);
+  *new_obj_ptr = Object::Create(value, updater_xc->begin_epoch);
   ASSERT(new_obj_ptr->asi_type() == 0);
   Object *new_object = (Object *)new_obj_ptr->offset();
   new_object->SetCSN(updater_xc->owner.to_ptr());
@@ -802,8 +802,9 @@ void sm_oid_mgr::oid_get_version_amac(oid_array *oa,
 }
 
 // For tuple arrays only, i.e., entries are guaranteed to point to Objects.
-PROMISE(dbtuple *) sm_oid_mgr::oid_get_version(oid_array *oa, OID o,
-                                     TXN::xid_context *visitor_xc) {
+PROMISE(dbtuple *)
+sm_oid_mgr::oid_get_version(oid_array *oa, OID o,
+                            TXN::xid_context *visitor_xc) {
   fat_ptr *entry = oa->get(o);
 start_over:
   fat_ptr ptr = volatile_read(*entry);
@@ -859,7 +860,6 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
 
   ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_CSN);
   if (asi_type == fat_ptr::ASI_XID) {  // in-flight
-
     XID holder_xid = XID::from_ptr(csn);
     // Dirty data made by me is visible!
     if (holder_xid == xc->owner) {
@@ -869,9 +869,11 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
                      .asi_type() == fat_ptr::ASI_CSN);
       return true;
     }
+
+  wait_for_commit:
     auto *holder = TXN::xid_get_context(holder_xid);
-    if (!holder) {  // invalid XID (dead tuple, must retry than goto next in the
-                    // chain)
+    if (!holder) { // invalid XID (dead tuple, must retry than goto next in the
+                   // chain)
       retry = true;
       return false;
     }
@@ -886,18 +888,10 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
       return false;
     }
 
-    /*if (state == TXN::TXN_COMMITTING) {
-      ASSERT(owner == holder_xid);
-      // holder has finished SetClsn()
-      if (holder_lsn != 0 && holder_lsn < xc->begin) {
-        //retry = true;
-        //return false;
-        return true;
-      } else {
-        retry = true;
-        return false;
-      }
-    }*/
+    // Wait if the transaction is finalizing for commit
+    if (state == TXN::TXN_COMMITTING) {
+      goto wait_for_commit;
+    }
 
     if (state == TXN::TXN_CMMTD) {
       ASSERT(volatile_read(holder->end));

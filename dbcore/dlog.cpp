@@ -40,7 +40,8 @@ void flush_all() {
       tlog->wrap_dequeue_committed_xcts(true);
     }
   }
-  
+
+  // Reset tls durable csns to be 0
   for (uint i = 0; i < config::MAX_THREADS; i++) {
     tls_log *tlog = tlogs[i];
     if (tlog) {
@@ -73,6 +74,7 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
 
   // Create a new segment
   create_segment();
+  current_segment()->start_offset = current_lsn;
 
   // Initialize io_uring
   int ret = io_uring_queue_init(16, &ring, 0);
@@ -243,6 +245,7 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
     *out_cur_lsn = current_lsn;
   }
   current_lsn += alloc_size;
+  current_segment()->start_offset = current_lsn;
 
   if (out_seg_num) {
     *out_seg_num = segments.size() - 1;
@@ -272,7 +275,7 @@ void tls_log::enqueue_committed_xct(uint64_t csn, uint64_t start_time) {
 
   bool flush = false;
   bool insert = true;
-  int count = 0;
+  uint count = 0;
 retry:
   if (flush) {
     for (uint i = 0; i < config::MAX_THREADS; i++) {
@@ -281,9 +284,7 @@ retry:
         tlog->enqueue_flush();
       }
     }
-
     wrap_dequeue_committed_xcts(false);
-
     flush = false;
   }
   tcommitter.enqueue_committed_xct(csn, start_time, &flush, &insert);

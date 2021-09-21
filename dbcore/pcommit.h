@@ -26,26 +26,14 @@ struct commit_queue {
   uint64_t total_latency_us;
   uint32_t group_commit_queue_length;
   commit_queue(uint32_t _id)
-      : id(_id), start(0), items(0), total_latency_us(0), 
-	group_commit_queue_length(config::group_commit_queue_length) {
+      : id(_id), start(0), items(0), total_latency_us(0),
+        group_commit_queue_length(config::group_commit_queue_length) {
     queue = new Entry[group_commit_queue_length];
   }
   ~commit_queue() { delete[] queue; }
   void push_back(uint64_t csn, uint64_t start_time, bool *flush, bool *insert);
   inline uint32_t size() { return items; }
-  void extend() {
-    group_commit_queue_length = group_commit_queue_length * 2;
-    Entry *queue_tmp = new Entry[group_commit_queue_length];
-    for (uint i = 0; i < (group_commit_queue_length / 2); i++) {
-      if (volatile_read(queue[i].csn)) {
-        queue_tmp[i].csn = volatile_read(queue[i].csn);
-        queue_tmp[i].start_time = volatile_read(queue[i].start_time);
-      }
-    }
-    Entry *queue_delete = queue;
-    queue = queue_tmp;
-    delete[] queue_delete;
-  }
+  void extend();
 };
 
 class tls_committer {
@@ -82,7 +70,7 @@ public:
   void initialize(uint32_t id);
 
   // Reset a tls_committer to get a real latency for workloads
-  void reset(bool zero);
+  void reset(bool set_zero);
 
   // Get the lowest tls durable csn among all threads
   uint64_t get_lowest_tls_durable_csn();

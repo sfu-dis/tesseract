@@ -168,71 +168,71 @@ void bench_runner::run() {
 
   // load data, unless we recover from logs or is a backup server (recover from
   // shipped logs)
-  if (true) { //not ermia::sm_log::need_recovery) {
-    std::vector<bench_loader *> loaders = make_loaders();
-    {
-      util::scoped_timer t("dataloading", ermia::config::verbose);
-      uint32_t done = 0;
-      uint32_t n_running = 0;
-    process:
-      // force bench_loader to use physical thread and use all the physical threads 
-      // in the same socket to load (assuming 2HT per core).
-      uint32_t n_loader_threads =
-        std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
 
-      for (uint i = 0; i < loaders.size(); i++) {
-        auto *loader = loaders[i];
-        // Note: the thread pool creates threads for each hyperthread regardless
-        // of how many worker threads will be running the benchmark. We don't
-        // want to use threads on sockets that we won't be running benchmark on
-        // for loading (that would cause some records' memory to become remote).
-        // E.g., on a 40-core, 4 socket machine the thread pool will create 80
-        // threads waiting to be dispatched. But if our workload only wants to
-        // run 10 threads on the first socket, we won't want the loader to be run
-        // on a thread from socket 2. So limit the number of concurrently running
-        // loaders to the number of workers.
-        if (loader && !loader->IsImpersonated() &&
-            n_running < n_loader_threads &&
-            loader->TryImpersonate()) {
-          loader->Start();
-          ++n_running;
-        }
-      }
+  std::vector<bench_loader *> loaders = make_loaders();
+  {
+    util::scoped_timer t("dataloading", ermia::config::verbose);
+    uint32_t done = 0;
+    uint32_t n_running = 0;
+  process:
+    // force bench_loader to use physical thread and use all the physical
+    // threads in the same socket to load (assuming 2HT per core).
+    uint32_t n_loader_threads = std::thread::hardware_concurrency() /
+                                (numa_max_node() + 1) / 2 *
+                                ermia::config::numa_nodes;
 
-      // Loop over existing loaders to scavenge and reuse available threads
-      while (done < loaders.size()) {
-        for (uint i = 0; i < loaders.size(); i++) {
-          auto *loader = loaders[i];
-          if (loader and loader->IsImpersonated() and loader->TryJoin()) {
-            delete loader;
-            loaders[i] = nullptr;
-            done++;
-            --n_running;
-            goto process;
-          }
-        }
-      }
-
-      if (ermia::config::group_commit) {
-        ermia::dlog::flush_all();
+    for (uint i = 0; i < loaders.size(); i++) {
+      auto *loader = loaders[i];
+      // Note: the thread pool creates threads for each hyperthread regardless
+      // of how many worker threads will be running the benchmark. We don't
+      // want to use threads on sockets that we won't be running benchmark on
+      // for loading (that would cause some records' memory to become remote).
+      // E.g., on a 40-core, 4 socket machine the thread pool will create 80
+      // threads waiting to be dispatched. But if our workload only wants to
+      // run 10 threads on the first socket, we won't want the loader to be run
+      // on a thread from socket 2. So limit the number of concurrently running
+      // loaders to the number of workers.
+      if (loader && !loader->IsImpersonated() && n_running < n_loader_threads &&
+          loader->TryImpersonate()) {
+        loader->Start();
+        ++n_running;
       }
     }
-    ermia::volatile_write(ermia::MM::safesnap_lsn, ermia::dlog::current_csn);
-    ALWAYS_ASSERT(ermia::MM::safesnap_lsn);
 
-    // Persist the database
-    //ermia::dlog->flush();
-    //if (ermia::config::enable_chkpt) {
-    //  ermia::chkptmgr->do_chkpt();  // this is synchronous
-    //}
+    // Loop over existing loaders to scavenge and reuse available threads
+    while (done < loaders.size()) {
+      for (uint i = 0; i < loaders.size(); i++) {
+        auto *loader = loaders[i];
+        if (loader and loader->IsImpersonated() and loader->TryJoin()) {
+          delete loader;
+          loaders[i] = nullptr;
+          done++;
+          --n_running;
+          goto process;
+        }
+      }
+    }
   }
 
-/*
-  // Start checkpointer after database is ready
-  if (ermia::config::enable_chkpt) {
-    ermia::chkptmgr->start_chkpt_thread();
+  // FIXME:SSI safesnap to work with CSN.
+  ermia::volatile_write(ermia::MM::safesnap_lsn, ermia::dlog::current_csn);
+  ALWAYS_ASSERT(ermia::MM::safesnap_lsn);
+
+  // Persist the database
+  if (ermia::config::group_commit) {
+    ermia::dlog::flush_all();
   }
-  */
+
+  // if (ermia::config::enable_chkpt) {
+  //  ermia::chkptmgr->do_chkpt();  // this is synchronous
+  // }
+
+  /*
+    // Start checkpointer after database is ready
+    if (ermia::config::enable_chkpt) {
+      ermia::chkptmgr->start_chkpt_thread();
+    }
+    */
   ermia::volatile_write(ermia::config::state, ermia::config::kStateForwardProcessing);
 
   if (ermia::config::worker_threads) {

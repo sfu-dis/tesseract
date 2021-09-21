@@ -1,6 +1,7 @@
-#include "sm-alloc.h"
 #include "sm-object.h"
+#include "../engine.h"
 #include "../tuple.h"
+#include "sm-alloc.h"
 
 namespace ermia {
 
@@ -47,25 +48,33 @@ void Object::Pin() {
 
   size_t data_sz = decode_size_aligned(pdest_.size_code());
   if (where == fat_ptr::ASI_LOG) {
-    ALWAYS_ASSERT(0);
-    /*
-    logmgr->load_object((char *)tuple->get_value_start(), data_sz, pdest_);
+    auto segnum = pdest_.log_segment();
+    ASSERT(segnum >= 0 && segnum <= NUM_LOG_SEGMENTS);
 
-    // Strip out the varstr stuff
-    tuple->size = ((varstr *)tuple->get_value_start())->size();
-    // Fill in the overwritten version's pdest if needed
+    auto *log = GetLog();
+    auto *segment = log->get_segment(segnum);
+    ASSERT(segment);
+
+    dlog::log_block *lb = (dlog::log_block *)malloc(data_sz);
+    uint64_t tlsn = LSN::from_ptr(pdest_).loffset();
+    uint64_t offset_in_seg = tlsn - segment->start_offset;
+    size_t m = os_pread(segment->fd, (char *)lb, data_sz, offset_in_seg);
+
+    // Strip out the header
+    tuple->size = lb->payload_size;
+    memcpy(tuple->get_value_start(), lb->get_payload(), lb->payload_size);
+
     // Could be a delete
     ASSERT(tuple->size < data_sz);
     if (tuple->size == 0) {
       final_status = kStatusDeleted;
       ASSERT(next_pdest_.offset());
     }
-    memmove(tuple->get_value_start(),
-            (char *)tuple->get_value_start() + sizeof(varstr), tuple->size);
-    LOG(FATAL) << "SET CSN";
-    //SetCsn(LSN::make(pdest_.offset(), 0).to_log_ptr());
-    //ALWAYS_ASSERT(pdest_.offset() == csn_.offset());
-    */
+
+    // Set CSN
+    fat_ptr csn_ptr = GenerateCsnPtr(lb->csn);
+    SetCSN(csn_ptr);
+    ASSERT(GetCSN().asi_type() == fat_ptr::ASI_CSN);
   } else {
     ALWAYS_ASSERT(0);
     /*
@@ -90,12 +99,7 @@ void Object::Pin() {
   SetStatus(final_status);
 }
 
-fat_ptr Object::Create(const varstr *tuple_value, bool do_write,
-                       epoch_num epoch) {
-  if (!tuple_value) {
-    do_write = false;
-  }
-
+fat_ptr Object::Create(const varstr *tuple_value, epoch_num epoch) {
   // Calculate tuple size
   const uint32_t data_sz = tuple_value ? tuple_value->size() : 0;
   size_t alloc_sz = sizeof(dbtuple) + sizeof(Object) + data_sz;
@@ -109,10 +113,8 @@ fat_ptr Object::Create(const varstr *tuple_value, bool do_write,
   // Tuple setup
   dbtuple *tuple = (dbtuple *)obj->GetPayload();
   new (tuple) dbtuple(data_sz);
-  ASSERT(tuple->pvalue == NULL);
-  tuple->pvalue = (varstr *)tuple_value;
-  if (do_write) {
-    tuple->DoWrite();
+  if (tuple_value) {
+    memcpy(tuple->get_value_start(), tuple_value->p, data_sz);
   }
 
   size_t size_code = encode_size_aligned(alloc_sz);

@@ -4,10 +4,23 @@
 #include "varstr.h"
 #include "engine_internal.h"
 #include "../benchmarks/record/encoder.h"
+
+#if __clang__
 #include <experimental/coroutine>
 #include "../benchmarks/ddl-schemas.h"
 #include "rwlatch.h"
 #include "../benchmarks/tpcc.h"
+using std::experimental::coroutine_handle;
+using std::experimental::noop_coroutine;
+using std::experimental::suspend_always;
+using std::experimental::suspend_never;
+#else
+#include <coroutine>
+using std::coroutine_handle;
+using std::noop_coroutine;
+using std::suspend_always;
+using std::suspend_never;
+#endif
 
 namespace ermia {
 
@@ -189,11 +202,13 @@ public:
   // A multi-get interface using coroutines
   void simple_coro_MultiGet(transaction *t, std::vector<varstr *> &keys,
                             std::vector<varstr *> &values,
-                            std::vector<std::experimental::coroutine_handle<>> &handles);
+                            std::vector<coroutine_handle<>> &handles);
 
   // A multi-ops interface using coroutines
-  static void simple_coro_MultiOps(std::vector<rc_t> &rcs,
-		                   std::vector<std::experimental::coroutine_handle<ermia::coro::generator<rc_t>::promise_type>> &handles);
+  static void simple_coro_MultiOps(
+      std::vector<rc_t> &rcs,
+      std::vector<coroutine_handle<ermia::coro::generator<rc_t>::promise_type>>
+          &handles);
 
   ermia::coro::generator<rc_t> coro_GetRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
   ermia::coro::generator<rc_t> coro_GetRecordSV(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);

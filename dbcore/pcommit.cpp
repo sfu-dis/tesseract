@@ -30,19 +30,33 @@ void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush,
   }
 }
 
+void commit_queue::extend() {
+  group_commit_queue_length = group_commit_queue_length * 2;
+  Entry *queue_tmp = new Entry[group_commit_queue_length];
+  for (uint i = 0; i < (group_commit_queue_length / 2); i++) {
+    if (volatile_read(queue[i].csn)) {
+      queue_tmp[i].csn = volatile_read(queue[i].csn);
+      queue_tmp[i].start_time = volatile_read(queue[i].start_time);
+    }
+  }
+  Entry *queue_delete = queue;
+  queue = queue_tmp;
+  delete[] queue_delete;
+}
+
 void tls_committer::initialize(uint32_t id) {
   commit_id = id;
   _commit_queue = new commit_queue(id);
 }
 
-void tls_committer::reset(bool zero) {
+void tls_committer::reset(bool set_zero) {
   _commit_queue = new commit_queue(commit_id);
-  if (zero) {
+  if (set_zero) {
     printf("%u set all 0\n", commit_id);
     memset(_tls_durable_csn, 0, sizeof(uint64_t) * config::MAX_THREADS);
   } else {
     printf("%u set lowest csn\n", commit_id);
-    _tls_durable_csn[commit_id] = lowest_csn.load(std::memory_order_relaxed); 
+    _tls_durable_csn[commit_id] = lowest_csn.load(std::memory_order_relaxed);
   }
 }
 
@@ -56,14 +70,12 @@ uint64_t tls_committer::get_lowest_tls_durable_csn() {
       if (csn & DIRTY_FLAG) {
 	min_dirty = std::min(csn & ~DIRTY_FLAG, min_dirty);
         found = true;
-        // if ((csn & ~DIRTY_FLAG) >= 10000000)  printf("error! csn & ~DIRTY_FLAG: %lu, found: %d\n", csn, found);
       } else if (max_clean < csn) {
         max_clean = csn;
       }
     }
   }
   uint64_t lowest_tls_durable_csn = found ? min_dirty : max_clean;
-  // if (lowest_tls_durable_csn >= 10000000) printf("error! csn: %lu, found: %d\n", lowest_tls_durable_csn, found);
   lowest_csn.store(lowest_tls_durable_csn, std::memory_order_seq_cst);
   return lowest_tls_durable_csn;
 }
@@ -93,9 +105,7 @@ void tls_committer::dequeue_committed_xcts(uint64_t upto_csn,
                  (n + dequeue) % _commit_queue->group_commit_queue_length);
 }
 
-void tls_committer::extend_queue() {
-  _commit_queue->extend();
-}
+void tls_committer::extend_queue() { _commit_queue->extend(); }
 
 } // namespace pcommit
 

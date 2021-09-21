@@ -21,7 +21,7 @@ public:
               << std::endl;
   }
 
-  double read_ratio = 0.2, write_ratio = 0.9999985;
+  double read_ratio = 0.2, write_ratio = 0.7999985;
 
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
@@ -30,7 +30,7 @@ public:
     // w.push_back(workload_desc("Read", 0.9499985, TxnRead));
     // w.push_back(workload_desc("RMW", 0.05, TxnRMW));
 
-    // w.push_back(workload_desc("Read", read_ratio, TxnRead));
+    w.push_back(workload_desc("Read", read_ratio, TxnRead));
     w.push_back(workload_desc("RMW", write_ratio, TxnRMW));
     w.push_back(workload_desc("DDL", 0.0000015, TxnDDL));
 

@@ -363,21 +363,6 @@ rc_t transaction::si_commit() {
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
   if (is_ddl()) {
-    uint32_t threads_use_latest_csn = config::worker_threads - 1;
-    //    config::worker_threads - config::cdc_threads - 1;
-    uint32_t count = 0;
-    while (true) {
-      for (uint32_t i = 0; i < config::MAX_THREADS; i++) {
-        uint64_t csn = volatile_read(_tls_begin_csn[i]);
-        if (csn && csn >= xc->end) {
-          count++;
-        }
-      }
-      if (threads_use_latest_csn == count)
-        break;
-      count = 0;
-    }
-    printf("lowest_csn: %lu\n", pcommit::lowest_csn.load());
     ddl_running_2 = true;
     while (ddl_end.load() != ermia::config::cdc_threads) {
     }
@@ -417,9 +402,10 @@ rc_t transaction::si_commit() {
 
   // volatile_write(xc->state, TXN::TXN_CMMTD);
 
-  // Normally, we'd generate it along the way or here first before toggling the
-  // CSN's "committed" bit. But we can actually do it first, and generate the
-  // log block as we scan the write set once, leveraging pipelined commit!
+  // Normally, we'd generate each version's persitent address along the way or
+  // here first before toggling the CSN's "committed" bit. But we can actually
+  // do it first, and generate the log block as we scan the write set once,
+  // leveraging pipelined commit!
 
   // Post-commit: install CSN to tuples (traverse write-tuple), generate log
   // records, etc.
@@ -447,7 +433,6 @@ rc_t transaction::si_commit() {
     ALWAYS_ASSERT(w.type != dlog::log_record::logrec_type::OID_KEY);
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
-    // tuple->DoWrite();
 
     uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
     if (lb->payload_size + align_up(log_tuple_size + sizeof(dlog::log_record)) + align_up(log_str_size + sizeof(dlog::log_record)) > lb->capacity) {
@@ -693,54 +678,11 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
       prev_persistent_ptr = prev_obj->GetPersistentAddress();
     }
 
-    ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
     ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_XID);
     ASSERT(sync_wait_coro(oidmgr->oid_get_version(tuple_fid, oid, xc)) == tuple);
     ASSERT(log);
 
     // FIXME(tzwang): mark deleted in all 2nd indexes as well?
-
-    // The varstr also encodes the pdest of the overwritten version.
-    // FIXME(tzwang): the pdest of the overwritten version doesn't belong to
-    // varstr.
-
-/*
-    bool is_delete = !v;
-    if (!v) {
-      // Get an empty varstr just to store the overwritten tuple's
-      // persistent address
-      v = string_allocator().next(0);
-      v->p = nullptr;
-      v->l = 0;
-    }
-    ASSERT(v);
-    v->ptr = prev_persistent_ptr;
-    ASSERT(is_delete || (v->ptr.offset() && v->ptr.asi_type() == fat_ptr::ASI_LOG));
-
-    // log the whole varstr so that recovery can figure out the real size
-    // of the tuple, instead of using the decoded (larger-than-real) size.
-    size_t data_size = v->size() + sizeof(varstr);
-    auto size_code = encode_size_aligned(data_size);
-
-    if (is_delete) {
-      log->log_enhanced_delete(tuple_fid, oid,
-                                 fat_ptr::make((void *)v, size_code),
-                                 DEFAULT_ALIGNMENT_BITS);
-    } else {
-      log->log_update(tuple_fid, oid, fat_ptr::make((void *)v, size_code),
-                        DEFAULT_ALIGNMENT_BITS,
-                        tuple->GetObject()->GetPersistentAddressPtr());
-
-      if (config::log_key_for_update) {
-        ALWAYS_ASSERT(k);
-        auto key_size = align_up(k->size() + sizeof(varstr));
-        auto key_size_code = encode_size_aligned(key_size);
-        log->log_update_key(tuple_fid, oid,
-                              fat_ptr::make((void *)k, key_size_code),
-                              DEFAULT_ALIGNMENT_BITS);
-      }
-    }
-    */
     return rc_t{RC_TRUE};
   } else {  // somebody else acted faster than we did
     return rc_t{RC_ABORT_SI_CONFLICT};
@@ -751,7 +693,7 @@ OID transaction::Insert(TableDescriptor *td, const varstr *k, varstr *value, dbt
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
 
-  fat_ptr new_head = Object::Create(value, true, xc->begin_epoch);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   auto *tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
@@ -798,7 +740,7 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
   ASSERT(!read_my_own || !(flags & TXN_FLAG_READ_ONLY));
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-  if (not read_my_own) {
+  if (!read_my_own) {
     rc_t rc = {RC_INVALID};
     if (flags & TXN_FLAG_READ_ONLY) {
 #if defined(SSI) || defined(SSN)
@@ -816,11 +758,11 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
 #endif
     }
     if (rc.IsAbort()) return rc;
-  }  // otherwise it's my own update/insert, just read it
+  } // otherwise it's my own update/insert, just read it
 #endif
 
   // do the actual tuple read
-  return tuple->DoRead(out_v, !read_my_own);
+  return tuple->DoRead(out_v);
 }
 
 void transaction::enqueue_committed_xct() {
