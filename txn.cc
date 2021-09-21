@@ -191,9 +191,10 @@ rc_t transaction::si_commit() {
     lb = log->allocate_log_block(log_size, &lb_lsn, &segnum, xc->end);
   }
 
-  // Normally, we'd generate it along the way or here first before toggling the
-  // CSN's "committed" bit. But we can actually do it first, and generate the
-  // log block as we scan the write set once, leveraging pipelined commit!
+  // Normally, we'd generate each version's persitent address along the way or
+  // here first before toggling the CSN's "committed" bit. But we can actually
+  // do it first, and generate the log block as we scan the write set once,
+  // leveraging pipelined commit!
 
   // Post-commit: install CSN to tuples (traverse write-tuple), generate log
   // records, etc.

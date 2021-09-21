@@ -648,24 +648,30 @@ start_over:
       goto install;
     }
 
+  wait_for_commit:
     TXN::xid_context *holder = TXN::xid_get_context(holder_xid);
-    if (not holder) {
+    if (!holder) {
       ASSERT(old_desc->GetCSN().asi_type() == fat_ptr::ASI_CSN || oid_get(oa, o) != head);
       goto start_over;
     }
     auto state = volatile_read(holder->state);
     auto owner = volatile_read(holder->owner);
-    auto holder_csn = volatile_read(holder->end);
-    holder = NULL;
 
     // context still valid for this XID?
     if (unlikely(owner != holder_xid)) {
       goto start_over;
     }
     ASSERT(holder_xid != updater_xid);
+
+    // Wait if the transaction is finalizing for commit
+    if (state == TXN::TXN_COMMITTING) {
+      goto wait_for_commit;
+    }
+
     if (state == TXN::TXN_CMMTD) {
 #ifndef RC
-      // SI can only update if we can see the latest version
+      auto holder_csn = volatile_read(holder->end);
+      // >= RC can only update if we can see the latest version
       if (holder_csn >= updater_xc->begin) {
         return NULL_PTR;
       }
