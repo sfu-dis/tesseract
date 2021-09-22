@@ -280,7 +280,8 @@ retry:
   if (flush) {
     for (uint i = 0; i < config::MAX_THREADS; i++) {
       tls_log *tlog = tlogs[i];
-      if (tlog) {
+      uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
+      if (tlog && csn) {
         tlog->enqueue_flush();
       }
     }

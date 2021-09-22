@@ -120,19 +120,19 @@ public:
       return false;
     }*/
     if (_index->InsertRecord(_txn, *k, *d_v)._val != RC_TRUE) {
-      printf("DDL normal record insert false\n");
+      // printf("DDL normal record insert false\n");
     }
 #endif
-#if !defined(MICROBENCH)
-    rc_t rc = rc_t{RC_INVALID};
-    ermia::varstr valptr;
-    order_line_1::value v_ol_1_temp;
-    _index->GetRecord(_txn, rc, *k, valptr);
-    if (rc._val != RC_TRUE) printf("DDL insert failed\n");
-    const order_line_1::value *v_ol_2 = Decode(valptr, v_ol_1_temp);
-    ALWAYS_ASSERT(v_ol_2->ol_tax == 0);
-    ALWAYS_ASSERT(v_ol_2->v == _version);
-#endif
+    /*#if !defined(MICROBENCH)
+        rc_t rc = rc_t{RC_INVALID};
+        ermia::varstr valptr;
+        order_line_1::value v_ol_1_temp;
+        _index->GetRecord(_txn, rc, *k, valptr);
+        if (rc._val != RC_TRUE) printf("DDL insert failed\n");
+        const order_line_1::value *v_ol_2 = Decode(valptr, v_ol_1_temp);
+        ALWAYS_ASSERT(v_ol_2->ol_tax == 0);
+        ALWAYS_ASSERT(v_ol_2->v == _version);
+    #endif*/
     ++n;
     return true;
   }
@@ -594,11 +594,10 @@ rc_t ConcurrentMasstreeIndex::CheckNormalTable(
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
 bool ConcurrentMasstreeIndex::changed_data_capture(
-    transaction *t, uint64_t begin_csn, uint64_t end_csn, uint32_t thread_id,
+    transaction *t, uint64_t begin_csn, uint64_t end_csn, uint64_t *cdc_offset,
     uint32_t begin_log, uint32_t end_log) {
   // printf("cdc begins\n");
   bool ddl_end_tmp = true, ddl_end_flag = false;
-  ;
   FID fid = t->old_td->GetTupleFid();
   // printf("cdc on fid: %u\n", fid);
   ermia::str_arena *arena = new ermia::str_arena(ermia::config::arena_size_mb);
@@ -610,11 +609,10 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
               (ermia::ConcurrentMasstreeIndex *) (*(t->new_td->GetSecIndexes().begin()));
     ALWAYS_ASSERT(table_secondary_index);
   }
-  uint index = begin_log;
   for (uint i = begin_log; i <= end_log; i++) {
     dlog::tls_log *tlog = dlog::tlogs[i];
     uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
-    if (tlog && i != thread::MyId() && i != thread_id && csn) {
+    if (tlog && i != thread::MyId() && csn) {
       // printf("i: %d, index: %u\n", i, index);
       tlog->last_flush();
       std::vector<dlog::segment> *segments = tlog->get_segments();
@@ -622,7 +620,7 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
       if (segments->size() > 1)
         printf("> 1 files at log %u\n", tlog->get_id());
       bool stop_scan = false;
-      uint64_t offset_in_seg = t->cdc_offsets[index];
+      uint64_t offset_in_seg = *cdc_offset;
       uint64_t offset_increment = 0;
       uint64_t last_csn = 0;
       // printf("offset_in_seg: %lu\n", offset_in_seg);
@@ -632,7 +630,6 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
         uint64_t data_sz = seg->size;
         // printf("seg size: %lu\n", data_sz);
         char *data_buf = (char *)malloc(data_sz - offset_in_seg);
-        t->get_bufs().emplace_back(data_buf);
         size_t m = os_pread(seg->fd, (char *)data_buf, data_sz - offset_in_seg,
                             offset_in_seg);
         uint64_t block_sz = sizeof(dlog::log_block),
@@ -704,7 +701,7 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
 
                 if (!d_v) {
                   arena = new ermia::str_arena(ermia::config::arena_size_mb);
-                  arenas.emplace_back(arena);
+                  // arenas.emplace_back(arena);
                   // arena->reset();
                   d_v = arena->next(order_line_sz);
                 }
@@ -713,6 +710,7 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
 		insert_total++;
                 while (this->InsertRecord(t, *insert_key, *d_v, &oid)._val !=
                        RC_TRUE) {
+                  // insert_fail++;
                 }
                 if (table_secondary_index) {
 		//   table_secondary_index->InsertOID(t, *insert_key_idx, oid);
@@ -788,7 +786,7 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
 
                 if (!d_v) {
                   arena = new ermia::str_arena(ermia::config::arena_size_mb);
-                  arenas.emplace_back(arena);
+                  // arenas.emplace_back(arena);
                   // arena->reset();
                   d_v = arena->next(order_line_sz);
                 }
@@ -796,7 +794,8 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
 #endif
 
                 update_total++;
-                if (this->UpdateRecord(t, *update_key, *d_v)._val != RC_TRUE) {
+                while (this->UpdateRecord(t, *update_key, *d_v)._val !=
+                       RC_TRUE) {
                   // update_fail++;
                 }
 
@@ -842,7 +841,7 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
           offset_increment += header->payload_size + block_sz;
           // printf("payload_size: %u\n", header->payload_size);
         }
-        // free(data_buf);
+        free(data_buf);
         /*for (std::vector<ermia::str_arena *>::iterator arena = arenas.begin();
         arena != arenas.end(); arena++) { free((*arena)->get_str());
         }*/
@@ -855,24 +854,13 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
         if (insert_fail > 0)
           printf("insert_fail, CDC conflicts with copy, %d\n", insert_fail);
 
-        // printf("offset_in_seg: %lu\n", offset_in_seg);
-
-        // printf("csn: %lu\n", last_csn);
-
         if (stop_scan)
           break;
       }
 
-      uint64_t &offset = t->cdc_offsets.at(index);
-      offset = offset_in_seg + offset_increment;
-      index++;
-      // printf("index: %u\n", index);
-      if (index > end_log || index >= t->cdc_offsets.size() - 1)
-        break;
+      *cdc_offset = offset_in_seg + offset_increment;
     }
   }
-  // if (ddl_end_tmp) printf("all log captured\n");
-  // printf("cdc finished\n");
   return ddl_end_flag || ddl_end_tmp;
 }
 #endif
@@ -1210,20 +1198,20 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
 
   OID oid = 0;
 
-#if defined(COPYDDL) && !defined(LAZYDDL)
-  if (t->is_ddl()) {
-    rc_t rc = {RC_INVALID};
-    AWAIT GetOID(key, rc, t->xc, oid);
+  /*#if defined(COPYDDL) && !defined(LAZYDDL)
+    if (t->is_ddl()) {
+      rc_t rc = {RC_INVALID};
+      AWAIT GetOID(key, rc, t->xc, oid);
 
-    if (rc._val == RC_TRUE) {
-      if (out_oid) {
-        *out_oid = oid;
+      if (rc._val == RC_TRUE) {
+        if (out_oid) {
+          *out_oid = oid;
+        }
+
+        RETURN rc_t{RC_TRUE};
       }
-
-      RETURN rc_t{RC_TRUE};
     }
-  }
-#endif
+  #endif*/
 
 #ifdef LAZYDDL
   // Search for OID
@@ -1235,7 +1223,7 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
       *out_oid = oid;
     }
 
-    RETURN rc_t{RC_TRUE};  
+    RETURN rc_t{RC_TRUE};
   }*/
 #endif
 
@@ -1312,11 +1300,11 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   if (rc._val == RC_TRUE) {
     RETURN t->Update(table_descriptor, oid, &key, &value);
   } else {
-    /*#if defined(COPYDDL) && !defined(LAZYDDL)
-        if (t->is_ddl()) {
-          RETURN InsertRecord(t, key, value);
-        }
-    #endif*/
+#if defined(COPYDDL) && !defined(LAZYDDL)
+    if (t->is_ddl()) {
+      RETURN InsertRecord(t, key, value);
+    }
+#endif
     RETURN rc_t{RC_ABORT_INTERNAL};
   }
 }

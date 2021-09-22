@@ -20,9 +20,11 @@
 #include <sparsehash/dense_hash_map>
 using google::dense_hash_map;
 
-namespace ermia {
+extern volatile bool ddl_running_1;
+extern volatile bool ddl_running_2;
+extern std::atomic<uint64_t> ddl_end;
 
-extern uint64_t *_tls_commit_csn CACHE_ALIGNED;
+namespace ermia {
 
 #if defined(SSN) || defined(SSI)
 #define set_tuple_xstamp(tuple, s)                                    \
@@ -148,7 +150,11 @@ protected:
 #endif
 
 #ifdef COPYDDL
-  void changed_data_capture();
+#if !defined(LAZYDDL)
+  std::vector<ermia::thread::Thread *> changed_data_capture();
+  void join_changed_data_capture_threads(
+      std::vector<ermia::thread::Thread *> cdc_workers);
+#endif
   bool DMLConsistencyHandler();
 #endif
   
@@ -198,8 +204,6 @@ public:
 
 #ifdef COPYDDL
   inline void set_table_descriptors(TableDescriptor *_new_td, TableDescriptor *_old_td) { new_td = _new_td, old_td = _old_td; }
-  
-  inline std::vector<char *> get_bufs() { return bufs; }
 #endif
 
  protected:
@@ -214,8 +218,6 @@ public:
   std::unordered_map<TableDescriptor*, OID> schema_read_map;
   TableDescriptor *new_td;
   TableDescriptor *old_td;
-  std::vector<char *> bufs;
-  std::vector<uint64_t> cdc_offsets;
 #endif
   util::timer timer;
   write_set_t write_set;
@@ -224,4 +226,4 @@ public:
 #endif
 };
 
-}  // namespace ermia
+} // namespace ermia

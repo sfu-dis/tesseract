@@ -890,7 +890,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
 
     // Wait if the transaction is finalizing for commit
     if (state == TXN::TXN_COMMITTING) {
-      goto wait_for_commit;
+      // goto wait_for_commit;
     }
 
     if (state == TXN::TXN_CMMTD) {

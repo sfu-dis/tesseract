@@ -958,9 +958,6 @@ rc_t tpcc_worker::txn_order_status() {
     TryCatch(tbl_order_line(warehouse_id)
                  ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
                         &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line));
-    if (c_order_line.n < 5 || c_order_line.n > 15) {
-      printf("c_order_line.n < 5 || c_order_line.n > 15\n");
-    }
     ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
   } else {
 #ifdef COPYDDL
@@ -1889,71 +1886,8 @@ rc_t tpcc_worker::txn_ddl() {
   db->WriteUnlock(str3.c_str());
 
 #if !defined(LAZYDDL)
-  uint32_t cdc_threads = ermia::config::cdc_threads;
-  uint32_t logs_per_cdc_thread =
-      // (ermia::config::worker_threads - 1 - cdc_threads) / cdc_threads;
-      (ermia::config::worker_threads - 1) / cdc_threads;
-  // if (logs_per_cdc_thread == 1)
-  //  logs_per_cdc_thread++;
-  uint32_t thread_id = ermia::thread::MyId();
-  std::vector<ermia::thread::Thread *> cdc_workers;
-  bool exit = false;
-  uint32_t increment = 0;
-  printf("thread_id: %u\n", thread_id);
-  for (uint i = 0; i < cdc_threads; i++) {
-    uint32_t begin_log = i * logs_per_cdc_thread + increment;
-    uint32_t end_log = (i + 1) * logs_per_cdc_thread - 1 + increment;
-    if (thread_id == begin_log) {
-      increment++;
-      begin_log += increment;
-      end_log += increment;
-    } else if (thread_id > begin_log && thread_id <= end_log) {
-      increment++;
-      end_log += increment;
-    }
-    if (begin_log >= ermia::config::worker_threads - 1) {
-      begin_log = ermia::config::worker_threads - 1;
-      end_log = ermia::config::worker_threads - 1;
-      exit = true;
-    }
-    if (end_log >= ermia::config::worker_threads - 1 || i == cdc_threads - 1) {
-      end_log = ermia::config::worker_threads - 1;
-      exit = true;
-    }
-    printf("begin_log: %u, end_log: %u\n", begin_log, end_log);
-
-    ermia::thread::Thread *thread = ermia::thread::GetThread(true);
-    ALWAYS_ASSERT(thread);
-    cdc_workers.push_back(thread);
-
-    auto parallel_changed_data_capture = [=](char *) {
-      int count = 0;
-      bool ddl_end_local = false;
-      /*while (ddl_running_1) {
-        ddl_end_local =
-            order_line_schema.td->GetPrimaryIndex()->changed_data_capture(
-                txn, txn->GetXIDContext()->begin,
-                ermia::volatile_read(txn->GetXIDContext()->end), thread_id,
-                begin_log, end_log);
-        // usleep(100);
-        if (ddl_end_local)
-          count++;
-        if (ddl_end_local && ddl_running_2)
-          break;
-      }
-      printf("cdc thread %u finishes with %d counts\n", ermia::thread::MyId(),
-             count);
-      ddl_end.fetch_add(1);
-      */
-    };
-
-    thread->StartTask(parallel_changed_data_capture);
-
-    if (exit) {
-      ermia::config::cdc_threads = i + 1;
-      break;
-    }
-  }
+  std::vector<ermia::thread::Thread *> cdc_workers =
+      txn->changed_data_capture();
 #endif
 
   //schema_index->WriteSchemaTable(txn, rc, k2, v3);
@@ -1974,27 +1908,17 @@ rc_t tpcc_worker::txn_ddl() {
   //ALWAYS_ASSERT(oorder_table_secondary_index);
   //rc = oorder_table_index->WriteNormalTable1(arena, old_oorder_table_index, old_order_line_table_index, oorder_table_secondary_index, txn, v1, oorder_schema.op);
   if (rc._val != RC_TRUE) {
-    // ddl_running_1 = false;
-    for (std::vector<ermia::thread::Thread *>::const_iterator it =
-             cdc_workers.begin();
-         it != cdc_workers.end(); ++it) {
-      (*it)->Join();
-      ermia::thread::PutThread(*it);
-    }
+    txn->join_changed_data_capture_threads(cdc_workers);
   }
   TryCatch(rc);
+  // std::vector<ermia::thread::Thread *> cdc_workers =
+  // txn->changed_data_capture();
 #endif
 
   TryCatch(db->Commit(txn));
 
 #if !defined(LAZYDDL)
-  // ddl_running_1 = false;
-  for (std::vector<ermia::thread::Thread *>::const_iterator it =
-           cdc_workers.begin();
-       it != cdc_workers.end(); ++it) {
-    (*it)->Join();
-    ermia::thread::PutThread(*it);
-  }
+  txn->join_changed_data_capture_threads(cdc_workers);
 #endif
 #endif
   printf("Commit OK\n");

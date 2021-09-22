@@ -21,7 +21,7 @@ volatile bool running = true;
 std::vector<bench_worker *> bench_runner::workers;
 std::atomic<int> ddl_num(0);
 volatile bool ddling = false;
-volatile int ddl_thread_id = -1;
+volatile int ddl_worker_id = -1;
 
 thread_local ermia::epoch_num coroutine_batch_end_epoch = 0;
 
@@ -55,12 +55,16 @@ uint32_t bench_worker::fetch_workload() {
         if (ddl_num_local != 10)
           continue;
 #if !defined(LAZYDDL)
-        ddl_thread_id = worker_id;
+        ddl_worker_id = worker_id;
         ddling = true;
 #endif
 #elif defined(COPYDDL)
         if (ddl_num_local != 1)
           continue;
+#if !defined(LAZYDDL)
+        ddl_worker_id = worker_id;
+        ddling = true;
+#endif
 #elif defined(BLOCKDDL)
         if (ddl_num_local != 20)
           continue;
@@ -80,16 +84,14 @@ uint32_t bench_worker::fetch_workload() {
 
 bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer t) {
   if (!ret.IsAbort()) {
-#if defined(COPYDDL) && !defined(LAZYDDL) && defined(MICROBENCH)
+#if defined(COPYDDL) && !defined(LAZYDDL)
     if (ret._val == RC_DDL_TRUE) {
       ddling = false;
     }
 #endif
     ++ntxn_commits;
     std::get<0>(txn_counts[workload_idx])++;
-    if (ermia::config::group_commit) {
-      tlog->enqueue_committed_xct(tlog->get_latest_csn(), t.get_start());
-    } else {
+    if (!ermia::config::group_commit) {
       latency_numer_us += t.lap();
     }
     backoff_shifts >>= 1;
@@ -393,6 +395,11 @@ void bench_runner::start_measurement() {
   size_t n_query_commits = 0;
   uint64_t latency_numer_us = 0;
   for (size_t i = 0; i < ermia::config::worker_threads; i++) {
+#if defined(COPYDDL) && !defined(LAZYDDL)
+    if (i == ddl_worker_id) {
+      continue;
+    }
+#endif
     n_commits += workers[i]->get_ntxn_commits();
     n_aborts += workers[i]->get_ntxn_aborts();
     n_int_aborts += workers[i]->get_ntxn_int_aborts();
@@ -402,11 +409,7 @@ void bench_runner::start_measurement() {
     n_rw_aborts += workers[i]->get_ntxn_rw_aborts();
     n_phantom_aborts += workers[i]->get_ntxn_phantom_aborts();
     n_query_commits += workers[i]->get_ntxn_query_commits();
-#if defined(COPYDDL) && !defined(LAZYDDL) && defined(MICROBENCH)
-    if (!ermia::config::group_commit && i != ddl_thread_id) {
-#else
     if (!ermia::config::group_commit) {
-#endif
       latency_numer_us += workers[i]->get_latency_numer_us();
     } else {
       latency_numer_us += workers[i]->get_log()->get_latency();
