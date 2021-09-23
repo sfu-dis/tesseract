@@ -9,7 +9,7 @@ extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 namespace ermia {
 
 transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
-    : flags(flags), log_size(0), sa(&sa), coro_batch_idx(coro_batch_idx) {
+    : flags(flags), log(nullptr), log_size(0), sa(&sa), coro_batch_idx(coro_batch_idx) {
   if (config::phantom_prot) {
     masstree_absent_set.set_empty_key(NULL);  // google dense map
     masstree_absent_set.clear();
@@ -40,7 +40,6 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   if (config::enable_safesnap && (flags & TXN_FLAG_READ_ONLY)) {
     ASSERT(MM::safesnap_lsn);
     xc->begin = volatile_read(MM::safesnap_lsn);
-    log = NULL;
   } else {
     TXN::serial_register_tx(coro_batch_idx, xid);
     log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log))->data());
@@ -177,7 +176,7 @@ rc_t transaction::commit() {
 
 #if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
 rc_t transaction::si_commit() {
-  if (flags & TXN_FLAG_READ_ONLY) {
+  if (!log && ((flags & TXN_FLAG_READ_ONLY) || write_set.size() == 0)) {
     volatile_write(xc->state, TXN::TXN_CMMTD);
     return rc_t{RC_TRUE};
   }
