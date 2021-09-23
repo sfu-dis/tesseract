@@ -30,16 +30,18 @@ void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush, boo
 }
 
 void commit_queue::extend() {
-    group_commit_queue_length = group_commit_queue_length * 2;
-    Entry *queue_tmp = new Entry[group_commit_queue_length];
-    for (uint i = 0; i < (group_commit_queue_length / 2); i++) {
+  group_commit_queue_length = group_commit_queue_length * 2;
+  Entry *queue_tmp = new Entry[group_commit_queue_length];
+  for (uint i = 0; i < (group_commit_queue_length / 2); i++) {
+    if (volatile_read(queue[i].csn)) {
       queue_tmp[i].csn = volatile_read(queue[i].csn);
       queue_tmp[i].start_time = volatile_read(queue[i].start_time);
     }
-    Entry *queue_delete = queue;
-    queue = queue_tmp;
-    delete[] queue_delete;
   }
+  Entry *queue_delete = queue;
+  queue = queue_tmp;
+  delete[] queue_delete;
+}
 
 void tls_committer::initialize(uint32_t id) {
   commit_id = id;

@@ -51,9 +51,7 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
   if (!ret.IsAbort()) {
     ++ntxn_commits;
     std::get<0>(txn_counts[workload_idx])++;
-    if (ermia::config::group_commit) {
-      tlog->enqueue_committed_xct(tlog->get_latest_csn(), t.get_start());
-    } else {
+    if (!ermia::config::group_commit) {
       latency_numer_us += t.lap();
     }
     backoff_shifts >>= 1;
@@ -370,10 +368,6 @@ void bench_runner::start_measurement() {
     } else {
       latency_numer_us += workers[i]->get_log()->get_latency();
     }
-  }
-
-  if (ermia::config::group_commit) {
-    //latency_numer_us = ermia::sm_log_alloc_mgr::commit_queue::total_latency_us;
   }
 
   const unsigned long elapsed = t.lap();
