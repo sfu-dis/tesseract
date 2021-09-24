@@ -416,10 +416,6 @@ void bench_runner::start_measurement() {
     }
   }
 
-  if (ermia::config::group_commit) {
-    //latency_numer_us = ermia::sm_log_alloc_mgr::commit_queue::total_latency_us;
-  }
-
   const unsigned long elapsed = t.lap();
   const double elapsed_nosync_sec = double(elapsed_nosync) / 1000000.0;
   const double agg_nosync_throughput = double(n_commits) / elapsed_nosync_sec;

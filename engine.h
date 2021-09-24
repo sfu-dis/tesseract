@@ -68,11 +68,14 @@ public:
   }
 
   inline rc_t Commit(transaction *t) {
-    return t->commit();
+    rc_t rc = t->commit();
+    t->uninitialize();
+    return rc;
   }
 
   inline void Abort(transaction *t) {
     t->Abort();
+    t->uninitialize();
   }
 
   inline bool BuildIndexMap(std::string table_name) {
