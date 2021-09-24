@@ -130,7 +130,6 @@ void transaction::Abort() {
     ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
     MM::deallocate(entry);
   }
-  uninitialize();
 }
 
 rc_t transaction::commit() {
@@ -170,7 +169,6 @@ rc_t transaction::commit() {
     log->enqueue_committed_xct(xc->end, timer.get_start());
   }
 
-  uninitialize();
   return ret;
 }
 
