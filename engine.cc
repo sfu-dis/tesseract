@@ -1198,20 +1198,20 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
 
   OID oid = 0;
 
-  /*#if defined(COPYDDL) && !defined(LAZYDDL)
-    if (t->is_ddl()) {
-      rc_t rc = {RC_INVALID};
-      AWAIT GetOID(key, rc, t->xc, oid);
+#if defined(COPYDDL) && !defined(LAZYDDL)
+  if (t->is_ddl()) {
+    rc_t rc = {RC_INVALID};
+    AWAIT GetOID(key, rc, t->xc, oid);
 
-      if (rc._val == RC_TRUE) {
-        if (out_oid) {
-          *out_oid = oid;
-        }
-
-        RETURN rc_t{RC_TRUE};
+    if (rc._val == RC_TRUE) {
+      if (out_oid) {
+        *out_oid = oid;
       }
+
+      RETURN rc_t{RC_TRUE};
     }
-  #endif*/
+  }
+#endif
 
 #ifdef LAZYDDL
   // Search for OID

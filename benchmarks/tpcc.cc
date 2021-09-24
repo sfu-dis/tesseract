@@ -15,8 +15,8 @@ rc_t tpcc_worker::txn_new_order() {
   // printf("new_order begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
-  db->WriteLock("order_line");
-  db->WriteLock("oorder");
+  // db->WriteLock("order_line");
+  // db->WriteLock("oorder");
 #endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, 10);
@@ -286,8 +286,8 @@ rc_t tpcc_worker::txn_new_order() {
   // if (oorder_schema.v != 0) printf("ddl new_order commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
-  db->WriteUnlock("order_line");
-  db->WriteUnlock("oorder");
+  // db->WriteUnlock("order_line");
+  // db->WriteUnlock("oorder");
 #endif
   return {RC_TRUE};
 }  // new-order
@@ -296,7 +296,7 @@ rc_t tpcc_worker::txn_payment() {
   // printf("payment begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
-  db->WriteLock("order_line");
+  // db->WriteLock("order_line");
 #endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -492,7 +492,7 @@ rc_t tpcc_worker::txn_payment() {
   // printf("new_order commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
-  db->WriteUnlock("order_line");
+  // db->WriteUnlock("order_line");
 #endif
   return {RC_TRUE};
 }
@@ -501,8 +501,8 @@ rc_t tpcc_worker::txn_delivery() {
   // printf("delivery begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
-  db->WriteLock("order_line");
-  db->WriteLock("oorder");
+  // db->WriteLock("order_line");
+  // db->WriteLock("oorder");
 #endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -767,8 +767,8 @@ rc_t tpcc_worker::txn_delivery() {
   // if (oorder_schema.v != 0) printf("delivery commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
-  db->WriteUnlock("order_line");
-  db->WriteUnlock("oorder");
+  // db->WriteUnlock("order_line");
+  // db->WriteUnlock("oorder");
 #endif
   return {RC_TRUE};
 }
@@ -777,8 +777,8 @@ rc_t tpcc_worker::txn_order_status() {
   // printf("order status begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
-  db->WriteLock("order_line");
-  db->ReadLock("oorder");
+  // db->WriteLock("order_line");
+  // db->ReadLock("oorder");
 #endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -1035,8 +1035,8 @@ Encode(str(Size(k_ol_test)), k_ol_test), valptr); if (rc._val != RC_TRUE) {
   // if (oorder_schema.v != 0) printf("order_status commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
-  db->WriteUnlock("order_line");
-  db->ReadUnlock("oorder");
+  // db->WriteUnlock("order_line");
+  // db->ReadUnlock("oorder");
 #endif
   return {RC_TRUE};
 }
@@ -1045,7 +1045,7 @@ rc_t tpcc_worker::txn_stock_level() {
   // printf("stock level begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
-  db->WriteLock("order_line");
+  // db->WriteLock("order_line");
 #endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint threshold = RandomNumber(r, 10, 20);
@@ -1174,7 +1174,7 @@ rc_t tpcc_worker::txn_stock_level() {
   // printf("stock_level commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
-  db->WriteUnlock("order_line");
+  // db->WriteUnlock("order_line");
 #endif
   return {RC_TRUE};
 }
@@ -1208,8 +1208,8 @@ rc_t tpcc_worker::txn_credit_check() {
   // printf("credit check begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
-  db->WriteLock("order_line");
-  db->ReadLock("oorder");
+  // db->WriteLock("order_line");
+  // db->ReadLock("oorder");
 #endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -1373,8 +1373,8 @@ rc_t tpcc_worker::txn_credit_check() {
   // if (oorder_schema.v != 0) printf("credit check commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
-  db->WriteUnlock("order_line");
-  db->ReadUnlock("oorder");
+  // db->WriteUnlock("order_line");
+  // db->ReadUnlock("oorder");
 #endif
   return {RC_TRUE};
 }
@@ -1384,7 +1384,7 @@ rc_t tpcc_worker::txn_query2() {
   // printf("query2 begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
-  db->WriteLock("order_line");
+  // db->WriteLock("order_line");
 #endif
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
@@ -1546,7 +1546,7 @@ rc_t tpcc_worker::txn_query2() {
   // printf("query2 commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
-  db->WriteUnlock("order_line");
+  // db->WriteUnlock("order_line");
 #endif
   return {RC_TRUE};
 }
@@ -1710,8 +1710,8 @@ ermia::varstr *precompute_aggregate_op(const char *keyp,
 rc_t tpcc_worker::txn_ddl() {
 #ifdef BLOCKDDL
   db->WriteLock("SCHEMA");
-  db->WriteLock("order_line");
-  db->WriteLock("oorder");
+  // db->WriteLock("order_line");
+  // db->WriteLock("oorder");
 
   ermia::transaction *txn =
       db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
@@ -1796,8 +1796,8 @@ rc_t tpcc_worker::txn_ddl() {
   TryCatch(db->Commit(txn));
   */
   db->WriteUnlock("SCHEMA");
-  db->WriteUnlock("order_line");
-  db->WriteUnlock("oorder");
+  // db->WriteUnlock("order_line");
+  // db->WriteUnlock("oorder");
 #elif COPYDDL
   // ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
@@ -1846,13 +1846,13 @@ rc_t tpcc_worker::txn_ddl() {
   std::string str3 = std::string(str1);
   str3 += ss.str();
   
-  if (!db->BuildIndexMap(str3.c_str())) {
+  /*if (!db->BuildIndexMap(str3.c_str())) {
     // printf("Duplicate table creation\n");
     TryCatch({RC_ABORT_USER});
   }
 
   db->WriteLock(str3.c_str());
-
+  */
   db->CreateTable(str3.c_str());
   db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
 
@@ -1883,7 +1883,7 @@ rc_t tpcc_worker::txn_ddl() {
   //txn->set_table_descriptors(oorder_schema.td, old_oorder_td);
   txn->set_table_descriptors(order_line_schema.td, old_order_line_td);
 
-  db->WriteUnlock(str3.c_str());
+  // db->WriteUnlock(str3.c_str());
 
 #if !defined(LAZYDDL)
   std::vector<ermia::thread::Thread *> cdc_workers =
@@ -1940,7 +1940,7 @@ bench_worker::workload_desc_vec tpcc_worker::get_workload() const {
   for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
     m += g_txn_workload_mix[i];
   // ALWAYS_ASSERT(m == 100);
-  double base = 100000.0;
+  double base = 1000000.0;
   // double base = 100.0;
   if (g_txn_workload_mix[0])
     w.push_back(workload_desc(

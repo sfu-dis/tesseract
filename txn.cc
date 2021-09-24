@@ -6,7 +6,7 @@
 
 extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 
-volatile bool ddl_running_1 = true;
+volatile bool ddl_running_1 = false;
 volatile bool ddl_running_2 = false;
 std::atomic<uint64_t> ddl_end(0);
 
@@ -19,6 +19,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     masstree_absent_set.clear();
   }
   if (is_ddl()) {
+    ddl_running_1 = true;
     write_set.init_large_write_set();
   }
   write_set.clear();
@@ -202,7 +203,7 @@ rc_t transaction::si_commit() {
   // xc->end = dlog::current_csn.fetch_add(1);
 
 #ifdef COPYDDL
-  if (is_dml() && DMLConsistencyHandler()) {
+  if (ddl_running_1 && is_dml() && DMLConsistencyHandler()) {
     printf("DML failed\n");
     return rc_t{RC_ABORT_SI_CONFLICT};
   }

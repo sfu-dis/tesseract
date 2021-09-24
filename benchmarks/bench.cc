@@ -52,7 +52,7 @@ uint32_t bench_worker::fetch_workload() {
         ddl_num.fetch_add(1);
         int ddl_num_local = ddl_num.load();
 #if defined(COPYDDL) && defined(MICROBENCH)
-        if (ddl_num_local != 10)
+        if (ddl_num_local != 1 && ddl_num_local != 120)
           continue;
 #if !defined(LAZYDDL)
         ddl_worker_id = worker_id;
@@ -66,7 +66,7 @@ uint32_t bench_worker::fetch_workload() {
         ddling = true;
 #endif
 #elif defined(BLOCKDDL)
-        if (ddl_num_local != 20)
+        if (ddl_num_local != 1)
           continue;
 #else
         if (ddl_num_local != 20)
