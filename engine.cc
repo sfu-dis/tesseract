@@ -6,16 +6,19 @@
 namespace ermia {
 
 thread_local dlog::tls_log tlog;
+std::mutex tlog_lock;
+
 dlog::tls_log *GetLog() {
   thread_local bool initialized = false;
   if (!initialized) {
+    std::lock_guard<std::mutex> guard(tlog_lock);
     tlog.initialize(config::log_dir.c_str(),
                     thread::MyId(),
                     numa_node_of_cpu(sched_getcpu()),
                     config::log_buffer_mb,
                     config::log_segment_mb);
     initialized = true;
-    dlog::tlogs[thread::MyId()] = &tlog;
+    dlog::tlogs.push_back(&tlog);
   }
   return &tlog;
 }

@@ -16,7 +16,7 @@ namespace dlog {
 #define SEGMENT_FILE_NAME_FMT "tlog-%08x-%08x"
 #define SEGMENT_FILE_NAME_BUFSZ sizeof("tlog-01234567-01234567")
 
-tls_log *tlogs[config::MAX_THREADS];
+std::vector<tls_log *> tlogs;
 
 std::atomic<uint64_t> current_csn(0);
 
@@ -24,28 +24,18 @@ std::mutex tls_log_lock;
 
 void flush_all() {
   // Flush rest blocks
-  for (uint i = 0; i < config::MAX_THREADS; i++) {
-    tls_log *tlog = tlogs[i];
-    if (tlog) {
-      tlog->last_flush();
-    }
+  for (auto &tlog : tlogs) {
+    tlog->last_flush();
   }
 
   // Dequeue rest txns
-  for (uint i = 0; i < config::MAX_THREADS; i++) {
-    tls_log *tlog = tlogs[i];
-    if (tlog) {
-      tlog->wrap_dequeue_committed_xcts(true);
-    }
+  for (auto &tlog : tlogs) {
+    tlog->wrap_dequeue_committed_xcts(true);
   }
 
   // Reset tls durable csns to be 0
-  for (uint i = 0; i < config::MAX_THREADS; i++) {
-    tls_log *tlog = tlogs[i];
-    if (tlog) {
-      tlog->reset_committer(true);
-      break;
-    }
+  for (auto &tlog : tlogs) {
+    tlog->reset_committer(true);
   }
 }
 
@@ -99,8 +89,7 @@ void tls_log::enqueue_flush() {
 
   if (logbuf_offset) {
     issue_flush(active_logbuf, logbuf_offset);
-    active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
-    logbuf_offset = 0;
+    switch_log_buffers();
   }
 }
 
@@ -113,8 +102,7 @@ void tls_log::last_flush() {
 
   if (logbuf_offset) {
     issue_flush(active_logbuf, logbuf_offset);
-    active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
-    logbuf_offset = 0;
+    switch_log_buffers();
     poll_flush();
     flushing = false;
   }
@@ -222,8 +210,7 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
   if (alloc_size + logbuf_offset > logbuf_size || create_new_segment) {
     if (logbuf_offset) {
       issue_flush(active_logbuf, logbuf_offset);
-      active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
-      logbuf_offset = 0;
+      switch_log_buffers();
     }
 
     if (create_new_segment) {
@@ -261,16 +248,12 @@ void tls_log::commit_log_block(log_block *block) {
 }
 
 void tls_log::enqueue_committed_xct(uint64_t csn, uint64_t start_time) {
-  if (config::null_log_device) {
-    return;
-  }
-
   bool flush = false;
   bool insert = true;
   uint count = 0;
 retry :
   if (flush) {
-    for (uint i = 0; i < config::MAX_THREADS; i++) {
+    for (uint i = 0; i < tlogs.size(); ++i) {
       tls_log *tlog = tlogs[i];
       if (tlog &&  volatile_read(pcommit::_tls_durable_csn[i])) {
         tlog->enqueue_flush();

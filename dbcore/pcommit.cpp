@@ -77,10 +77,6 @@ uint64_t tls_committer::get_lowest_tls_durable_csn() {
   return lowest_tls_durable_csn;
 }
 
-void tls_committer::enqueue_committed_xct(uint64_t csn, uint64_t start_time, bool *flush, bool *insert) {
-  _commit_queue->push_back(csn, start_time, flush, insert);
-}
-
 void tls_committer::dequeue_committed_xcts(uint64_t upto_csn, uint64_t end_time) {
   CRITICAL_SECTION(cs, _commit_queue->lock);
   uint32_t n = volatile_read(_commit_queue->start);

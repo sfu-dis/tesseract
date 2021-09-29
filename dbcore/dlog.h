@@ -162,9 +162,14 @@ public:
 
   // Last flush
   void last_flush();
+
+  inline void switch_log_buffers() {
+    active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
+    logbuf_offset = 0;
+  }
 };
 
-extern tls_log *tlogs[config::MAX_THREADS];
+extern std::vector<tls_log *>tlogs;
 
 }  // namespace dlog
 

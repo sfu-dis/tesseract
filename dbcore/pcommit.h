@@ -75,7 +75,9 @@ public:
   uint64_t get_lowest_tls_durable_csn();
 
   // Enqueue commit queue of this thread
-  void enqueue_committed_xct(uint64_t csn, uint64_t start_time, bool *flush, bool *insert);
+  inline void enqueue_committed_xct(uint64_t csn, uint64_t start_time, bool *flush, bool *insert) {
+    _commit_queue->push_back(csn, start_time, flush, insert);
+  }
 
   // Dequeue commit queue of this thread
   void dequeue_committed_xcts(uint64_t upto_csn, uint64_t end_time);
