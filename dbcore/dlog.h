@@ -159,6 +159,8 @@ public:
     tcommitter.dequeue_committed_xcts();
   }
 
+  inline uint32_t get_commit_queue_size() { return tcommitter.get_queue_size(); }
+
   // Last flush
   void last_flush();
 

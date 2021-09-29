@@ -31,6 +31,7 @@ void flush_all() {
   // Dequeue rest txns
   for (auto &tlog : tlogs) {
     tlog->wrap_dequeue_committed_xcts();
+    LOG_IF(FATAL, tlog->get_commit_queue_size() > 0);
   }
 }
 
