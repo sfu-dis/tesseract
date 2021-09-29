@@ -63,7 +63,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
 #else
   // Give a log regardless - with pipelined commit, read-only tx needs
   // to go through the queue as well
-  if (ermia::config::group_commit || !(flags & TXN_FLAG_READ_ONLY)) {
+  if (ermia::config::pcommit || !(flags & TXN_FLAG_READ_ONLY)) {
     log = GetLog();
   }
   xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
@@ -165,7 +165,7 @@ rc_t transaction::commit() {
 #endif
 
   // Enqueue to pipelined commit queue, if enabled
-  if (ret._val == RC_TRUE && log && ermia::config::group_commit) {
+  if (ret._val == RC_TRUE && log && ermia::config::pcommit) {
     log->enqueue_committed_xct(xc->end);
   }
 

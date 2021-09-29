@@ -21,12 +21,12 @@ struct commit_queue {
   uint32_t start;
   uint32_t items;
   uint64_t total_latency_us;
-  uint32_t group_commit_queue_length;
+  uint32_t length;
   mcs_lock lock;
   commit_queue()
       : start(0), items(0), total_latency_us(0),
-        group_commit_queue_length(config::group_commit_queue_length) {
-    queue = new Entry[group_commit_queue_length];
+        length(config::pcommit_queue_length) {
+    queue = new Entry[length];
   }
   ~commit_queue() { delete[] queue; }
   void push_back(uint64_t csn, uint64_t start_time, bool *flush, bool *insert);

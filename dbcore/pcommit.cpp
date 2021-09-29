@@ -20,11 +20,11 @@ std::atomic<uint64_t> global_durable_csn(0);
 void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush, bool *insert) {
   CRITICAL_SECTION(cs, lock);
   // Signal a flush if the queue is over 80% full
-  if (items >= group_commit_queue_length * 0.8) {
+  if (items >= length * 0.8) {
     *flush = true;
   }
-  if (*insert && items < group_commit_queue_length) {
-    uint32_t idx = (start + items) % group_commit_queue_length;
+  if (*insert && items < length) {
+    uint32_t idx = (start + items) % length;
     volatile_write(queue[idx].csn, csn);
     volatile_write(queue[idx].start_time, start_time);
     volatile_write(items, items + 1);
@@ -34,9 +34,9 @@ void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush, boo
 }
 
 void commit_queue::extend() {
-  Entry *new_queue = new Entry[group_commit_queue_length * 2];
-  memcpy(new_queue, queue, sizeof(Entry) * group_commit_queue_length);
-  group_commit_queue_length *= 2;
+  Entry *new_queue = new Entry[length * 2];
+  memcpy(new_queue, queue, sizeof(Entry) * length);
+  length *= 2;
   delete[] queue;
   queue = new_queue;
 }
@@ -75,7 +75,7 @@ void tls_committer::dequeue_committed_xcts() {
   uint32_t size = _commit_queue->size();
   uint32_t dequeue = 0;
   for (uint32_t j = 0; j < size; ++j) {
-    uint32_t idx = (n + j) % _commit_queue->group_commit_queue_length;
+    uint32_t idx = (n + j) % _commit_queue->length;
     auto &entry = _commit_queue->queue[idx];
     if (volatile_read(entry.csn) > upto_csn) {
       break;
@@ -84,7 +84,7 @@ void tls_committer::dequeue_committed_xcts() {
     dequeue++;
   }
   _commit_queue->items -= dequeue;
-  volatile_write(_commit_queue->start, (n + dequeue) % _commit_queue->group_commit_queue_length);
+  volatile_write(_commit_queue->start, (n + dequeue) % _commit_queue->length);
 }
 
 void tls_committer::extend_queue() { _commit_queue->extend(); }
