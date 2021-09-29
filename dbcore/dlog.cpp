@@ -242,7 +242,7 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
 void tls_log::commit_log_block(log_block *block) {
 }
 
-void tls_log::enqueue_committed_xct(uint64_t csn, uint64_t start_time) {
+void tls_log::enqueue_committed_xct(uint64_t csn) {
   bool flush = false;
   bool insert = true;
   uint count = 0;
@@ -257,10 +257,10 @@ retry :
     wrap_dequeue_committed_xcts();
     flush = false;
   }
-  tcommitter.enqueue_committed_xct(csn, start_time, &flush, &insert);
+  tcommitter.enqueue_committed_xct(csn, &flush, &insert);
   if (count >= 10) {
     tcommitter.extend_queue();
-    tcommitter.enqueue_committed_xct(csn, start_time, &flush, &insert);
+    tcommitter.enqueue_committed_xct(csn, &flush, &insert);
     count = 0;
   }
   if (flush) {

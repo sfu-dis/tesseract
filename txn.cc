@@ -166,7 +166,7 @@ rc_t transaction::commit() {
 
   // Enqueue to pipelined commit queue, if enabled
   if (ret._val == RC_TRUE && log && ermia::config::group_commit) {
-    log->enqueue_committed_xct(xc->end, timer.get_start());
+    log->enqueue_committed_xct(xc->end);
   }
 
   return ret;

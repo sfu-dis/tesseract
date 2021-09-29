@@ -1,6 +1,5 @@
 #pragma once
 
-#include "mcs_lock.h"
 #include "sm-config.h"
 #include "sm-thread.h"
 
@@ -70,8 +69,9 @@ public:
   uint64_t get_global_durable_csn();
 
   // Enqueue commit queue of this thread
-  inline void enqueue_committed_xct(uint64_t csn, uint64_t start_time, bool *flush, bool *insert) {
-    _commit_queue->push_back(csn, start_time, flush, insert);
+  inline void enqueue_committed_xct(uint64_t csn, bool *flush, bool *insert) {
+    util::timer t;
+    _commit_queue->push_back(csn, t.get_start(), flush, insert);
   }
 
   // Dequeue commit queue of this thread

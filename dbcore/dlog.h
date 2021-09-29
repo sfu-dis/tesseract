@@ -152,7 +152,7 @@ public:
   void commit_log_block(log_block *block);
 
   // Enqueue commit queue
-  void enqueue_committed_xct(uint64_t csn, uint64_t start_time);
+  void enqueue_committed_xct(uint64_t csn);
 
   // Dequeue commit queue
   inline void wrap_dequeue_committed_xcts() {  

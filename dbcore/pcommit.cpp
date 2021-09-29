@@ -2,6 +2,7 @@
 
 #include "pcommit.h"
 #include "sm-common.h"
+#include "../engine.h"
 #include "../macros.h"
 
 namespace ermia {
@@ -54,7 +55,7 @@ uint64_t tls_committer::get_global_durable_csn() {
   bool found = false;
   uint64_t min_dirty = std::numeric_limits<uint64_t>::max();
   uint64_t max_clean = 0;
-  for (uint32_t i = 0; i < config::MAX_THREADS; i++) {
+  for (uint32_t i = 0; i < ermia::dlog::tlogs.size(); i++) {
     uint64_t csn = volatile_read(_tls_durable_csn[i]);
     if (csn) {  
       if (csn & DIRTY_FLAG) {
@@ -83,10 +84,12 @@ void tls_committer::dequeue_committed_xcts() {
     if (volatile_read(entry.csn) > upto_csn) {
       break;
     }
+    //LOG(INFO) << "LAT " << end_time - entry.start_time;
     _commit_queue->total_latency_us += end_time - entry.start_time;
     dequeue++;
   }
   _commit_queue->items -= dequeue;
+  //LOG(INFO) << "Dequeued " << dequeue << " remaining " << _commit_queue->items;
   volatile_write(_commit_queue->start, (n + dequeue) % _commit_queue->group_commit_queue_length);
 }
 
