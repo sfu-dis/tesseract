@@ -51,15 +51,6 @@ void tls_committer::initialize(uint32_t id) {
   _commit_queue = new commit_queue();
 }
 
-void tls_committer::reset(bool set_zero) {
-  _commit_queue = new commit_queue();
-  if (set_zero) {
-    memset(_tls_durable_csn, 0, sizeof(uint64_t) * config::MAX_THREADS);
-  } else {
-    _tls_durable_csn[id] = global_durable_csn.load(std::memory_order_relaxed); 
-  }
-}
-
 uint64_t tls_committer::get_global_durable_csn() {
   bool found = false;
   uint64_t min_dirty = std::numeric_limits<uint64_t>::max();

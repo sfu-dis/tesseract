@@ -23,7 +23,6 @@ public:
   // Essentially a coroutine scheduler that switches between active transactions
   virtual void MyWork(char *) override {
     tlog = ermia::GetLog();
-    tlog->reset_committer(false);
 
     // No replication support
     ALWAYS_ASSERT(is_worker);

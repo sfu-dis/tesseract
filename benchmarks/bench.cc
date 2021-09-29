@@ -105,7 +105,6 @@ void bench_worker::MyWork(char *) {
   if (is_worker) {
     // Reset the tls committer
     tlog = ermia::GetLog();
-    tlog->reset_committer(false);
     workload = get_workload();
     txn_counts.resize(workload.size());
     barrier_a->count_down();

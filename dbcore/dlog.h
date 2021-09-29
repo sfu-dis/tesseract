@@ -143,9 +143,6 @@ public:
 
   inline uint64_t get_latency() { return tcommitter.get_latency(); }
  
-  // reset this committer
-  inline void reset_committer(bool set_zero) { tcommitter.reset(set_zero);  }
-  
   // Allocate a log block in-place on the log buffer
   log_block *allocate_log_block(uint32_t payload_size,
                                 uint64_t *out_cur_lsn,

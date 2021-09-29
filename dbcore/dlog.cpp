@@ -32,11 +32,6 @@ void flush_all() {
   for (auto &tlog : tlogs) {
     tlog->wrap_dequeue_committed_xcts();
   }
-
-  // Reset tls durable csns to be 0
-  for (auto &tlog : tlogs) {
-    tlog->reset_committer(true);
-  }
 }
 
 void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
