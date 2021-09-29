@@ -21,7 +21,6 @@ struct commit_queue {
   Entry *queue;
   uint32_t start;
   uint32_t items;
-  mcs_lock lock;
   uint64_t total_latency_us;
   uint32_t group_commit_queue_length;
   commit_queue()
