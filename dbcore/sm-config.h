@@ -54,6 +54,7 @@ extern uint32_t pcommit_timeout;
 extern uint32_t pcommit_queue_length;  // how much to reserve
 extern uint64_t pcommit_size_kb;
 extern uint64_t pcommit_bytes;
+extern bool pcommit_thread;
 
 extern uint32_t benchmark_seconds;
 

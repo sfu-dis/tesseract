@@ -87,6 +87,7 @@ DEFINE_uint64(pcommit_timeout, 5,
               "Group commit flush interval (in seconds).");
 DEFINE_uint64(pcommit_size_kb, 4,
               "Group commit flush size interval in KB.");
+DEFINE_bool(pcommit_thread, false, "Whether to use a dedicated pipelined committer thread.");
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
 
 static std::vector<std::string> split_ws(const std::string &s) {
@@ -166,6 +167,7 @@ int main(int argc, char **argv) {
   ermia::config::pcommit_timeout = FLAGS_pcommit_timeout;
   ermia::config::pcommit_size_kb = FLAGS_pcommit_size_kb;
   ermia::config::pcommit_bytes = FLAGS_pcommit_size_kb * 1024;
+  ermia::config::pcommit_thread = FLAGS_pcommit_thread;
   ermia::config::enable_chkpt = FLAGS_enable_chkpt;
   ermia::config::chkpt_interval = FLAGS_chkpt_interval;
   ermia::config::parallel_loading = FLAGS_parallel_loading;
@@ -223,6 +225,7 @@ int main(int argc, char **argv) {
   std::cerr << "  scan-use-iterator : " << FLAGS_scan_with_iterator << std::endl;
   std::cerr << "  enable-perf       : " << ermia::config::enable_perf << std::endl;
   std::cerr << "  pipelined commit  : " << ermia::config::pcommit << std::endl;
+  std::cerr << "  dedicated pcommit thread: " << ermia::config::pcommit_thread << std::endl;
   std::cerr << "  index-probe-only  : " << FLAGS_index_probe_only << std::endl;
   std::cerr << "  log-buffer-mb     : " << ermia::config::log_buffer_mb << std::endl;
   std::cerr << "  log-dir           : " << ermia::config::log_dir << std::endl;

@@ -47,6 +47,7 @@ uint32_t pcommit_queue_length = 25000;
 uint32_t pcommit_timeout = 5;
 uint64_t pcommit_size_kb = 4096;
 uint64_t pcommit_bytes = 4096 * 1024;
+bool pcommit_thread = false;
 bool log_key_for_update = false;
 bool enable_chkpt = 0;
 uint64_t chkpt_interval = 50;
