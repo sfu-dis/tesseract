@@ -158,7 +158,9 @@ public:
   void enqueue_committed_xct(uint64_t csn, uint64_t start_time);
 
   // Dequeue commit queue
-  void wrap_dequeue_committed_xcts(bool is_last);
+  inline void wrap_dequeue_committed_xcts() {  
+    tcommitter.dequeue_committed_xcts();
+  }
 
   // Last flush
   void last_flush();

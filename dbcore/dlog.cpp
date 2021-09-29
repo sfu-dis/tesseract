@@ -30,7 +30,7 @@ void flush_all() {
 
   // Dequeue rest txns
   for (auto &tlog : tlogs) {
-    tlog->wrap_dequeue_committed_xcts(true);
+    tlog->wrap_dequeue_committed_xcts();
   }
 
   // Reset tls durable csns to be 0
@@ -159,7 +159,7 @@ void tls_log::poll_flush() {
   tcommitter.set_tls_durable_csn(last_tls_durable_csn);
   ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == last_tls_durable_csn);
 
-  wrap_dequeue_committed_xcts(false);
+  wrap_dequeue_committed_xcts();
 }
 
 void tls_log::create_segment() { 
@@ -259,7 +259,7 @@ retry :
         tlog->enqueue_flush();
       }
     }
-    wrap_dequeue_committed_xcts(false);
+    wrap_dequeue_committed_xcts();
     flush = false;
   }
   tcommitter.enqueue_committed_xct(csn, start_time, &flush, &insert);
@@ -272,16 +272,6 @@ retry :
     count++;
     goto retry;
   }
-}
-
-void tls_log::wrap_dequeue_committed_xcts(bool is_last) {  
-  // get the lowest tls durable csn
-  uint64_t lowest_tls_durable_csn = tcommitter.get_lowest_tls_durable_csn();
-
-  // dequeue some committed txns
-  util::timer t;
-  tcommitter.dequeue_committed_xcts(lowest_tls_durable_csn, t.get_start());
-  ASSERT(!is_last || tcommitter.get_queue_size() == 0);
 }
 
 segment::segment(int dfd, const char *segname) : size(0), expected_size(0) {
