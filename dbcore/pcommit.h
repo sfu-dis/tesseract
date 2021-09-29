@@ -22,6 +22,7 @@ struct commit_queue {
   uint32_t items;
   uint64_t total_latency_us;
   uint32_t group_commit_queue_length;
+  mcs_lock lock;
   commit_queue()
       : start(0), items(0), total_latency_us(0),
         group_commit_queue_length(config::group_commit_queue_length) {

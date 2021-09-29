@@ -18,6 +18,7 @@ uint64_t *_tls_durable_csn =
 std::atomic<uint64_t> global_durable_csn(0);
 
 void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush, bool *insert) {
+  CRITICAL_SECTION(cs, lock);
   // Signal a flush if the queue is over 80% full
   if (items >= group_commit_queue_length * 0.8) {
     *flush = true;
@@ -75,6 +76,7 @@ void tls_committer::dequeue_committed_xcts() {
   uint64_t upto_csn = get_global_durable_csn();
   util::timer t;
   uint64_t end_time = t.get_start();
+  CRITICAL_SECTION(cs, _commit_queue->lock);
   uint32_t n = volatile_read(_commit_queue->start);
   uint32_t size = _commit_queue->size();
   uint32_t dequeue = 0;
