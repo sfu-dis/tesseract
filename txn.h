@@ -64,7 +64,8 @@ struct write_set_t {
   write_set_t() : num_entries(0) {}
   inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid, uint32_t size,
                            dlog::log_record::logrec_type type, const varstr *str) {
-    if (num_entries >= kMaxEntries_) printf("beyond\n");
+    if (num_entries >= kMaxEntries_)
+      printf("beyond\n");
     ALWAYS_ASSERT(num_entries < kMaxEntries_);
     if (is_ddl) {
       CRITICAL_SECTION(cs, lock);
@@ -154,7 +155,7 @@ protected:
   std::vector<ermia::thread::Thread *> changed_data_capture();
   void join_changed_data_capture_threads(
       std::vector<ermia::thread::Thread *> cdc_workers);
-  inline void set_ddl_running_1(bool dr1) { ddl_running_1 = dr1; } 
+  inline void set_ddl_running_1(bool dr1) { ddl_running_1 = dr1; }
 #endif
   bool DMLConsistencyHandler();
 #endif

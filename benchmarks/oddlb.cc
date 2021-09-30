@@ -125,7 +125,7 @@ public:
         (ermia::ConcurrentMasstreeIndex *)schema.index;
     rc = rc_t{RC_INVALID};
     rc = table_index->WriteNormalTable(arena, old_table_index, txn, v2, NULL);
-#if !defined(DCOPYDDL)    
+#if !defined(DCOPYDDL)
     if (rc._val != RC_TRUE) {
       txn->join_changed_data_capture_threads(cdc_workers);
     }
@@ -139,7 +139,7 @@ public:
 
     schema_index->WriteSchemaTable(txn, rc, k1, v2);
     TryCatch(rc);
-#endif    
+#endif
 #endif
 
     TryCatch(db->Commit(txn));

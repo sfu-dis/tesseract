@@ -895,9 +895,9 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
 
 #ifdef DCOPYDDL
     if (state == TXN::TXN_CMMTD || state == TXN::TXN_DDL) {
-#else   
+#else
     if (state == TXN::TXN_CMMTD) {
-#endif     
+#endif
       ASSERT(volatile_read(holder->end));
       ASSERT(owner == holder_xid);
 #if defined(RC) || defined(RC_SPIN)

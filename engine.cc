@@ -104,7 +104,7 @@ public:
     d_v = &Encode(*d_v, v_ol_1);
 #endif
 
-    //varstr *d_v = _op(keyp, keylen, value, _version, _txn, _arena, nullptr);
+    // varstr *d_v = _op(keyp, keylen, value, _version, _txn, _arena, nullptr);
     // printf("d_v size: %u\n", d_v->size());
 #if defined(BLOCKDDL) || defined(SIDDL)
     invoke_status = _index->UpdateRecord(_txn, *k, *d_v);
@@ -177,12 +177,12 @@ void ConcurrentMasstreeIndex::ReadSchemaTable(transaction *t, rc_t &rc,
     struct Schema_record schema;
     memcpy(&schema, (char *)value.data(), sizeof(schema));
     ALWAYS_ASSERT(schema.td != nullptr);
-/*#ifdef DCOPYDDL
-    if (schema.v == 0) {
-      volatile_write(rc._val, RC_ABORT_SI_CONFLICT);
-      return;
-    }
-#endif*/
+    /*#ifdef DCOPYDDL
+        if (schema.v == 0) {
+          volatile_write(rc._val, RC_ABORT_SI_CONFLICT);
+          return;
+        }
+    #endif*/
     t->schema_read_map[schema.td] = *out_oid;
   }
 #endif
@@ -701,14 +701,15 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
                 insert_key = new varstr(logrec->data + sizeof(varstr), 8);
 #else
                 // insert_key = new varstr(logrec->data + sizeof(varstr), 16);
-		const order_line_1::key k_ol;
-		const size_t order_line_key_sz = ::Size(k_ol);
-		insert_key = arena->next(order_line_key_sz);
-		if (!insert_key) {
-		  arena = new ermia::str_arena(ermia::config::arena_size_mb);
-		  insert_key = arena->next(order_line_key_sz);
-		}
-		insert_key->copy_from(logrec->data + sizeof(varstr), order_line_key_sz);
+                const order_line_1::key k_ol;
+                const size_t order_line_key_sz = ::Size(k_ol);
+                insert_key = arena->next(order_line_key_sz);
+                if (!insert_key) {
+                  arena = new ermia::str_arena(ermia::config::arena_size_mb);
+                  insert_key = arena->next(order_line_key_sz);
+                }
+                insert_key->copy_from(logrec->data + sizeof(varstr),
+                                      order_line_key_sz);
 #endif
               } else if (logrec->type ==
                          dlog::log_record::logrec_type::UPDATE_KEY) {
@@ -718,12 +719,13 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
                 // update_key = new varstr(logrec->data + sizeof(varstr), 16);
                 const order_line_1::key k_ol;
                 const size_t order_line_key_sz = ::Size(k_ol);
-		update_key = arena->next(order_line_key_sz);
-		if (!update_key) {
+                update_key = arena->next(order_line_key_sz);
+                if (!update_key) {
                   arena = new ermia::str_arena(ermia::config::arena_size_mb);
                   update_key = arena->next(order_line_key_sz);
                 }
-                update_key->copy_from(logrec->data + sizeof(varstr), order_line_key_sz);
+                update_key->copy_from(logrec->data + sizeof(varstr),
+                                      order_line_key_sz);
 #endif
               } else if (logrec->type ==
                          dlog::log_record::logrec_type::INVALID) {

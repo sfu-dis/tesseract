@@ -90,7 +90,8 @@ DEFINE_uint64(group_commit_size_kb, 4,
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
 
 // DDL & CDC settings
-DEFINE_bool(cdc_physical_workers_only, true, "Whether to use physical workers for CDC");
+DEFINE_bool(cdc_physical_workers_only, true,
+            "Whether to use physical workers for CDC");
 DEFINE_uint64(ddl_write_set_length, 50000000, "Length of DDL transaction");
 
 static std::vector<std::string> split_ws(const std::string &s) {
