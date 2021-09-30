@@ -30,8 +30,7 @@ void flush_all() {
 
   // Dequeue rest txns
   for (auto &tlog : tlogs) {
-    tlog->wrap_dequeue_committed_xcts();
-    LOG_IF(FATAL, tlog->get_commit_queue_size() > 0);
+    tlog->dequeue_committed_xcts();
   }
 }
 
@@ -155,7 +154,7 @@ void tls_log::poll_flush() {
   tcommitter.set_tls_durable_csn(last_tls_durable_csn);
   ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == last_tls_durable_csn);
 
-  wrap_dequeue_committed_xcts();
+  dequeue_committed_xcts();
 }
 
 void tls_log::create_segment() { 
@@ -255,7 +254,7 @@ retry :
         tlog->enqueue_flush();
       }
     }
-    wrap_dequeue_committed_xcts();
+    dequeue_committed_xcts();
     flush = false;
   }
   tcommitter.enqueue_committed_xct(csn, &flush, &insert);

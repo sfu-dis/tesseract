@@ -155,9 +155,7 @@ public:
   void enqueue_committed_xct(uint64_t csn);
 
   // Dequeue commit queue
-  inline void wrap_dequeue_committed_xcts() {  
-    tcommitter.dequeue_committed_xcts();
-  }
+  inline void dequeue_committed_xcts() { tcommitter.dequeue_committed_xcts(); }
 
   inline uint32_t get_commit_queue_size() { return tcommitter.get_queue_size(); }
 
