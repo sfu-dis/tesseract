@@ -9,7 +9,6 @@ namespace pcommit {
 
 static const uint64_t DIRTY_FLAG = uint64_t{1} << 63;
 extern uint64_t *_tls_durable_csn CACHE_ALIGNED;
-extern std::atomic<uint64_t> lowest_csn;
 
 struct commit_queue {
   struct Entry {
