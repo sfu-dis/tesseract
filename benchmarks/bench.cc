@@ -184,6 +184,12 @@ void bench_runner::run() {
   // Persist the database
   if (ermia::config::pcommit) {
     ermia::dlog::flush_all();
+    ermia::dlog::dequeue_committed_xcts();
+    // Sanity check to make sure all transactions are fully committed
+
+    for (auto &tlog : ermia::dlog::tlogs) {
+      LOG_IF(FATAL, tlog->get_commit_queue_size() > 0);
+    }
   }
 
   // if (ermia::config::enable_chkpt) {

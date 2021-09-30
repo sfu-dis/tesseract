@@ -28,6 +28,18 @@ extern std::atomic<uint64_t> current_csn;
 
 void flush_all();
 
+void dequeue_committed_xcts();
+
+// Commit daemon function - only useful when dedicated commit thread is enabled
+void commit_daemon();
+
+void wakeup_commit_daemon();
+
+void initialize();
+void uninitialize();
+
+extern std::thread *pcommit_thread;
+
 // A segment of the log, i.e., a file
 struct segment {
   // File descriptor for the underlying file

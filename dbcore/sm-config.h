@@ -50,7 +50,7 @@ extern int enable_gc;
 extern bool null_log_device;
 extern bool truncate_at_bench_start;
 extern bool pcommit;
-extern uint32_t pcommit_timeout;
+extern uint32_t pcommit_timeout_ms;
 extern uint32_t pcommit_queue_length;  // how much to reserve
 extern uint64_t pcommit_size_kb;
 extern uint64_t pcommit_bytes;

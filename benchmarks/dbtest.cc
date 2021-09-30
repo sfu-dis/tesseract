@@ -81,12 +81,12 @@ DEFINE_bool(log_key_for_update, false,
 // buffer
 // when the following happens, whichever is earlier:
 // 1. queue is full; 2. the log buffer is half full; 3. after [timeout] seconds.
-DEFINE_bool(pcommit, true, "Whether to enable pipelined group commit.");
-DEFINE_uint64(pcommit_queue_length, 25000, "Group commit queue length");
-DEFINE_uint64(pcommit_timeout, 5,
-              "Group commit flush interval (in seconds).");
+DEFINE_bool(pcommit, true, "Whether to enable pipelined commit.");
+DEFINE_uint64(pcommit_queue_length, 25000, "Pipelined commit queue length");
+DEFINE_uint64(pcommit_timeout_ms, 1000,
+              "Pipelined commit flush interval (in milliseconds).");
 DEFINE_uint64(pcommit_size_kb, 4,
-              "Group commit flush size interval in KB.");
+              "Pipelined commit flush size interval in KB.");
 DEFINE_bool(pcommit_thread, false, "Whether to use a dedicated pipelined committer thread.");
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
 
@@ -164,7 +164,7 @@ int main(int argc, char **argv) {
 
   ermia::config::pcommit = FLAGS_pcommit;
   ermia::config::pcommit_queue_length = FLAGS_pcommit_queue_length;
-  ermia::config::pcommit_timeout = FLAGS_pcommit_timeout;
+  ermia::config::pcommit_timeout_ms = FLAGS_pcommit_timeout_ms;
   ermia::config::pcommit_size_kb = FLAGS_pcommit_size_kb;
   ermia::config::pcommit_bytes = FLAGS_pcommit_size_kb * 1024;
   ermia::config::pcommit_thread = FLAGS_pcommit_thread;

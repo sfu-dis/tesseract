@@ -31,6 +31,11 @@ Engine::Engine() {
   ALWAYS_ASSERT(!oidmgr);
   sm_oid_mgr::create();
   ALWAYS_ASSERT(oidmgr);
+  ermia::dlog::initialize();
+}
+
+Engine::~Engine() {
+  ermia::dlog::uninitialize();
 }
 
 TableDescriptor *Engine::CreateTable(const char *name) {

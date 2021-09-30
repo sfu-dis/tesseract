@@ -4,6 +4,7 @@
 #include "dlog.h"
 #include "sm-common.h"
 #include "sm-config.h"
+#include "../engine.h"
 #include "../macros.h"
 
 // io_uring code based off of examples from https://unixism.net/loti/tutorial/index.html
@@ -22,15 +23,55 @@ std::atomic<uint64_t> current_csn(0);
 
 std::mutex tls_log_lock;
 
+std::thread *pcommit_thread = nullptr;
+std::condition_variable pcommit_daemon_cond;
+std::mutex pcommit_daemon_lock;
+std::atomic<bool>pcommit_daemon_has_work(false);
+
 void flush_all() {
   // Flush rest blocks
   for (auto &tlog : tlogs) {
     tlog->last_flush();
   }
+}
 
-  // Dequeue rest txns
+void dequeue_committed_xcts() {
+  std::lock_guard<std::mutex> guard(ermia::tlog_lock);
   for (auto &tlog : tlogs) {
     tlog->dequeue_committed_xcts();
+  }
+}
+
+void wakeup_commit_daemon() {
+  pcommit_daemon_lock.lock();
+  pcommit_daemon_has_work = true;
+  pcommit_daemon_lock.unlock();
+  pcommit_daemon_cond.notify_all();
+}
+
+void commit_daemon() {
+  auto timeout = std::chrono::milliseconds(ermia::config::pcommit_timeout_ms);
+  while (!ermia::config::IsShutdown()) {
+    if (pcommit_daemon_has_work) {
+      dequeue_committed_xcts();
+    } else {
+      std::unique_lock<std::mutex> lock(pcommit_daemon_lock);
+      pcommit_daemon_cond.wait_for(lock, timeout);
+      pcommit_daemon_has_work = false;
+    }
+  }
+}
+
+void initialize() {
+  if (ermia::config::pcommit_thread) {
+    pcommit_thread = new std::thread(commit_daemon);
+  }
+}
+
+void uninitialize() {
+  if (ermia::config::pcommit_thread) {
+    pcommit_thread->join();
+    delete pcommit_thread;
   }
 }
 
@@ -154,7 +195,11 @@ void tls_log::poll_flush() {
   tcommitter.set_tls_durable_csn(last_tls_durable_csn);
   ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == last_tls_durable_csn);
 
-  dequeue_committed_xcts();
+  if (ermia::config::pcommit_thread) {
+    dlog::wakeup_commit_daemon();
+  } else {
+    dequeue_committed_xcts();
+  }
 }
 
 void tls_log::create_segment() { 
@@ -254,7 +299,13 @@ retry :
         tlog->enqueue_flush();
       }
     }
-    dequeue_committed_xcts();
+
+    if (ermia::config::pcommit_thread) {
+      dlog::wakeup_commit_daemon();
+    } else {
+      dequeue_committed_xcts();
+    }
+
     flush = false;
   }
   tcommitter.enqueue_committed_xct(csn, &flush, &insert);
