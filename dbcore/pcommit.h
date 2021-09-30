@@ -78,7 +78,7 @@ public:
   void dequeue_committed_xcts();
 
   // Extend commit queue
-  void extend_queue();
+  inline void extend_queue() { _commit_queue->extend(); }
 };
 
 } // namespace pcommit

@@ -87,8 +87,6 @@ void tls_committer::dequeue_committed_xcts() {
   volatile_write(_commit_queue->start, (n + dequeue) % _commit_queue->length);
 }
 
-void tls_committer::extend_queue() { _commit_queue->extend(); }
-
 } // namespace pcommit
 
 } // namespace ermia
