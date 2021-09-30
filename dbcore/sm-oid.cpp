@@ -890,10 +890,14 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
 
     // Wait if the transaction is finalizing for commit
     if (state == TXN::TXN_COMMITTING) {
-      // goto wait_for_commit;
+      goto wait_for_commit;
     }
 
+#ifdef DCOPYDDL
+    if (state == TXN::TXN_CMMTD || state == TXN::TXN_DDL) {
+#else   
     if (state == TXN::TXN_CMMTD) {
+#endif     
       ASSERT(volatile_read(holder->end));
       ASSERT(owner == holder_xid);
 #if defined(RC) || defined(RC_SPIN)

@@ -65,8 +65,10 @@ extern bool coro_batch_schedule;
 
 extern bool scan_with_it;
 
-// CDC settings
+// DDL & CDC settings
 extern uint32_t cdc_threads;
+extern bool cdc_physical_workers_only;
+extern uint64_t ddl_write_set_length;
 
 // Create an object for each version and install directly on the main
 // indirection arrays only; for experimental purpose only to see the

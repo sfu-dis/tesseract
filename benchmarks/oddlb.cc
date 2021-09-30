@@ -95,10 +95,13 @@ public:
 
     schema.index = ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
     schema.td = ermia::Catalog::GetTable(str3.c_str());
+    schema.state = ermia::TXN::TXN_CMMTD;
 #ifdef LAZYDDL
     schema.old_index = old_table_index;
     schema.old_td = old_td;
     schema.old_tds[old_schema_version] = old_td;
+#elif DCOPYDDL
+    schema.state = ermia::TXN::TXN_DDL;
 #endif
     memcpy(str2, &schema, sizeof(str2));
     ermia::varstr &v2 = str(sizeof(str2));
@@ -108,7 +111,7 @@ public:
 
     txn->set_table_descriptors(schema.td, old_td);
 
-#if !defined(LAZYDDL)
+#if !defined(LAZYDDL) && !defined(DCOPYDDL)
     std::vector<ermia::thread::Thread *> cdc_workers =
         txn->changed_data_capture();
 #endif
@@ -122,15 +125,26 @@ public:
         (ermia::ConcurrentMasstreeIndex *)schema.index;
     rc = rc_t{RC_INVALID};
     rc = table_index->WriteNormalTable(arena, old_table_index, txn, v2, NULL);
+#if !defined(DCOPYDDL)    
     if (rc._val != RC_TRUE) {
       txn->join_changed_data_capture_threads(cdc_workers);
     }
+#endif
     TryCatch(rc);
+
+#ifdef DCOPYDDL
+    schema.state = ermia::TXN::TXN_CMMTD;
+    memcpy(str2, &schema, sizeof(str2));
+    v2 = Encode_(str(sizeof(str2)), str2);
+
+    schema_index->WriteSchemaTable(txn, rc, k1, v2);
+    TryCatch(rc);
+#endif    
 #endif
 
     TryCatch(db->Commit(txn));
 
-#if !defined(LAZYDDL)
+#if !defined(LAZYDDL) && !defined(DCOPYDDL)
     txn->join_changed_data_capture_threads(cdc_workers);
 #endif
 

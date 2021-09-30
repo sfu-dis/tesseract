@@ -24,11 +24,16 @@ struct Schema_base {
 struct Schema_record : public Schema_base {
   ermia::OrderedIndex *index;
   ermia::TableDescriptor *td;
+  uint64_t state;
+  uint64_t old_v;
 #ifdef LAZYDDL
   ermia::OrderedIndex *old_index;
   ermia::TableDescriptor *old_td;
   ermia::TableDescriptor *old_tds[16];
+#elif DCOPYDDL
+  ermia::TableDescriptor *old_td;
 #endif
+
   /*std::function<ermia::varstr *(
 		  const char *keyp,
 		  size_t keylen,

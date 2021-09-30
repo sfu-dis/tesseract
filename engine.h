@@ -29,7 +29,7 @@ dlog::tls_log *GetLog();
 class Table;
 
 extern TableDescriptor *schema_td;
-extern std::unordered_map<uint32_t, uint32_t> test_map;
+extern TableDescriptor *ddl_td;
 
 class Engine {
 private:
@@ -69,13 +69,11 @@ public:
 
   inline rc_t Commit(transaction *t) {
     rc_t rc = t->commit();
-    t->uninitialize();
     return rc;
   }
 
   inline void Abort(transaction *t) {
     t->Abort();
-    t->uninitialize();
   }
 
   inline bool BuildIndexMap(std::string table_name) {
@@ -245,7 +243,7 @@ public:
   PROMISE(bool)
   changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn,
                        uint64_t *cdc_offset, uint32_t begin_log,
-                       uint32_t end_log) override;
+                       uint32_t end_log, str_arena *arena) override;
 #endif
 
   PROMISE(void)

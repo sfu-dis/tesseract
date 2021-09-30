@@ -156,6 +156,8 @@ public:
 
   inline uint64_t get_latency() { return tcommitter.get_latency(); }
 
+  inline tlog_lsn get_durable_lsn() { return durable_lsn; }
+
   // reset this committer
   inline void reset_committer(bool set_zero) { tcommitter.reset(set_zero); }
 

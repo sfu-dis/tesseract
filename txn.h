@@ -23,6 +23,7 @@ using google::dense_hash_map;
 extern volatile bool ddl_running_1;
 extern volatile bool ddl_running_2;
 extern std::atomic<uint64_t> ddl_end;
+extern uint64_t *_tls_durable_lsn CACHE_ALIGNED;
 
 namespace ermia {
 
@@ -55,7 +56,7 @@ struct write_record_t {
 };
 
 struct write_set_t {
-  static const uint32_t kMaxEntries = 256, kMaxEntries_ = 500000000;
+  static const uint32_t kMaxEntries = 256, kMaxEntries_ = 50000000;
   uint32_t num_entries;
   write_record_t entries[kMaxEntries];
   write_record_t *entries_;
@@ -63,8 +64,7 @@ struct write_set_t {
   write_set_t() : num_entries(0) {}
   inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid, uint32_t size,
                            dlog::log_record::logrec_type type, const varstr *str) {
-    if (num_entries >= kMaxEntries_)
-      printf("beyond\n");
+    if (num_entries >= kMaxEntries_) printf("beyond\n");
     ALWAYS_ASSERT(num_entries < kMaxEntries_);
     if (is_ddl) {
       CRITICAL_SECTION(cs, lock);
@@ -131,8 +131,8 @@ protected:
   void uninitialize();
 
   inline void ensure_active() {
-    volatile_write(xc->state, TXN::TXN_ACTIVE);
-    ASSERT(state() == TXN::TXN_ACTIVE);
+    // volatile_write(xc->state, TXN::TXN_ACTIVE);
+    // ASSERT(state() == TXN::TXN_ACTIVE);
   }
 
   rc_t commit();
@@ -150,10 +150,11 @@ protected:
 #endif
 
 #ifdef COPYDDL
-#if !defined(LAZYDDL)
+#if !defined(LAZYDDL) && !defined(DCOPYDDL)
   std::vector<ermia::thread::Thread *> changed_data_capture();
   void join_changed_data_capture_threads(
       std::vector<ermia::thread::Thread *> cdc_workers);
+  inline void set_ddl_running_1(bool dr1) { ddl_running_1 = dr1; } 
 #endif
   bool DMLConsistencyHandler();
 #endif
@@ -184,7 +185,7 @@ public:
   inline void add_to_write_set(bool is_ddl, fat_ptr *entry, FID fid, OID oid, uint64_t size, dlog::log_record::logrec_type type, const varstr *str) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < is_ddl && write_set.size(); ++i) {
-      auto &w = write_set.entries[i];
+      auto &w = write_set.entries_[i];
       ASSERT(w.entry);
       ASSERT(w.entry != entry);
     }

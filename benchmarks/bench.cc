@@ -59,7 +59,7 @@ uint32_t bench_worker::fetch_workload() {
         ddling = true;
 #endif
 #elif defined(COPYDDL)
-        if (ddl_num_local != 1)
+        if (ddl_num_local != 2)
           continue;
 #if !defined(LAZYDDL)
         ddl_worker_id = worker_id;
@@ -69,7 +69,7 @@ uint32_t bench_worker::fetch_workload() {
         if (ddl_num_local != 1)
           continue;
 #else
-        if (ddl_num_local != 20)
+        if (ddl_num_local != 2)
           continue;
 #endif
       }

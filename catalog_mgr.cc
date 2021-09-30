@@ -13,17 +13,25 @@ void schematable_loader::load() {
   struct Schema_record order_line_schema;
   order_line_schema.index = ermia::Catalog::GetTable("order_line")->GetPrimaryIndex();
   order_line_schema.td = ermia::Catalog::GetTable("order_line");
+  order_line_schema.state = 0;
 #ifdef LAZYDDL
   order_line_schema.old_index = nullptr;
   order_line_schema.old_td = nullptr;
+#elif DCOPYDDL
+  order_line_schema.old_td = nullptr;
+  order_line_schema.old_v = -1;
 #endif
 
   struct Schema_record oorder_schema;
   oorder_schema.index = ermia::Catalog::GetTable("oorder")->GetPrimaryIndex();
   oorder_schema.td = ermia::Catalog::GetTable("oorder");
+  oorder_schema.state = 0;
 #ifdef LAZYDDL
   oorder_schema.old_index = nullptr;
   oorder_schema.old_td = nullptr;
+#elif DCOPYDDL
+  oorder_schema.old_td = nullptr;
+  oorder_schema.old_v = -1;
 #endif
 
   char str3[sizeof(Schema_record)], str4[sizeof(Schema_record)];
@@ -65,9 +73,13 @@ void microbenchmark_schematable_loader::load() {
   usertable_schema.index =
       ermia::Catalog::GetTable("USERTABLE")->GetPrimaryIndex();
   usertable_schema.td = ermia::Catalog::GetTable("USERTABLE");
+  usertable_schema.state = 0;
 #ifdef LAZYDDL
   usertable_schema.old_index = nullptr;
   usertable_schema.old_td = nullptr;
+#elif DCOPYDDL
+  usertable_schema.old_td = nullptr;
+  usertable_schema.old_v = -1;
 #endif
 
   char str2[sizeof(Schema_record)];

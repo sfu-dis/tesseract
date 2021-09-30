@@ -50,6 +50,7 @@ void tls_committer::initialize(uint32_t id) {
 }
 
 void tls_committer::reset(bool set_zero) {
+  _commit_queue->~commit_queue();
   _commit_queue = new commit_queue(commit_id);
   if (set_zero) {
     printf("%u set all 0\n", commit_id);

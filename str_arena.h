@@ -22,6 +22,10 @@ public:
     reset();
   }
 
+  ~str_arena() {
+    free(str);
+  }
+
   // non-copyable/non-movable for the time being
   str_arena(str_arena &&) = delete;
   str_arena(const str_arena &) = delete;
@@ -36,7 +40,6 @@ public:
     uint64_t off = n;
     n += align_up(size + sizeof(varstr));
     if (n >= config::arena_size_mb * config::MB) {
-      // printf("id: %u, arena beyond\n", thread::MyId());
       return nullptr;
     }
     ASSERT(n < config::arena_size_mb * config::MB);
@@ -62,8 +65,6 @@ public:
     return (const char *)px >= str and
            (uint64_t) px->data() + px->size() <= (uint64_t)str + n;
   }
-
-  inline char *get_str() { return str; }
 
 private:
   char *str;

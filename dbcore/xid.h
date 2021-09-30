@@ -15,6 +15,7 @@ namespace TXN {
 
 enum txn_state {
   TXN_ACTIVE,
+  TXN_DDL,
   TXN_COMMITTING,
   TXN_CMMTD,
   TXN_ABRTD,

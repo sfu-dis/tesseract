@@ -59,7 +59,7 @@ public:
   virtual PROMISE(bool)
       changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn,
                            uint64_t *cdc_offset, uint32_t begin_log,
-                           uint32_t end_log) = 0;
+                           uint32_t end_log, str_arena *arena) = 0;
 #endif
 
   // Get a record with a key of length keylen. The underlying DB does not manage

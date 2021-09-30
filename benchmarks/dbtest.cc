@@ -89,6 +89,10 @@ DEFINE_uint64(group_commit_size_kb, 4,
               "Group commit flush size interval in KB.");
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
 
+// DDL & CDC settings
+DEFINE_bool(cdc_physical_workers_only, true, "Whether to use physical workers for CDC");
+DEFINE_uint64(ddl_write_set_length, 50000000, "Length of DDL transaction");
+
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
   std::istringstream iss(s);
@@ -115,12 +119,18 @@ int main(int argc, char **argv) {
   ermia::config::enable_perf = FLAGS_enable_perf;
   ermia::config::perf_record_event = FLAGS_perf_record_event;
   ermia::config::physical_workers_only = FLAGS_physical_workers_only;
+  ermia::config::cdc_physical_workers_only = FLAGS_cdc_physical_workers_only;
+  ermia::config::ddl_write_set_length = FLAGS_ddl_write_set_length;
   if (ermia::config::physical_workers_only)
-    /*#if defined(COPYDDL) && !defined(LAZYDDL)
-        ermia::config::threads = 2 * FLAGS_threads - 1;
-    #else*/
+#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+    if (ermia::config::cdc_physical_workers_only) {
+      ermia::config::threads = 2 * FLAGS_threads - 1;
+    } else {
+      ermia::config::threads = FLAGS_threads;
+    }
+#else
     ermia::config::threads = FLAGS_threads;
-  //#endif
+#endif
   else
     ermia::config::threads = (FLAGS_threads + 1) / 2;
   ermia::config::index_probe_only = FLAGS_index_probe_only;
