@@ -63,7 +63,6 @@ public:
 
   inline rc_t Commit(transaction *t) {
     rc_t rc = t->commit();
-    t->uninitialize();
     return rc;
   }
 
