@@ -167,6 +167,7 @@ rc_t transaction::commit() {
   // Enqueue to pipelined commit queue, if enabled
   if (ret._val == RC_TRUE && log && ermia::config::group_commit) {
     log->enqueue_committed_xct(xc->end, timer.get_start());
+    uninitialize();
   }
 
   return ret;
@@ -185,7 +186,7 @@ rc_t transaction::si_commit() {
 
   ASSERT(log);
   // Precommit: obtain a CSN
-  xc->end = dlog::current_csn.fetch_add(1);  
+  xc->end = write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;  
 
   dlog::log_block *lb = nullptr;
   dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
