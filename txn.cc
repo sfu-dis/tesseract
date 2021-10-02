@@ -165,8 +165,11 @@ rc_t transaction::commit() {
 #endif
 
   // Enqueue to pipelined commit queue, if enabled
-  if (ret._val == RC_TRUE && log && ermia::config::group_commit) {
-    log->enqueue_committed_xct(end, timer.get_start());
+  if (ret._val == RC_TRUE) {
+    uninitialize();
+    if (log && ermia::config::group_commit) {
+      log->enqueue_committed_xct(end, timer.get_start());
+    }
   }
 
   return ret;
@@ -235,8 +238,6 @@ rc_t transaction::si_commit() {
   // This is when (committed) tuple data are made visible to readers
   volatile_write(xc->state, TXN::TXN_CMMTD);
   
-  // Uninitialize
-  uninitialize();
   return rc_t{RC_TRUE};
 }
 #endif
