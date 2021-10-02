@@ -166,8 +166,11 @@ rc_t transaction::commit() {
 
   // Enqueue to pipelined commit queue, if enabled
   if (ret._val == RC_TRUE) {
+    // Keep end CSN before xc is recycled by uninitialize()
+    auto end = xc->end;
     uninitialize();
     if (log && ermia::config::group_commit) {
+      end = !end || write_set.size() ? end : end - 1;
       log->enqueue_committed_xct(end, timer.get_start());
     }
   }
@@ -189,7 +192,6 @@ rc_t transaction::si_commit() {
   ASSERT(log);
   // Precommit: obtain a CSN
   xc->end = write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;  
-  end = xc->end;
 
   dlog::log_block *lb = nullptr;
   dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
