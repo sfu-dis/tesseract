@@ -166,8 +166,7 @@ rc_t transaction::commit() {
 
   // Enqueue to pipelined commit queue, if enabled
   if (ret._val == RC_TRUE && log && ermia::config::pcommit) {
-    log->enqueue_committed_xct(xc->end);
-    uninitialize();
+    log->enqueue_committed_xct(end);
   }
 
   return ret;
@@ -187,6 +186,7 @@ rc_t transaction::si_commit() {
   ASSERT(log);
   // Precommit: obtain a CSN
   xc->end = write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;  
+  end = xc->end;
 
   dlog::log_block *lb = nullptr;
   dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
@@ -234,6 +234,9 @@ rc_t transaction::si_commit() {
   // otherwise readers will see inconsistent data!
   // This is when (committed) tuple data are made visible to readers
   volatile_write(xc->state, TXN::TXN_CMMTD);
+  
+  // Uninitialize
+  uninitialize();
   return rc_t{RC_TRUE};
 }
 #endif
