@@ -4,6 +4,7 @@
 #include "dlog.h"
 #include "sm-common.h"
 #include "sm-config.h"
+#include "../engine.h"
 #include "../macros.h"
 
 // io_uring code based off of examples from https://unixism.net/loti/tutorial/index.html
@@ -16,36 +17,61 @@ namespace dlog {
 #define SEGMENT_FILE_NAME_FMT "tlog-%08x-%08x"
 #define SEGMENT_FILE_NAME_BUFSZ sizeof("tlog-01234567-01234567")
 
-tls_log *tlogs[config::MAX_THREADS];
+std::vector<tls_log *> tlogs;
 
 std::atomic<uint64_t> current_csn(0);
 
 std::mutex tls_log_lock;
 
+std::thread *pcommit_thread = nullptr;
+std::condition_variable pcommit_daemon_cond;
+std::mutex pcommit_daemon_lock;
+std::atomic<bool>pcommit_daemon_has_work(false);
+
 void flush_all() {
   // Flush rest blocks
-  for (uint i = 0; i < config::MAX_THREADS; i++) {
-    tls_log *tlog = tlogs[i];
-    if (tlog) {
-      tlog->last_flush();
+  for (auto &tlog : tlogs) {
+    tlog->last_flush();
+  }
+}
+
+void dequeue_committed_xcts() {
+  std::lock_guard<std::mutex> guard(ermia::tlog_lock);
+  for (auto &tlog : tlogs) {
+    tlog->dequeue_committed_xcts();
+  }
+}
+
+void wakeup_commit_daemon() {
+  pcommit_daemon_lock.lock();
+  pcommit_daemon_has_work = true;
+  pcommit_daemon_lock.unlock();
+  pcommit_daemon_cond.notify_all();
+}
+
+void commit_daemon() {
+  auto timeout = std::chrono::milliseconds(ermia::config::pcommit_timeout_ms);
+  while (!ermia::config::IsShutdown()) {
+    if (pcommit_daemon_has_work) {
+      dequeue_committed_xcts();
+    } else {
+      std::unique_lock<std::mutex> lock(pcommit_daemon_lock);
+      pcommit_daemon_cond.wait_for(lock, timeout);
+      pcommit_daemon_has_work = false;
     }
   }
+}
 
-  // Dequeue rest txns
-  for (uint i = 0; i < config::MAX_THREADS; i++) {
-    tls_log *tlog = tlogs[i];
-    if (tlog) {
-      tlog->wrap_dequeue_committed_xcts(true);
-    }
+void initialize() {
+  if (ermia::config::pcommit_thread) {
+    pcommit_thread = new std::thread(commit_daemon);
   }
+}
 
-  // Reset tls durable csns to be 0
-  for (uint i = 0; i < config::MAX_THREADS; i++) {
-    tls_log *tlog = tlogs[i];
-    if (tlog) {
-      tlog->reset_committer(true);
-      break;
-    }
+void uninitialize() {
+  if (ermia::config::pcommit_thread) {
+    pcommit_thread->join();
+    delete pcommit_thread;
   }
 }
 
@@ -99,8 +125,7 @@ void tls_log::enqueue_flush() {
 
   if (logbuf_offset) {
     issue_flush(active_logbuf, logbuf_offset);
-    active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
-    logbuf_offset = 0;
+    switch_log_buffers();
   }
 }
 
@@ -113,8 +138,7 @@ void tls_log::last_flush() {
 
   if (logbuf_offset) {
     issue_flush(active_logbuf, logbuf_offset);
-    active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
-    logbuf_offset = 0;
+    switch_log_buffers();
     poll_flush();
     flushing = false;
   }
@@ -171,7 +195,11 @@ void tls_log::poll_flush() {
   tcommitter.set_tls_durable_csn(last_tls_durable_csn);
   ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == last_tls_durable_csn);
 
-  wrap_dequeue_committed_xcts(false);
+  if (ermia::config::pcommit_thread) {
+    dlog::wakeup_commit_daemon();
+  } else {
+    dequeue_committed_xcts();
+  }
 }
 
 void tls_log::create_segment() { 
@@ -222,8 +250,7 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
   if (alloc_size + logbuf_offset > logbuf_size || create_new_segment) {
     if (logbuf_offset) {
       issue_flush(active_logbuf, logbuf_offset);
-      active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
-      logbuf_offset = 0;
+      switch_log_buffers();
     }
 
     if (create_new_segment) {
@@ -260,45 +287,37 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
 void tls_log::commit_log_block(log_block *block) {
 }
 
-void tls_log::enqueue_committed_xct(uint64_t csn, uint64_t start_time) {
-  if (config::null_log_device) {
-    return;
-  }
-
+void tls_log::enqueue_committed_xct(uint64_t csn) {
   bool flush = false;
   bool insert = true;
   uint count = 0;
 retry :
   if (flush) {
-    for (uint i = 0; i < config::MAX_THREADS; i++) {
+    for (uint i = 0; i < tlogs.size(); ++i) {
       tls_log *tlog = tlogs[i];
       if (tlog &&  volatile_read(pcommit::_tls_durable_csn[i])) {
         tlog->enqueue_flush();
       }
     }
-    wrap_dequeue_committed_xcts(false);
+
+    if (ermia::config::pcommit_thread) {
+      dlog::wakeup_commit_daemon();
+    } else {
+      dequeue_committed_xcts();
+    }
+
     flush = false;
   }
-  tcommitter.enqueue_committed_xct(csn, start_time, &flush, &insert);
+  tcommitter.enqueue_committed_xct(csn, &flush, &insert);
   if (count >= 10) {
     tcommitter.extend_queue();
-    tcommitter.enqueue_committed_xct(csn, start_time, &flush, &insert);
+    tcommitter.enqueue_committed_xct(csn, &flush, &insert);
     count = 0;
   }
   if (flush) {
     count++;
     goto retry;
   }
-}
-
-void tls_log::wrap_dequeue_committed_xcts(bool is_last) {  
-  // get the lowest tls durable csn
-  uint64_t lowest_tls_durable_csn = tcommitter.get_lowest_tls_durable_csn();
-
-  // dequeue some committed txns
-  util::timer t;
-  tcommitter.dequeue_committed_xcts(lowest_tls_durable_csn, t.get_start());
-  ASSERT(!is_last || tcommitter.get_queue_size() == 0);
 }
 
 segment::segment(int dfd, const char *segname) : size(0), expected_size(0) {

@@ -176,7 +176,6 @@ public:
   uint32_t log_size;
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
-  util::timer timer;
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t read_set;

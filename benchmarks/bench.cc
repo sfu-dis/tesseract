@@ -51,7 +51,7 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
   if (!ret.IsAbort()) {
     ++ntxn_commits;
     std::get<0>(txn_counts[workload_idx])++;
-    if (!ermia::config::group_commit) {
+    if (!ermia::config::pcommit) {
       latency_numer_us += t.lap();
     }
     backoff_shifts >>= 1;
@@ -105,7 +105,6 @@ void bench_worker::MyWork(char *) {
   if (is_worker) {
     // Reset the tls committer
     tlog = ermia::GetLog();
-    tlog->reset_committer(false);
     workload = get_workload();
     txn_counts.resize(workload.size());
     barrier_a->count_down();
@@ -183,8 +182,14 @@ void bench_runner::run() {
   ALWAYS_ASSERT(ermia::MM::safesnap_lsn);
 
   // Persist the database
-  if (ermia::config::group_commit) {
+  if (ermia::config::pcommit) {
     ermia::dlog::flush_all();
+    ermia::dlog::dequeue_committed_xcts();
+    // Sanity check to make sure all transactions are fully committed
+
+    for (auto &tlog : ermia::dlog::tlogs) {
+      LOG_IF(FATAL, tlog->get_commit_queue_size() > 0);
+    }
   }
 
   // if (ermia::config::enable_chkpt) {
@@ -363,10 +368,10 @@ void bench_runner::start_measurement() {
     n_rw_aborts += workers[i]->get_ntxn_rw_aborts();
     n_phantom_aborts += workers[i]->get_ntxn_phantom_aborts();
     n_query_commits += workers[i]->get_ntxn_query_commits();
-    if (!ermia::config::group_commit) {
-      latency_numer_us += workers[i]->get_latency_numer_us();
-    } else {
+    if (ermia::config::pcommit) {
       latency_numer_us += workers[i]->get_log()->get_latency();
+    } else {
+      latency_numer_us += workers[i]->get_latency_numer_us();
     }
   }
 

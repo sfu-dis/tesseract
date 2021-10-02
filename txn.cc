@@ -63,7 +63,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
 #else
   // Give a log regardless - with pipelined commit, read-only tx needs
   // to go through the queue as well
-  if (ermia::config::group_commit || !(flags & TXN_FLAG_READ_ONLY)) {
+  if (ermia::config::pcommit || !(flags & TXN_FLAG_READ_ONLY)) {
     log = GetLog();
   }
   xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
@@ -169,9 +169,9 @@ rc_t transaction::commit() {
     // Keep end CSN before xc is recycled by uninitialize()
     auto end = xc->end;
     uninitialize();
-    if (log && ermia::config::group_commit) {
+    if (log && ermia::config::pcommit) {
       end = !end || write_set.size() ? end : end - 1;
-      log->enqueue_committed_xct(end, timer.get_start());
+      log->enqueue_committed_xct(end);
     }
   }
 
