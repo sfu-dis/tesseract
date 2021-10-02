@@ -177,7 +177,6 @@ public:
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
   write_set_t write_set;
-  uint64_t end;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t read_set;
 #endif
