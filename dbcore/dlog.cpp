@@ -255,6 +255,7 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
 
     if (create_new_segment) {
       create_segment();
+      current_segment()->start_offset = current_lsn;
     }
   }
 
@@ -264,7 +265,6 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
     *out_cur_lsn = current_lsn;
   }
   current_lsn += alloc_size;
-  current_segment()->start_offset = current_lsn;
 
   if (out_seg_num) {
     *out_seg_num = segments.size() - 1;
