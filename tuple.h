@@ -148,9 +148,20 @@ struct dbtuple {
   }
 
  public:
-  inline rc_t DoRead(varstr *out_v) const {
+  inline rc_t DoRead(varstr *out_v) {
     out_v->p = get_value_start();
     out_v->l = size;
+
+    // In the config::always_load scenario, the status of the object is not set to in memory
+    // until the payload is copied to out_v here.
+    if (config::always_load) { 
+      if (!ermia::config::index_probe_only) {
+        memcpy(out_v + sizeof(ermia::varstr), get_value_start(), size);
+      }
+      Object *myobj = GetObject();
+      myobj->SetStatus(1); // kStatusMemory = 1
+    }
+
     return size > 0 ? rc_t{RC_TRUE} : rc_t{RC_FALSE};
   }
 };

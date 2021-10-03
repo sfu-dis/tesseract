@@ -205,6 +205,7 @@ void bench_runner::run() {
   ermia::volatile_write(ermia::config::state, ermia::config::kStateForwardProcessing);
 
   if (ermia::config::worker_threads) {
+    ermia::config::kStateRunning = true;
     start_measurement();
   }
 }
