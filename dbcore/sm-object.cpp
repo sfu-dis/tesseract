@@ -50,7 +50,7 @@ try_load:
   uint32_t final_status = kStatusMemory;
 
   // Now we can load it from the durable log
-  ALWAYS_ASSERT(pdest_.offset());
+  ALWAYS_ASSERT(pdest_._ptr);
   uint16_t where = pdest_.asi_type();
   ALWAYS_ASSERT(where == fat_ptr::ASI_LOG || where == fat_ptr::ASI_CHK);
 
