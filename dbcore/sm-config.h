@@ -49,11 +49,12 @@ extern int backoff_aborted_transactions;
 extern int enable_gc;
 extern bool null_log_device;
 extern bool truncate_at_bench_start;
-extern bool group_commit;
-extern uint32_t group_commit_timeout;
-extern uint32_t group_commit_queue_length;  // how much to reserve
-extern uint64_t group_commit_size_kb;
-extern uint64_t group_commit_bytes;
+extern bool pcommit;
+extern uint32_t pcommit_timeout_ms;
+extern uint32_t pcommit_queue_length; // how much to reserve
+extern uint64_t pcommit_size_kb;
+extern uint64_t pcommit_bytes;
+extern bool pcommit_thread;
 
 extern uint32_t benchmark_seconds;
 

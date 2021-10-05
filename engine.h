@@ -24,6 +24,8 @@ using std::suspend_never;
 
 namespace ermia {
 
+extern std::mutex tlog_lock;
+
 dlog::tls_log *GetLog();
 
 class Table;
@@ -42,7 +44,7 @@ private:
 
 public:
   Engine();
-  ~Engine() {}
+  ~Engine();
 
   // All supported index types
   static const uint16_t kIndexConcurrentMasstree = 0x1;

@@ -42,11 +42,12 @@ bool enable_perf = false;
 std::string perf_record_event("");
 uint64_t node_memory_gb = 12;
 int recovery_warm_up_policy = WARM_UP_NONE;
-bool group_commit = false;
-uint32_t group_commit_queue_length = 25000;
-uint32_t group_commit_timeout = 5;
-uint64_t group_commit_size_kb = 4096;
-uint64_t group_commit_bytes = 4096 * 1024;
+bool pcommit = false;
+uint32_t pcommit_queue_length = 25000;
+uint32_t pcommit_timeout_ms = 1000;
+uint64_t pcommit_size_kb = 4096;
+uint64_t pcommit_bytes = 4096 * 1024;
+bool pcommit_thread = false;
 bool log_key_for_update = false;
 bool enable_chkpt = 0;
 uint64_t chkpt_interval = 50;
@@ -82,7 +83,7 @@ void sanity_check() {
   LOG_IF(FATAL, tls_alloc && !threadpool) << "Cannot use TLS allocator without threadpool";
   //ALWAYS_ASSERT(recover_functor);
   ALWAYS_ASSERT(numa_nodes || !threadpool);
-  ALWAYS_ASSERT(not group_commit or group_commit_queue_length);
+  ALWAYS_ASSERT(!pcommit || pcommit_queue_length);
 }
 
 }  // namespace config

@@ -83,7 +83,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
 #else
   // Give a log regardless - with pipelined commit, read-only tx needs
   // to go through the queue as well
-  if (ermia::config::group_commit || !(flags & TXN_FLAG_READ_ONLY)) {
+  if (ermia::config::pcommit || !(flags & TXN_FLAG_READ_ONLY)) {
     log = GetLog();
   }
 
@@ -193,9 +193,14 @@ rc_t transaction::commit() {
 #endif
 
   // Enqueue to pipelined commit queue, if enabled
-  if (ret._val == RC_TRUE && log && ermia::config::group_commit) {
-    log->enqueue_committed_xct(xc->end, timer.get_start());
+  if (ret._val == RC_TRUE) {
+    // Keep end CSN before xc is recycled by uninitialize()
+    auto end = xc->end;
     uninitialize();
+    if (log && ermia::config::pcommit) {
+      end = !end || write_set.size() ? end : end - 1;
+      log->enqueue_committed_xct(end);
+    }
   }
 
   return ret;
@@ -230,7 +235,7 @@ rc_t transaction::si_commit() {
   }
 #endif
 
-  xc->end = dlog::current_csn.fetch_add(1);
+  xc->end = write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   if (is_ddl()) {

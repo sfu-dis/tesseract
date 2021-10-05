@@ -30,6 +30,18 @@ extern std::atomic<uint64_t> commit_csn;
 
 void flush_all();
 
+void dequeue_committed_xcts();
+
+// Commit daemon function - only useful when dedicated commit thread is enabled
+void commit_daemon();
+
+void wakeup_commit_daemon();
+
+void initialize();
+void uninitialize();
+
+extern std::thread *pcommit_thread;
+
 // A segment of the log, i.e., a file
 struct segment {
   // File descriptor for the underlying file
@@ -168,19 +180,25 @@ public:
   void commit_log_block(log_block *block);
 
   // Enqueue commit queue
-  void enqueue_committed_xct(uint64_t csn, uint64_t start_time);
+  void enqueue_committed_xct(uint64_t csn);
 
   // Dequeue commit queue
-  void wrap_dequeue_committed_xcts(bool is_last);
+  inline void dequeue_committed_xcts() { tcommitter.dequeue_committed_xcts(); }
+
+  inline uint32_t get_commit_queue_size() {
+    return tcommitter.get_queue_size();
+  }
 
   // Last flush
   void last_flush();
 
-  // CDC
-  void cdc(transaction *t, uint64_t begin_csn, uint64_t end_csn, std::vector<char *> bufs);
+  inline void switch_log_buffers() {
+    active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
+    logbuf_offset = 0;
+  }
 };
 
-extern tls_log *tlogs[config::MAX_THREADS];
+extern std::vector<tls_log *> tlogs;
 
 }  // namespace dlog
 

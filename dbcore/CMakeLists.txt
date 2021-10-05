@@ -8,7 +8,6 @@ endif()
 set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/burt-hash.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dlog.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/dlog-scan.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dynarray.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/epoch.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mcs_lock.cpp

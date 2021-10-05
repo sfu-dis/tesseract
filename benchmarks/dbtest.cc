@@ -81,12 +81,14 @@ DEFINE_bool(log_key_for_update, false,
 // buffer
 // when the following happens, whichever is earlier:
 // 1. queue is full; 2. the log buffer is half full; 3. after [timeout] seconds.
-DEFINE_bool(group_commit, true, "Whether to enable pipelined group commit.");
-DEFINE_uint64(group_commit_queue_length, 25000, "Group commit queue length");
-DEFINE_uint64(group_commit_timeout, 5,
-              "Group commit flush interval (in seconds).");
-DEFINE_uint64(group_commit_size_kb, 4,
-              "Group commit flush size interval in KB.");
+DEFINE_bool(pcommit, true, "Whether to enable pipelined commit.");
+DEFINE_uint64(pcommit_queue_length, 25000, "Pipelined commit queue length");
+DEFINE_uint64(pcommit_timeout_ms, 1000,
+              "Pipelined commit flush interval (in milliseconds).");
+DEFINE_uint64(pcommit_size_kb, 4,
+              "Pipelined commit flush size interval in KB.");
+DEFINE_bool(pcommit_thread, false,
+            "Whether to use a dedicated pipelined committer thread.");
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
 
 // DDL & CDC settings
@@ -176,11 +178,12 @@ int main(int argc, char **argv) {
   ermia::config::replay_threads = 0;
   ermia::config::worker_threads = FLAGS_threads;
 
-  ermia::config::group_commit = FLAGS_group_commit;
-  ermia::config::group_commit_queue_length = FLAGS_group_commit_queue_length;
-  ermia::config::group_commit_timeout = FLAGS_group_commit_timeout;
-  ermia::config::group_commit_size_kb = FLAGS_group_commit_size_kb;
-  ermia::config::group_commit_bytes = FLAGS_group_commit_size_kb * 1024;
+  ermia::config::pcommit = FLAGS_pcommit;
+  ermia::config::pcommit_queue_length = FLAGS_pcommit_queue_length;
+  ermia::config::pcommit_timeout_ms = FLAGS_pcommit_timeout_ms;
+  ermia::config::pcommit_size_kb = FLAGS_pcommit_size_kb;
+  ermia::config::pcommit_bytes = FLAGS_pcommit_size_kb * 1024;
+  ermia::config::pcommit_thread = FLAGS_pcommit_thread;
   ermia::config::enable_chkpt = FLAGS_enable_chkpt;
   ermia::config::chkpt_interval = FLAGS_chkpt_interval;
   ermia::config::parallel_loading = FLAGS_parallel_loading;
@@ -241,7 +244,8 @@ int main(int argc, char **argv) {
   std::cerr << "  coro-batch-size   : " << FLAGS_coro_batch_size << std::endl;
   std::cerr << "  scan-use-iterator : " << FLAGS_scan_with_iterator << std::endl;
   std::cerr << "  enable-perf       : " << ermia::config::enable_perf << std::endl;
-  std::cerr << "  group_commit      : " << ermia::config::group_commit
+  std::cerr << "  pipelined commit  : " << ermia::config::pcommit << std::endl;
+  std::cerr << "  dedicated pcommit thread: " << ermia::config::pcommit_thread
             << std::endl;
   std::cerr << "  index-probe-only  : " << FLAGS_index_probe_only << std::endl;
   std::cerr << "  log-buffer-mb     : " << ermia::config::log_buffer_mb << std::endl;
