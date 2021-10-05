@@ -16,6 +16,7 @@ namespace dlog {
 // Segment file name template: tlog-id-segnum
 #define SEGMENT_FILE_NAME_FMT "tlog-%08x-%08x"
 #define SEGMENT_FILE_NAME_BUFSZ sizeof("tlog-01234567-01234567")
+char segment_name_buf[SEGMENT_FILE_NAME_BUFSZ];
 
 std::vector<tls_log *> tlogs;
 
@@ -98,6 +99,8 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
   // Create a new segment
   create_segment();
   current_segment()->start_offset = current_lsn;
+
+  DLOG(INFO) << "Log " << id << ": new segment " << segments.size() - 1 << ", start lsn " << current_lsn;
 
   // Initialize io_uring
   int ret = io_uring_queue_init(16, &ring, 0);
@@ -203,11 +206,10 @@ void tls_log::poll_flush() {
 }
 
 void tls_log::create_segment() { 
-  char buf[SEGMENT_FILE_NAME_BUFSZ];
-  size_t n = snprintf(buf, sizeof(buf), SEGMENT_FILE_NAME_FMT, id, (unsigned int)segments.size());
+  size_t n = snprintf(segment_name_buf, sizeof(segment_name_buf), SEGMENT_FILE_NAME_FMT, id, (unsigned int)segments.size());
   DIR *logdir = opendir(dir);
   ALWAYS_ASSERT(logdir);
-  segments.emplace_back(dirfd(logdir), buf);
+  segments.emplace_back(dirfd(logdir), segment_name_buf);
 }
 
 /*
@@ -255,6 +257,7 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
 
     if (create_new_segment) {
       create_segment();
+      current_segment()->start_offset = current_lsn;
     }
   }
 
@@ -264,7 +267,6 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
     *out_cur_lsn = current_lsn;
   }
   current_lsn += alloc_size;
-  current_segment()->start_offset = current_lsn;
 
   if (out_seg_num) {
     *out_seg_num = segments.size() - 1;
@@ -280,6 +282,11 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
   }
 
   new (lb) log_block(payload_size);
+
+  // CSN must be made available here - after this the caller will start to
+  // use the block to populate individual log records into the block, and
+  // each log record needs to carry a CSN so that during recovery/read op
+  // the newly instantiated record can directly be filled out with its CSN
   lb->csn = block_csn;
   return lb;
 }

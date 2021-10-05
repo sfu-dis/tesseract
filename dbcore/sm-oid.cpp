@@ -424,7 +424,7 @@ void sm_oid_mgr::Checkpoint() {
   // Write the number of indexes
   // TODO(tzwang): handle dynamically created tables/indexes
   uint64_t chkpt_size = 0;
-  uint32_t num_idx = IndexDescriptor::NumIndexes();
+  uint32_t num_idx = TableDescriptor::NumIndexes();
   chkptmgr->write_buffer(&num_idx, sizeof(uint32_t));
   chkpt_size += sizeof(uint32_t);
 
@@ -433,8 +433,8 @@ void sm_oid_mgr::Checkpoint() {
   // 2nd indexes can refer to the FID of the corresponding primary.
   bool handling_2nd = false;
 iterate_index:
-  for (auto &fm : IndexDescriptor::name_map) {
-    IndexDescriptor *id = fm.second;
+  for (auto &fm : TableDescriptor::name_map) {
+    TableDescriptor *id = fm.second;
     if (!((id->IsPrimary() && !handling_2nd) || (!id->IsPrimary() && handling_2nd))) {
       continue;
     }
@@ -459,8 +459,8 @@ iterate_index:
   LOG(INFO) << "[Checkpoint] header size: " << chkpt_size;
 
   // Write keys and/or tuples for each index, primary first
-  for (auto &fm : IndexDescriptor::name_map) {
-    IndexDescriptor *id = fm.second;
+  for (auto &fm : TableDescriptor::name_map) {
+    TableDescriptor *id = fm.second;
     FID tuple_fid = id->GetTupleFid();
     // Find the high watermark of this file and dump its
     // backing store up to the size of the high watermark
@@ -573,7 +573,7 @@ void sm_oid_mgr::warm_up() {
     {
         util::scoped_timer t("data warm-up");
         // Go over each OID entry and ensure_tuple there
-        for (auto &fm : IndexDescriptor::fid_map) {
+        for (auto &fm : TableDescriptor::fid_map) {
             auto* id = fm.second;
             auto *alloc = oidmgr->get_allocator(id->GetTupleFid());
             OID himark = alloc->head.hiwater_mark;

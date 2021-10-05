@@ -6,6 +6,7 @@
 #include "dlog-defs.h"
 #include "epoch.h"
 #include "sm-common.h"
+#include "sm-config.h"
 #include "../varstr.h"
 #include "xid.h"
 
@@ -83,8 +84,14 @@ class Object {
     if (IsDeleted()) {
       return nullptr;
     }
-    if (!IsInMemory()) {
-      Pin();
+    if (!config::kStateRunning) {
+      if (!IsInMemory()) {
+        Pin();
+      }
+    } else {
+      if (config::always_load || !IsInMemory()) {
+        Pin();
+      }
     }
     return (dbtuple*)GetPayload();
   }

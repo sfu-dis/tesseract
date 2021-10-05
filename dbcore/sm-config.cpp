@@ -60,6 +60,8 @@ uint32_t threads = 0;
 bool index_probe_only = false;
 bool amac_version_chain = false;
 bool numa_spread = false;
+bool always_load = false;
+bool kStateRunning = false;
 
 void init() {
   ALWAYS_ASSERT(threads);

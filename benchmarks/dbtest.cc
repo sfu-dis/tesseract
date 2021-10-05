@@ -89,6 +89,8 @@ DEFINE_uint64(pcommit_size_kb, 4,
               "Pipelined commit flush size interval in KB.");
 DEFINE_bool(pcommit_thread, false, "Whether to use a dedicated pipelined committer thread.");
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
+DEFINE_bool(always_load, false, "Whether to load versions from logs.");
+DEFINE_bool(kStateRunning, false, "Whether the benchmark is in the running phase.");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -172,6 +174,8 @@ int main(int argc, char **argv) {
   ermia::config::chkpt_interval = FLAGS_chkpt_interval;
   ermia::config::parallel_loading = FLAGS_parallel_loading;
   ermia::config::enable_gc = FLAGS_enable_gc;
+  ermia::config::always_load = FLAGS_always_load;
+  ermia::config::kStateRunning = FLAGS_kStateRunning;
 
   if (FLAGS_recovery_warm_up == "none") {
     ermia::config::recovery_warm_up_policy = ermia::config::WARM_UP_NONE;
@@ -216,6 +220,7 @@ int main(int argc, char **argv) {
   std::cerr << "  phantom-protection: " << ermia::config::phantom_prot << std::endl;
 
   std::cerr << "Settings and properties" << std::endl;
+  std::cerr << "  always_load       : " << FLAGS_always_load << std::endl;
   std::cerr << "  amac-version-chain: " << FLAGS_amac_version_chain << std::endl;
   std::cerr << "  arena-size-mb     : " << FLAGS_arena_size_mb << std::endl;
   std::cerr << "  benchmark         : " << FLAGS_benchmark << std::endl;
