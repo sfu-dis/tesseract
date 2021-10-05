@@ -226,7 +226,7 @@ rc_t transaction::si_commit() {
 
     // This aligned_size should match what was calculated during
     // add_to_write_set, and the size_code calculated based on this aligned size
-    // will be part of the persistent address, which a read can directl use to
+    // will be part of the persistent address, which a read can directly use to
     // load the log record from the log (i.e., knowing how many bytes to read to
     // obtain the log record header + dbtuple header + record data).
     auto aligned_size = align_up(w.size + sizeof(dlog::log_record));
