@@ -25,7 +25,11 @@ extern bool is_loading;
 
 extern std::mutex tlog_lock;
 
+// Get "my" own log
 dlog::tls_log *GetLog();
+
+// Get a log with a specified log id
+dlog::tls_log *GetLog(uint32_t logid);
 
 class Table;
 

@@ -21,6 +21,8 @@ struct log_record {
   FID fid;
   OID oid;
 
+  uint64_t csn;
+
   char data[0];
 };
 
@@ -41,7 +43,8 @@ static uint32_t populate_log_record(log_record::logrec_type type,
   logrec->type = type;
   logrec->fid = fid;
   logrec->oid = oid;
-  memcpy(logrec->data, after_image, size);
+  logrec->csn = block->csn;
+  memcpy(&logrec->data[0], after_image, size);
 
   // Account for the occupied space
   block->payload_size += align_up(size + sizeof(log_record));

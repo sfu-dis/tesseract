@@ -60,27 +60,21 @@ try_load:
 
   size_t data_sz = decode_size_aligned(pdest_.size_code());
   if (where == fat_ptr::ASI_LOG) {
-    auto segnum = pdest_.log_segment();
-    ASSERT(segnum >= 0 && segnum <= NUM_LOG_SEGMENTS);
+    LSN lsn = LSN::from_ptr(pdest_);
+    auto *log = GetLog(lsn.logid());
 
-    auto *log = GetLog();
-    auto *segment = log->get_segment(segnum);
+    ASSERT(pdest_.log_segment() == lsn.segment());
+    ASSERT(lsn.segment() >= 0 && lsn.segment() <= NUM_LOG_SEGMENTS);
+    auto *segment = log->get_segment(lsn.segment());
     ASSERT(segment);
 
-    dlog::log_block *lb = (dlog::log_block *)malloc(data_sz);
-    uint64_t tlsn = LSN::from_ptr(pdest_).loffset();
-    // FIXME(khuang): tlsn is not correct.
-#if 0
-    uint64_t offset_in_seg = tlsn - segment->start_offset;
-#endif
-    uint64_t offset_in_seg = 0;
-    size_t m = pread(segment->fd, (char *)lb, data_sz, offset_in_seg);
-    
-    // FIXME(khuang): payload_size is not correct.
-    lb->payload_size = 16;
-    // Strip out the header
-    tuple->size = lb->payload_size;
-    memcpy(tuple->get_value_start(), lb->get_payload(), lb->payload_size);
+    dlog::log_record *logrec = (dlog::log_record *)malloc(data_sz);
+    uint64_t offset_in_seg = lsn.loffset() - segment->start_offset;
+    size_t m = pread(segment->fd, (char *)logrec, data_sz, offset_in_seg);
+    ALWAYS_ASSERT(m == data_sz);
+
+    // Copy the entire dbtuple including dbtuple header and data
+    memcpy(tuple, &logrec->data[0], sizeof(dbtuple) + ((dbtuple *)logrec->data)->size);
 
     // Could be a delete
     ASSERT(tuple->size < data_sz);
@@ -90,7 +84,7 @@ try_load:
     }
 
     // Set CSN
-    fat_ptr csn_ptr = GenerateCsnPtr(lb->csn);
+    fat_ptr csn_ptr = GenerateCsnPtr(logrec->csn);
     SetCSN(csn_ptr);
     ASSERT(GetCSN().asi_type() == fat_ptr::ASI_CSN);
   } else {
