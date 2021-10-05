@@ -182,8 +182,8 @@ void bench_runner::run() {
   ALWAYS_ASSERT(ermia::MM::safesnap_lsn);
 
   // Persist the database
+  ermia::dlog::flush_all();
   if (ermia::config::pcommit) {
-    ermia::dlog::flush_all();
     ermia::dlog::dequeue_committed_xcts();
     // Sanity check to make sure all transactions are fully committed
 
