@@ -38,6 +38,8 @@ extern uint32_t arena_size_mb;
 extern bool enable_perf;
 extern std::string perf_record_event;
 extern uint32_t replay_threads;
+extern bool always_load;
+extern bool kStateRunning;
 
 extern uint64_t node_memory_gb;
 extern bool phantom_prot;

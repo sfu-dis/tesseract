@@ -63,6 +63,8 @@ bool numa_spread = false;
 uint32_t cdc_threads = 0;
 bool cdc_physical_workers_only = true;
 uint64_t ddl_write_set_length = 50000000;
+bool always_load = false;
+bool kStateRunning = false;
 
 void init() {
   ALWAYS_ASSERT(threads);

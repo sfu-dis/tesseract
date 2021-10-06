@@ -32,3 +32,4 @@
 *.tdo
 build
 tags
+.vscode

@@ -10,35 +10,51 @@ namespace ermia {
 // to only data size (i.e., the size of the payload of dbtuple rounded up).
 // Returns a fat_ptr to the object created
 void Object::Pin() {
-  uint32_t status = volatile_read(status_);
-  if (status != kStatusStorage) {
-    if (status == kStatusLoading) {
+  // config::always_load is a scenario where we always dig out the payload from
+  // the durable log, even if the version is already in-memory.
+  if (config::always_load) {
+  try_load:
+    uint32_t val =
+        __sync_val_compare_and_swap(&status_, kStatusMemory, kStatusLoading);
+    if (val == kStatusLoading) {
+      // Serialize the concurrent readers such that they don't mess up with the
+      // same version.
       while (volatile_read(status_) != kStatusMemory) {
       }
+      goto try_load;
     }
-    ALWAYS_ASSERT(volatile_read(status_) == kStatusMemory ||
-                  volatile_read(status_) == kStatusDeleted);
-    return;
-  }
-
-  // Try to 'lock' the status
-  // TODO(tzwang): have the thread do something else while waiting?
-  uint32_t val =
-      __sync_val_compare_and_swap(&status_, kStatusStorage, kStatusLoading);
-  if (val == kStatusMemory) {
-    return;
-  } else if (val == kStatusLoading) {
-    while (volatile_read(status_) != kStatusMemory) {}
-    return;
   } else {
-    ASSERT(val == kStatusStorage);
-    ASSERT(volatile_read(status_) == kStatusLoading);
+    uint32_t status = volatile_read(status_);
+    if (status != kStatusStorage) {
+      if (status == kStatusLoading) {
+        while (volatile_read(status_) != kStatusMemory) {
+        }
+      }
+      ALWAYS_ASSERT(volatile_read(status_) == kStatusMemory ||
+                    volatile_read(status_) == kStatusDeleted);
+      return;
+    }
+
+    // Try to 'lock' the status
+    // TODO(tzwang): have the thread do something else while waiting?
+    uint32_t val =
+        __sync_val_compare_and_swap(&status_, kStatusStorage, kStatusLoading);
+    if (val == kStatusMemory) {
+      return;
+    } else if (val == kStatusLoading) {
+      while (volatile_read(status_) != kStatusMemory) {
+      }
+      return;
+    } else {
+      ASSERT(val == kStatusStorage);
+      ASSERT(volatile_read(status_) == kStatusLoading);
+    }
   }
 
   uint32_t final_status = kStatusMemory;
 
   // Now we can load it from the durable log
-  ALWAYS_ASSERT(pdest_.offset());
+  ALWAYS_ASSERT(pdest_._ptr);
   uint16_t where = pdest_.asi_type();
   ALWAYS_ASSERT(where == fat_ptr::ASI_LOG || where == fat_ptr::ASI_CHK);
 
@@ -48,21 +64,22 @@ void Object::Pin() {
 
   size_t data_sz = decode_size_aligned(pdest_.size_code());
   if (where == fat_ptr::ASI_LOG) {
-    auto segnum = pdest_.log_segment();
-    ASSERT(segnum >= 0 && segnum <= NUM_LOG_SEGMENTS);
+    LSN lsn = LSN::from_ptr(pdest_);
+    auto *log = GetLog(lsn.logid());
 
-    auto *log = GetLog();
-    auto *segment = log->get_segment(segnum);
+    ASSERT(pdest_.log_segment() == lsn.segment());
+    ASSERT(lsn.segment() >= 0 && lsn.segment() <= NUM_LOG_SEGMENTS);
+    auto *segment = log->get_segment(lsn.segment());
     ASSERT(segment);
 
-    dlog::log_block *lb = (dlog::log_block *)malloc(data_sz);
-    uint64_t tlsn = LSN::from_ptr(pdest_).loffset();
-    uint64_t offset_in_seg = tlsn - segment->start_offset;
-    size_t m = os_pread(segment->fd, (char *)lb, data_sz, offset_in_seg);
+    dlog::log_record *logrec = (dlog::log_record *)malloc(data_sz);
+    uint64_t offset_in_seg = lsn.loffset() - segment->start_offset;
+    size_t m = pread(segment->fd, (char *)logrec, data_sz, offset_in_seg);
+    ALWAYS_ASSERT(m == data_sz);
 
-    // Strip out the header
-    tuple->size = lb->payload_size;
-    memcpy(tuple->get_value_start(), lb->get_payload(), lb->payload_size);
+    // Copy the entire dbtuple including dbtuple header and data
+    memcpy(tuple, &logrec->data[0],
+           sizeof(dbtuple) + ((dbtuple *)logrec->data)->size);
 
     // Could be a delete
     ASSERT(tuple->size < data_sz);
@@ -72,7 +89,7 @@ void Object::Pin() {
     }
 
     // Set CSN
-    fat_ptr csn_ptr = GenerateCsnPtr(lb->csn);
+    fat_ptr csn_ptr = GenerateCsnPtr(logrec->csn);
     SetCSN(csn_ptr);
     ASSERT(GetCSN().asi_type() == fat_ptr::ASI_CSN);
   } else {
@@ -92,11 +109,18 @@ void Object::Pin() {
     next_pdest_ = NULL_PTR;
     */
   }
-  ASSERT(csn_.asi_type() == fat_ptr::ASI_LOG);
-  ALWAYS_ASSERT(pdest_.offset());
-  ALWAYS_ASSERT(csn_.offset());
+  // FIXME(khuang): asi_type() is not ASI_LOG.
+#if 0
+  //ASSERT(csn_.asi_type() == fat_ptr::ASI_LOG);
+  //ALWAYS_ASSERT(pdest_.offset());
+  //ALWAYS_ASSERT(csn_.offset());
+#endif
   ASSERT(volatile_read(status_) == kStatusLoading);
-  SetStatus(final_status);
+  // In the always_load scenario, the final status would not be set
+  // until the payload is copied to the local buffer in the benchmark drivers.
+  if (!config::always_load) {
+    SetStatus(final_status);
+  }
 }
 
 fat_ptr Object::Create(const varstr *tuple_value, epoch_num epoch) {

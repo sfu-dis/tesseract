@@ -338,12 +338,10 @@ rc_t transaction::si_commit() {
    
     uint64_t log_str_size = sizeof(varstr) + w.str->size();
     if (w.type == dlog::log_record::logrec_type::OID_KEY) {
-      // if (is_dml()) printf("id %u oid key commit starts\n", thread::MyId());
       if (lb->payload_size + align_up(log_str_size + sizeof(dlog::log_record)) > lb->capacity) {
         lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
       }
       dlog::log_oid_key(lb, w.fid, w.oid, (char *)w.str, log_str_size);
-      // if (is_dml()) printf("id %u oid key commit ends\n", thread::MyId());
       ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
       continue;
     }
@@ -369,8 +367,21 @@ rc_t transaction::si_commit() {
     ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
 
     // Set persistent address
+
+    // This aligned_size should match what was calculated during
+    // add_to_write_set, and the size_code calculated based on this aligned size
+    // will be part of the persistent address, which a read can directly use to
+    // load the log record from the log (i.e., knowing how many bytes to read to
+    // obtain the log record header + dbtuple header + record data).
     auto tuple_size_code = encode_size_aligned(w.size);
-    fat_ptr tuple_pdest = LSN::make(log->get_id(), lb_lsn + tuple_off, segnum, tuple_size_code).to_ptr();
+
+    // lb_lsn points to the start of the log block which has a header, followed
+    // by individual log records, so the log record's direct address would be
+    // lb_lsn + sizeof(log_block) + off
+    fat_ptr tuple_pdest =
+        LSN::make(log->get_id(), lb_lsn + sizeof(dlog::log_block) + tuple_off,
+                  segnum, tuple_size_code)
+            .to_ptr();
     object->SetPersistentAddress(tuple_pdest);
     ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
 

@@ -22,7 +22,7 @@ CoroBase inherits the shared-everything architecture, synchronization and concur
 
 Ubuntu
 ```
-apt-get install -y cmake clang-8 libc++-8-dev libc++abi-8-dev
+apt-get install -y cmake gcc-10 g++-10 clang-8 libc++-8-dev libc++abi-8-dev
 apt-get install -y libnuma-dev libibverbs-dev libgflags-dev libgoogle-glog-dev
 ```
 

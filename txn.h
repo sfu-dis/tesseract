@@ -199,6 +199,9 @@ public:
     }
     uint64_t str_size = align_up(str->size() + sizeof(varstr) + sizeof(dlog::log_record));
     log_size += logrec_size + str_size;
+    // Each write set entry still just records the size of the actual "data" to
+    // be inserted to the log excluding dlog::log_record, which will be
+    // prepended by log_insert/update etc.
     write_set.emplace_back(is_ddl, entry, fid, oid, logrec_size, type, str);
   }
 

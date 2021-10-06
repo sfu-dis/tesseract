@@ -122,8 +122,9 @@ public:
       ALWAYS_ASSERT(rc._val == RC_TRUE);
       ASSERT(ermia::config::index_probe_only || *(char*)v.data() == 'a');
 #endif
-      if (!ermia::config::index_probe_only)
+      if (!ermia::config::always_load && !ermia::config::index_probe_only) {
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
+      }
     }
 
 #ifndef CORO_BATCH_COMMIT
@@ -157,7 +158,10 @@ public:
 #endif
 
       ASSERT(v.size() == sizeof(ycsb_kv::value));
-      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
+      if (!ermia::config::always_load) {
+        memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)v.data(),
+               v.size());
+      }
 
       // Re-initialize the value structure to use my own allocated memory -
       // DoTupleRead will change v.p to the object's data area to avoid memory
@@ -185,7 +189,10 @@ public:
 #endif
 
       ASSERT(v.size() == sizeof(ycsb_kv::value));
-      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
+      if (!ermia::config::always_load) {
+        memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)v.data(),
+               v.size());
+      }
     }
 #ifndef CORO_BATCH_COMMIT
     TryCatchCoro(db->Commit(txn));

@@ -12,6 +12,14 @@ TableDescriptor *ddl_td = NULL;
 thread_local dlog::tls_log tlog;
 std::mutex tlog_lock;
 
+dlog::tls_log *GetLog(uint32_t logid) {
+  // XXX(tzwang): this lock may become a problem; should be safe to not use it -
+  // the set of tlogs are stable before the system starts to run, i.e., only
+  // needed when creating logs
+  std::lock_guard<std::mutex> guard(tlog_lock);
+  return dlog::tlogs[logid];
+}
+
 dlog::tls_log *GetLog() {
   thread_local bool initialized = false;
   if (!initialized) {
