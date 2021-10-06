@@ -12,11 +12,8 @@ volatile bool ddl_running_2 = false;
 std::atomic<uint64_t> ddl_end(0);
 */
 rc_t tpcc_worker::txn_new_order() {
-  // printf("new_order begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
-  // db->WriteLock("order_line");
-  // db->WriteLock("oorder");
 #endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, 10);
@@ -74,26 +71,17 @@ rc_t tpcc_worker::txn_new_order() {
 
   schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
   schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   struct Schema_record order_line_schema;
   memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
-  // if (order_line_schema.v != 0) printf("new_order begin\n");
-  /*#ifdef DCOPYDDL
-    if (order_line_schema.state != 1 && ermia::volatile_read(ddl_running_1)) {
-      TryCatch({RC_ABORT_USER});
-    }
-  #endif*/
 
   struct Schema_record oorder_schema;
   memcpy(&oorder_schema, (char *)v2.data(), sizeof(oorder_schema));
-  // if (oorder_schema.v != 0) printf("ddl new_order begin\n");
 
   const customer::key k_c(warehouse_id, districtID, customerID);
   customer::value v_c_temp;
@@ -102,7 +90,6 @@ rc_t tpcc_worker::txn_new_order() {
   rc = rc_t{RC_INVALID};
   tbl_customer(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   const customer::value *v_c = Decode(valptr, v_c_temp);
 #ifndef NDEBUG
@@ -115,7 +102,6 @@ rc_t tpcc_worker::txn_new_order() {
   rc = rc_t{RC_INVALID};
   tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_w)), k_w), valptr);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
 #ifndef NDEBUG
@@ -128,7 +114,6 @@ rc_t tpcc_worker::txn_new_order() {
   rc = rc_t{RC_INVALID};
   tbl_district(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
@@ -186,7 +171,6 @@ rc_t tpcc_worker::txn_new_order() {
     rc = rc_t{RC_INVALID};
     tbl_item(1)->GetRecord(txn, rc, Encode(str(Size(k_i)), k_i), valptr);
     TryVerifyRelaxed(rc);
-    // TryCatch(rc);
 
     const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
@@ -199,7 +183,6 @@ rc_t tpcc_worker::txn_new_order() {
     rc = rc_t{RC_INVALID};
     tbl_stock(ol_supply_w_id)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
     TryVerifyRelaxed(rc);
-    // TryCatch(rc);
 
     const stock::value *v_s = Decode(valptr, v_s_temp);
 #ifndef NDEBUG
@@ -218,7 +201,6 @@ rc_t tpcc_worker::txn_new_order() {
                  ->UpdateRecord(txn, Encode(str(Size(k_s)), k_s),
                                 Encode(str(Size(v_s_new)), v_s_new)));
 
-    // if (k_no.no_o_id > 3000) printf("k_no.no_o_id: %d\n", k_no.no_o_id);
     if (order_line_schema.v == 0) {
       const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id,
                                  ol_number);
@@ -315,12 +297,8 @@ rc_t tpcc_worker::txn_new_order() {
   }
 
   TryCatch(db->Commit(txn));
-  // printf("new_order commit ok\n");
-  // if (order_line_schema.v != 0) printf("ddl new_order commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
-  // db->WriteUnlock("order_line");
-  // db->WriteUnlock("oorder");
 #endif
   return {RC_TRUE};
 }  // new-order
@@ -329,7 +307,6 @@ rc_t tpcc_worker::txn_payment() {
   // printf("payment begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
-  // db->WriteLock("order_line");
 #endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -367,7 +344,6 @@ rc_t tpcc_worker::txn_payment() {
 
   schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   struct Schema_record schema;
   memcpy(&schema, (char *)v1.data(), sizeof(schema));
@@ -379,7 +355,6 @@ rc_t tpcc_worker::txn_payment() {
 
   tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_w)), k_w), valptr);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
 #ifndef NDEBUG
@@ -398,7 +373,6 @@ rc_t tpcc_worker::txn_payment() {
   rc = rc_t{RC_INVALID};
   tbl_district(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
@@ -482,7 +456,6 @@ rc_t tpcc_worker::txn_payment() {
     rc = rc_t{RC_INVALID};
     tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
     TryVerifyRelaxed(rc);
-    // TryCatch(rc);
     Decode(valptr, v_c);
   }
 #ifndef NDEBUG
@@ -522,20 +495,15 @@ rc_t tpcc_worker::txn_payment() {
                               Encode(str(Size(v_h)), v_h)));
 
   TryCatch(db->Commit(txn));
-  // printf("new_order commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
-  // db->WriteUnlock("order_line");
 #endif
   return {RC_TRUE};
 }
 
 rc_t tpcc_worker::txn_delivery() {
-  // printf("delivery begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
-  // db->WriteLock("order_line");
-  // db->WriteLock("oorder");
 #endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -571,22 +539,14 @@ rc_t tpcc_worker::txn_delivery() {
 
   schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
   schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   struct Schema_record order_line_schema;
   memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
-  // if (order_line_schema.v != 0) printf("delivery begin\n");
-  /*#ifdef DCOPYDDL
-    if (order_line_schema.state != 1 && ermia::volatile_read(ddl_running_1)) {
-      TryCatch({RC_ABORT_USER});
-    }
-  #endif*/
 
   struct Schema_record oorder_schema;
   memcpy(&oorder_schema, (char *)v2.data(), sizeof(oorder_schema));
@@ -678,7 +638,6 @@ rc_t tpcc_worker::txn_delivery() {
             &Encode(str(Size(k_oo_1)), k_oo_1), c));
 
         if ((c1.size() != 0 && c.size() != c1.size())) {
-          // printf("delivery abort\n");
 #ifdef LAZYDDL
         ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
             (ermia::ConcurrentMasstreeIndex *)order_line_schema.old_index;
@@ -825,7 +784,6 @@ rc_t tpcc_worker::txn_delivery() {
     rc = rc_t{RC_INVALID};
     tbl_customer(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
     TryVerifyRelaxed(rc);
-    // TryCatch(rc);
 
     const customer::value *v_c = Decode(valptr, v_c_temp);
     customer::value v_c_new(*v_c);
@@ -835,22 +793,15 @@ rc_t tpcc_worker::txn_delivery() {
                                 Encode(str(Size(v_c_new)), v_c_new)));
   }
   TryCatch(db->Commit(txn));
-  // printf("delivery commit ok\n");
-  // if (order_line_schema.v != 0) printf("delivery commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
-  // db->WriteUnlock("order_line");
-  // db->WriteUnlock("oorder");
 #endif
   return {RC_TRUE};
 }
 
 rc_t tpcc_worker::txn_order_status() {
-  // printf("order status begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
-  // db->WriteLock("order_line");
-  // db->ReadLock("oorder");
 #endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -947,7 +898,6 @@ rc_t tpcc_worker::txn_order_status() {
     rc = rc_t{RC_INVALID};
     tbl_customer(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
     TryVerifyRelaxed(rc);
-    // TryCatch(rc);
 
     Decode(valptr, v_c);
   }
@@ -987,11 +937,6 @@ rc_t tpcc_worker::txn_order_status() {
                       &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), c_oorder));
       }
     }
-    /*if (!c_oorder.size()) {
-      TryCatch({RC_ABORT_INTERNAL});
-    }*/
-    if (c_oorder.size() == 0)
-      printf("c_oorder.size() == 0");
     ALWAYS_ASSERT(c_oorder.size());
   } else {
     latest_key_callback c_oorder(*newest_o_c_id, 1);
@@ -1010,9 +955,6 @@ rc_t tpcc_worker::txn_order_status() {
                    ->ReverseScan(txn, Encode(str(Size(k_oo_idx_hi)), k_oo_idx_hi),
                                  nullptr, c_oorder));
     }
-    /*if (c_oorder.size() != 1) {
-      TryCatch({RC_ABORT_INTERNAL});
-    }*/
     ALWAYS_ASSERT(c_oorder.size() == 1);
   }
 
@@ -1071,70 +1013,23 @@ rc_t tpcc_worker::txn_order_status() {
 
       TryCatch(c_order_line_1.invoke_status);
 
-      if (c_order_line_1.n < 5 || c_order_line_1.n > 15) {
-        printf("c_order_line_1.n < 5 || c_order_line_1.n > 15\n");
-      }
       ALWAYS_ASSERT(c_order_line_1.n >= 5 && c_order_line_1.n <= 15);
-
-      /*order_line_nop_callback c_order_line_2(order_line_schema.v, false, txn,
-                                       s_arena.get(), nullptr);
-
-      TryCatch(order_line_table_index
-                 ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                        &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line_2));
-
-      TryCatch(c_order_line_2.invoke_status);
-
-      if (c_order_line_2.n < 5 || c_order_line_2.n > 15) {
-        printf("c_order_line_2.n < 5 || c_order_line_2.n > 15\n");
-      }
-      ALWAYS_ASSERT(c_order_line_2.n >= 5 && c_order_line_2.n <= 15);
-      */
-      // TryCatch({RC_ABORT_USER});
 #else
-      // printf("c_order_line.n < 5 || c_order_line.n > 15\n");
-      // ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
       TryCatch({RC_ABORT_USER});
 #endif
     }
   }
 
-  /*if (c_order_line.n < 5 || c_order_line.n > 15) {
-    // printf("c_order_line.n: %zu, w: %d, d: %d, o_id: %d\n", c_order_line.n,
-warehouse_id, districtID, o_id);
-    // printf("txn begin: %lu\n", txn->GetXIDContext()->begin);
-#ifdef COPYDDL
-    ermia::ConcurrentMasstreeIndex *order_line_table_index =
-(ermia::ConcurrentMasstreeIndex *) order_line_schema.index; const
-order_line::key k_ol_test(2, 7, 2, 2); ermia::varstr valptr; rc =
-rc_t{RC_INVALID}; order_line_table_index->GetRecord(txn, rc,
-Encode(str(Size(k_ol_test)), k_ol_test), valptr); if (rc._val != RC_TRUE) {
-      printf("Yes, no value got\n");
-    } else {
-      printf("value got\n");
-    }
-#endif
-    TryCatch({RC_ABORT_USER});
-    // TryCatch({RC_FALSE});
-  }*/
-  // ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
-
   TryCatch(db->Commit(txn));
-  // printf("order_status commit ok\n");
-  // if (oorder_schema.v != 0) printf("order_status commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
-  // db->WriteUnlock("order_line");
-  // db->ReadUnlock("oorder");
 #endif
   return {RC_TRUE};
 }
 
 rc_t tpcc_worker::txn_stock_level() {
-  // printf("stock level begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
-  // db->WriteLock("order_line");
 #endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint threshold = RandomNumber(r, 10, 20);
@@ -1167,11 +1062,9 @@ rc_t tpcc_worker::txn_stock_level() {
 
   schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   struct Schema_record order_line_schema;
   memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
-  // if (schema.v != 0) printf("stock_level start\n");
 
   // NB: since txn_stock_level() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
@@ -1182,7 +1075,6 @@ rc_t tpcc_worker::txn_stock_level() {
   rc = rc_t{RC_INVALID};
   tbl_district(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
@@ -1237,7 +1129,6 @@ rc_t tpcc_worker::txn_stock_level() {
                                        &Encode(str(Size(k_ol_1)), k_ol_1), c));
 
       if ((c1.n != 0 && c.n != c1.n)) {
-        // printf("stock abort\n");
 #ifdef LAZYDDL
       ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
           (ermia::ConcurrentMasstreeIndex *)order_line_schema.old_index;
@@ -1268,7 +1159,6 @@ rc_t tpcc_worker::txn_stock_level() {
       rc = rc_t{RC_INVALID};
       tbl_stock(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
       TryVerifyRelaxed(rc);
-      // TryCatch(rc);
 
       const uint8_t *ptr = (const uint8_t *)valptr.data();
       int16_t i16tmp;
@@ -1278,10 +1168,8 @@ rc_t tpcc_worker::txn_stock_level() {
     // NB(stephentu): s_i_ids_distinct.size() is the computed result of this txn
   }
   TryCatch(db->Commit(txn));
-  // printf("stock_level commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
-  // db->WriteUnlock("order_line");
 #endif
   return {RC_TRUE};
 }
@@ -1312,11 +1200,8 @@ rc_t tpcc_worker::txn_credit_check() {
           WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
   */
 
-  // printf("credit check begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
-  // db->WriteLock("order_line");
-  // db->ReadLock("oorder");
 #endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -1345,20 +1230,17 @@ rc_t tpcc_worker::txn_credit_check() {
 
   schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
   schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   struct Schema_record order_line_schema;
   memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
 
   struct Schema_record oorder_schema;
   memcpy(&oorder_schema, (char *)v2.data(), sizeof(oorder_schema));
-  if (oorder_schema.v != 0) printf("credit check begin\n");
 
   // select * from customer with random C_ID
   customer::key k_c;
@@ -1372,7 +1254,6 @@ rc_t tpcc_worker::txn_credit_check() {
   rc = rc_t{RC_INVALID};
   tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   const customer::value *v_c = Decode(valptr, v_c_temp);
 #ifndef NDEBUG
@@ -1476,22 +1357,16 @@ rc_t tpcc_worker::txn_credit_check() {
                               Encode(str(Size(v_c_new)), v_c_new)));
 
   TryCatch(db->Commit(txn));
-  // printf("credit check commit ok\n");
-  // if (oorder_schema.v != 0) printf("credit check commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
-  // db->WriteUnlock("order_line");
-  // db->ReadUnlock("oorder");
 #endif
   return {RC_TRUE};
 }
 
 rc_t tpcc_worker::txn_query2() {
   // TODO(yongjunh): use TXN_FLAG_READ_MOSTLY once SSN's and SSI's read optimization are available.
-  // printf("query2 begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
-  // db->WriteLock("order_line");
 #endif
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
@@ -1505,11 +1380,9 @@ rc_t tpcc_worker::txn_query2() {
 
   schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   struct Schema_record schema;
   memcpy(&schema, (char *)v1.data(), sizeof(schema));
-  // if (schema.v != 0) printf("query2 start\n");
 
   static thread_local tpcc_table_scanner r_scanner(arena);
   r_scanner.clear();
@@ -1562,7 +1435,6 @@ rc_t tpcc_worker::txn_query2() {
         rc = rc_t{RC_INVALID};
         tbl_supplier(1)->GetRecord(txn, rc, Encode(str(Size(k_su)), k_su), valptr);
         TryVerifyRelaxed(rc);
-        // TryCatch(rc);
 
         arena->return_space(Size(k_su));
 
@@ -1586,7 +1458,6 @@ rc_t tpcc_worker::txn_query2() {
           rc = rc_t{RC_INVALID};
           tbl_stock(it.first)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
           TryVerifyRelaxed(rc);
-          // TryCatch(rc);
 
           arena->return_space(Size(k_s));
           const stock::value *v_s = Decode(valptr, v_s_tmp);
@@ -1608,7 +1479,6 @@ rc_t tpcc_worker::txn_query2() {
         rc = rc_t{RC_INVALID};
         tbl_item(1)->GetRecord(txn, rc, Encode(str(Size(k_i)), k_i), valptr);
         TryVerifyRelaxed(rc);
-        // TryCatch(rc);
 
         arena->return_space(Size(k_i));
         const item::value *v_i = Decode(valptr, v_i_temp);
@@ -1650,10 +1520,8 @@ rc_t tpcc_worker::txn_query2() {
   }
 
   TryCatch(db->Commit(txn));
-  // printf("query2 commit ok\n");
 #ifdef BLOCKDDL
   db->ReadUnlock("SCHEMA");
-  // db->WriteUnlock("order_line");
 #endif
   return {RC_TRUE};
 }
@@ -1817,8 +1685,6 @@ ermia::varstr *precompute_aggregate_op(const char *keyp,
 rc_t tpcc_worker::txn_ddl() {
 #ifdef BLOCKDDL
   db->WriteLock("SCHEMA");
-  // db->WriteLock("order_line");
-  // db->WriteLock("oorder");
 
   ermia::transaction *txn =
       db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
@@ -1830,9 +1696,8 @@ rc_t tpcc_worker::txn_ddl() {
   ermia::OID oid = ermia::INVALID_OID;
   
   schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
-  // TryVerifyRelaxed(rc);
-  TryCatch(rc);
-  
+  TryVerifyRelaxed(rc);
+
   struct Schema_base schema;
   memcpy(&schema, (char *)v1.data(), sizeof(schema));
   
@@ -1959,13 +1824,6 @@ rc_t tpcc_worker::txn_ddl() {
   std::string str3 = std::string(str1);
   str3 += ss.str();
   
-  /*if (!db->BuildIndexMap(str3.c_str())) {
-    // printf("Duplicate table creation\n");
-    TryCatch({RC_ABORT_USER});
-  }
-
-  db->WriteLock(str3.c_str());
-  */
   db->CreateTable(str3.c_str());
   db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
 
