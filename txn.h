@@ -134,11 +134,12 @@ protected:
   // Insert a record to the underlying table
   OID Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple = nullptr);
 
-  rc_t Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
+  PROMISE(rc_t) Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
 
   // Same as Update but without support for logging key
-  inline rc_t Update(TableDescriptor *td, OID oid, varstr *v) {
-    return Update(td, oid, nullptr, v);
+  inline PROMISE(rc_t) Update(TableDescriptor *td, OID oid, varstr *v) {
+    auto rc = AWAIT Update(td, oid, nullptr, v);
+    RETURN rc;
   }
 
   void LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key);

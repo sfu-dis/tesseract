@@ -263,7 +263,7 @@ bool transaction::MasstreeCheckPhantom() {
   return true;
 }
 
-rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v) {
+PROMISE(rc_t) transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v) {
   oid_array *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
 
@@ -284,7 +284,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
     if (xc->ct3) {
       // Check if we are the T2 with a committed T3 earlier than a safesnap
       // (being T1)
-      if (xc->ct3 <= xc->last_safesnap) return {RC_ABORT_SERIAL};
+      if (xc->ct3 <= xc->last_safesnap) RETURN {RC_ABORT_SERIAL};
 
       if (volatile_read(prev->xstamp) >= xc->ct3 or
           not prev->readers_bitmap.is_empty(coro_batch_idx, true)) {
@@ -320,12 +320,12 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
             if (reader_xc->xct->write_set.size() > 0 and
                 reader_begin <= xc->ct3) {
               oidmgr->UpdateTuple(tuple_array, oid);
-              return {RC_ABORT_SERIAL};
+              RETURN {RC_ABORT_SERIAL};
             }
           }
         } else {
           oidmgr->UnlinkTuple(tuple_array, oid);
-          return {RC_ABORT_SERIAL};
+          RETURN {RC_ABORT_SERIAL};
         }
       }
     }
@@ -345,7 +345,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
       // unlink the version here (note abort_impl won't be able to catch
       // it because it's not yet in the write set)
       oidmgr->UnlinkTuple(tuple_array, oid);
-      return rc_t{RC_ABORT_SERIAL};
+      RETURN rc_t{RC_ABORT_SERIAL};
     }
 #endif
 
@@ -386,9 +386,9 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
     ASSERT(log);
 
     // FIXME(tzwang): mark deleted in all 2nd indexes as well?
-    return rc_t{RC_TRUE};
+    RETURN rc_t{RC_TRUE};
   } else {  // somebody else acted faster than we did
-    return rc_t{RC_ABORT_SI_CONFLICT};
+    RETURN rc_t{RC_ABORT_SI_CONFLICT};
   }
 }
 
