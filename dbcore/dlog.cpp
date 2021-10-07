@@ -147,6 +147,20 @@ void tls_log::last_flush() {
   }
 }
 
+void tls_log::issue_read(int fd, const char *buf, uint64_t size, uint64_t offset) {
+  // struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+  // LOG_IF(FATAL, !sqe);
+
+  // io_uring_prep_read(sqe, fd, buf, size, offset);
+
+  // io_uring_submit(ring);
+  return;
+}
+
+bool tls_log::peek_read() { 
+  return false;
+}
+
 void tls_log::issue_flush(const char *buf, uint64_t size) {
   if (config::null_log_device) {
     durable_lsn += size;

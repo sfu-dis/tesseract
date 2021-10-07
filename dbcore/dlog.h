@@ -178,6 +178,10 @@ public:
     active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
     logbuf_offset = 0;
   }
+
+  void issue_read(int fd, const char *buf, uint64_t size, uint64_t offset);
+
+  bool peek_read();
 };
 
 extern std::vector<tls_log *>tlogs;

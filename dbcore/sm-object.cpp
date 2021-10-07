@@ -9,7 +9,7 @@ namespace ermia {
 // ptr should point to some position in the log and its size_code should refer
 // to only data size (i.e., the size of the payload of dbtuple rounded up).
 // Returns a fat_ptr to the object created
-void Object::Pin() {
+PROMISE(void) Object::Pin() {
   // config::always_load is a scenario where we always dig out the payload from the durable log,
   // even if the version is already in-memory.
   if (config::always_load) {
@@ -29,7 +29,7 @@ try_load:
       }
       ALWAYS_ASSERT(volatile_read(status_) == kStatusMemory ||
                     volatile_read(status_) == kStatusDeleted);
-      return;
+      RETURN;
     }
 
     // Try to 'lock' the status
@@ -37,10 +37,10 @@ try_load:
     uint32_t val =
         __sync_val_compare_and_swap(&status_, kStatusStorage, kStatusLoading);
     if (val == kStatusMemory) {
-      return;
+      RETURN;
     } else if (val == kStatusLoading) {
       while (volatile_read(status_) != kStatusMemory) {}
-      return;
+      RETURN;
     } else {
       ASSERT(val == kStatusStorage);
       ASSERT(volatile_read(status_) == kStatusLoading);
@@ -70,8 +70,13 @@ try_load:
 
     dlog::log_record *logrec = (dlog::log_record *)malloc(data_sz);
     uint64_t offset_in_seg = lsn.loffset() - segment->start_offset;
-    size_t m = pread(segment->fd, (char *)logrec, data_sz, offset_in_seg);
-    ALWAYS_ASSERT(m == data_sz);
+    // TODO(khuang): add io_uring path here, and suspend right after issuing read 
+    // size_t m = pread(segment->fd, (char *)logrec, data_sz, offset_in_seg);
+    log->issue_read(segment->fd, (char *)logrec, data_sz, offset_in_seg);
+    while(log->peek_read()) {
+      SUSPEND;
+    }
+    // ALWAYS_ASSERT(m == data_sz);
 
     // Copy the entire dbtuple including dbtuple header and data
     memcpy(tuple, &logrec->data[0], sizeof(dbtuple) + ((dbtuple *)logrec->data)->size);

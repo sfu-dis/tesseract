@@ -1,14 +1,17 @@
 #pragma once
 
 #include <list>
+#include <liburing.h>
 
 #include "dlog.h"
 #include "dlog-defs.h"
 #include "epoch.h"
 #include "sm-common.h"
 #include "sm-config.h"
+#include "sm-coroutine.h"
 #include "../varstr.h"
 #include "xid.h"
+
 
 namespace ermia {
 
@@ -46,6 +49,9 @@ class Object {
   // commit. 
   fat_ptr csn_;
 
+  // io_uring structures
+  static struct io_uring ring;
+
  public:
   static fat_ptr Create(const varstr* tuple_value, epoch_num epoch);
 
@@ -80,23 +86,23 @@ class Object {
   inline void SetAllocateEpoch(epoch_num e) { alloc_epoch_ = e; }
   inline char* GetPayload() { return (char*)((char*)this + sizeof(Object)); }
   inline void SetStatus(uint32_t s) { volatile_write(status_, s); }
-  inline dbtuple* GetPinnedTuple() {
+  inline PROMISE(dbtuple*) GetPinnedTuple() {
     if (IsDeleted()) {
-      return nullptr;
+      RETURN nullptr;
     }
     if (!config::kStateRunning) {
       if (!IsInMemory()) {
-        Pin();
+        AWAIT Pin();
       }
     } else {
       if (config::always_load || !IsInMemory()) {
-        Pin();
+        AWAIT Pin();
       }
     }
-    return (dbtuple*)GetPayload();
+    RETURN (dbtuple*)GetPayload();
   }
   fat_ptr GenerateCsnPtr(uint64_t csn);
-  void Pin();  // Make sure the payload is in memory
+  PROMISE(void) Pin();  // Make sure the payload is in memory
 
   static inline void PrefetchHeader(Object *p) {
     uint32_t i = 0;

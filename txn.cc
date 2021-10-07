@@ -274,9 +274,9 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
   Object *prev_obj = (Object *)prev_obj_ptr.offset();
 
   if (prev_obj) {  // succeeded
-    dbtuple *tuple = ((Object *)new_obj_ptr.offset())->GetPinnedTuple();
+    dbtuple *tuple = AWAIT ((Object *)new_obj_ptr.offset())->GetPinnedTuple();
     ASSERT(tuple);
-    dbtuple *prev = prev_obj->GetPinnedTuple();
+    dbtuple *prev = AWAIT prev_obj->GetPinnedTuple();
     ASSERT((uint64_t)prev->GetObject() == prev_obj_ptr.offset());
     ASSERT(xc);
 #ifdef SSI

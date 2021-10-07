@@ -6,7 +6,6 @@
 
 #include "../str_arena.h"
 #include "../dbcore/rcu.h"
-#include "../dbcore/sm-log.h"
 #include "../dbcore/sm-coroutine.h"
 #include "../third-party/foedus/zipfian_random.hpp"
 #include "bench.h"

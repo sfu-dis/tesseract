@@ -139,13 +139,19 @@ struct dbtuple {
     return obj;
   }
 
-  inline dbtuple *NextVolatile() {
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+  inline PROMISE(dbtuple*) NextVolatile() {
     // So far this is only used by the primary
     Object *myobj = GetObject();
     ASSERT(myobj->GetPayload() == (char *)this);
     Object *next_obj = (Object*)myobj->GetNextVolatile().offset();
-    return next_obj ? next_obj->GetPinnedTuple() : nullptr;
+    if (next_obj) {
+      RETURN next_obj->GetPinnedTuple();
+    } else {
+      RETURN nullptr;
+    }
   }
+#endif
 
  public:
   inline rc_t DoRead(varstr *out_v) {
