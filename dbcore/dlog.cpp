@@ -155,7 +155,7 @@ void tls_log::issue_read(int fd, char *buf, uint64_t size, uint64_t offset) {
   sqe->flags |= IOSQE_IO_LINK;
 
   int nsubmitted = io_uring_submit(&ring);
-  LOG_IF(FATAL, nsubmitted != 1);
+  LOG_IF(FATAL, nsubmitted < 0);
 }
 
 bool tls_log::peek_read() {
