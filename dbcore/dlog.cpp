@@ -147,18 +147,26 @@ void tls_log::last_flush() {
   }
 }
 
-void tls_log::issue_read(int fd, const char *buf, uint64_t size, uint64_t offset) {
-  // struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
-  // LOG_IF(FATAL, !sqe);
+void tls_log::issue_read(int fd, char *buf, uint64_t size, uint64_t offset) {
+  struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+  LOG_IF(FATAL, !sqe);
 
-  // io_uring_prep_read(sqe, fd, buf, size, offset);
+  io_uring_prep_read(sqe, fd, buf, size, offset);
+  sqe->flags |= IOSQE_IO_LINK;
 
-  // io_uring_submit(ring);
-  return;
+  int nsubmitted = io_uring_submit(&ring);
+  LOG_IF(FATAL, nsubmitted != 1);
 }
 
-bool tls_log::peek_read() { 
-  return false;
+bool tls_log::peek_read() {
+  struct io_uring_cqe* cqe;
+  int ret = io_uring_peek_cqe (&ring, &cqe);
+  LOG_IF(FATAL, ret < 0);
+  if (ret > 0) {
+    return false;
+  } else {
+    return true;
+  }
 }
 
 void tls_log::issue_flush(const char *buf, uint64_t size) {

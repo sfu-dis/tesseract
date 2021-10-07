@@ -179,7 +179,7 @@ public:
     logbuf_offset = 0;
   }
 
-  void issue_read(int fd, const char *buf, uint64_t size, uint64_t offset);
+  void issue_read(int fd, char *buf, uint64_t size, uint64_t offset);
 
   bool peek_read();
 };
