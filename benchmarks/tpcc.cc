@@ -684,31 +684,6 @@ rc_t tpcc_worker::txn_delivery() {
                                     Encode(str(Size(v_ol_new)), v_ol_new)));
 
       } else {
-        order_line_1::value v_ol_temp;
-        const order_line_1::value *v_ol = Decode(*c.values[i].second, v_ol_temp);
-
-#ifndef NDEBUG
-        order_line_1::key k_ol_temp;
-        const order_line_1::key *k_ol = Decode(*c.values[i].first, k_ol_temp);
-        // checker::SanityCheckOrderLine(k_ol, v_ol);
-#endif
-
-        sum += v_ol->ol_amount;
-        order_line_1::value v_ol_new(*v_ol);
-        v_ol_new.ol_delivery_d = ts;
-	v_ol_new.v = order_line_schema.v;
-        v_ol_new.ol_tax = 0;
-        ASSERT(s_arena.get()->manages(c.values[i].first));
-#ifdef LAZYDDL
-	TryCatch(order_line_table_index
-                      ->UpdateRecord(txn, *c.values[i].first,
-                            Encode(str(Size(v_ol_new)), v_ol_new),
-				    order_line_schema.old_td));
-#else
-        TryCatch(order_line_table_index->UpdateRecord(
-            txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new)));
-#endif
-
 #ifdef DCOPYDDL
         if (order_line_schema.state == 1 &&
             ermia::volatile_read(ddl_running_1)) {
@@ -728,12 +703,68 @@ rc_t tpcc_worker::txn_delivery() {
                          ->UpdateRecord(txn, *c.values[i].first,
                                         Encode(str(Size(v_ol_new)), v_ol_new)));
           } else {
+            order_line_1::value v_ol_temp;
+            const order_line_1::value *v_ol =
+                Decode(*c.values[i].second, v_ol_temp);
+            order_line_1::value v_ol_new(*v_ol);
+            v_ol_new.ol_delivery_d = ts;
             v_ol_new.v = order_line_schema.old_v;
+            v_ol_new.ol_tax = 0;
             TryCatch(old_order_line_table_index->UpdateRecord(
                 txn, *c.values[i].first,
                 Encode(str(Size(v_ol_new)), v_ol_new)));
           }
         }
+
+        if (order_line_schema.old_v == 0 &&
+            ermia::volatile_read(ddl_running_1)) {
+          order_line::value v_ol_temp;
+          const order_line::value *v_ol =
+              Decode(*c.values[i].second, v_ol_temp);
+
+          sum += v_ol->ol_amount;
+
+          order_line_1::value v_ol_new;
+          v_ol_new.ol_i_id = v_ol->ol_i_id;
+          v_ol_new.ol_delivery_d = ts;
+          v_ol_new.ol_amount = v_ol->ol_amount;
+          v_ol_new.ol_supply_w_id = v_ol->ol_supply_w_id;
+          v_ol_new.ol_quantity = v_ol->ol_quantity;
+          v_ol_new.v = order_line_schema.v;
+          v_ol_new.ol_tax = 0;
+
+          TryCatch(order_line_table_index->UpdateRecord(
+              txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new)));
+          // order_line_schema.old_td));
+
+          continue;
+        }
+#endif
+
+        order_line_1::value v_ol_temp;
+        const order_line_1::value *v_ol =
+            Decode(*c.values[i].second, v_ol_temp);
+
+#ifndef NDEBUG
+        order_line_1::key k_ol_temp;
+        const order_line_1::key *k_ol = Decode(*c.values[i].first, k_ol_temp);
+        // checker::SanityCheckOrderLine(k_ol, v_ol);
+#endif
+
+        sum += v_ol->ol_amount;
+        order_line_1::value v_ol_new(*v_ol);
+        v_ol_new.ol_delivery_d = ts;
+        v_ol_new.v = order_line_schema.v;
+        v_ol_new.ol_tax = 0;
+        ASSERT(s_arena.get()->manages(c.values[i].first));
+
+#if defined(LAZYDDL)
+        TryCatch(order_line_table_index->UpdateRecord(
+            txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new),
+            order_line_schema.old_td));
+#else
+        TryCatch(order_line_table_index->UpdateRecord(
+            txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new)));
 #endif
       }
     }
@@ -1711,13 +1742,13 @@ rc_t tpcc_worker::txn_ddl() {
   
   rc = rc_t{RC_INVALID};
   rc = schema_index->WriteSchemaTable(txn, rc, k1, v2);
-  TryCatch(rc);
+  TryCatchUnblock(rc);
 
   rc = order_line_table_index->WriteNormalTable(arena, order_line_table_index,
                                                 txn, v2, add_column_op);
-  TryCatch(rc);
-  
-  TryCatch(db->Commit(txn));
+  TryCatchUnblock(rc);
+
+  TryCatchUnblock(db->Commit(txn));
 
   /*ermia::transaction *txn =
   db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
@@ -1768,14 +1799,9 @@ rc_t tpcc_worker::txn_ddl() {
   TryCatch(db->Commit(txn));
   */
   db->WriteUnlock("SCHEMA");
-  // db->WriteUnlock("order_line");
-  // db->WriteUnlock("oorder");
 #elif COPYDDL
   // ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
-  /*#ifdef DCOPYDDL
-    ermia::volatile_write(txn->GetXIDContext()->state, ermia::TXN::TXN_DDL);
-  #endif*/
   printf("DDL txn begin: %lu\n", txn->GetXIDContext()->begin);
 
   // Read schema tables first 
@@ -1787,13 +1813,11 @@ rc_t tpcc_worker::txn_ddl() {
 
   schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
   schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
   TryVerifyRelaxed(rc);
-  // TryCatch(rc);
 
   struct Schema_record order_line_schema;
   memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
@@ -1831,7 +1855,6 @@ rc_t tpcc_worker::txn_ddl() {
   secondary_index_name += ss.str();
   db->CreateMasstreeSecondaryIndex(str3.c_str(), secondary_index_name);
   */
-  // std::cerr << "Create a new table: " << str3 << std::endl;
   
 #ifdef LAZYDDL
   order_line_schema.old_index = old_order_line_table_index;

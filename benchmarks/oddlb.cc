@@ -81,7 +81,6 @@ public:
     str3 += ss.str();
 
     if (!db->BuildIndexMap(str3.c_str())) {
-      // printf("Duplicate table creation\n");
       db->Abort(txn);
       return {RC_ABORT_USER};
     }
@@ -90,8 +89,6 @@ public:
 
     db->CreateTable(str3.c_str());
     db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
-
-    // std::cerr << "Create a new table: " << str3 << std::endl;
 
     schema.index = ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
     schema.td = ermia::Catalog::GetTable(str3.c_str());
@@ -149,9 +146,7 @@ public:
 #endif
 
 #elif defined(BLOCKDDL)
-    // CRITICAL_SECTION(cs, lock);
     db->WriteLock(std::string("SCHEMA"));
-    // db->WriteLock(std::string("USERTABLE"));
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
@@ -171,27 +166,20 @@ public:
     uint64_t schema_version = schema.v + 1;
     std::cerr << "change to new schema: " << schema_version << std::endl;
     schema.v = schema_version;
-    // schema.op = constraint_verification;
     memcpy(str2, &schema, sizeof(str2));
     ermia::varstr &v1 = str(sizeof(str2));
     v1.copy_from(str2, sizeof(str2));
 
     rc = rc_t{RC_INVALID};
     rc = schema_index->WriteSchemaTable(txn, rc, k, v1);
-    if (rc._val != RC_TRUE)
-      TryCatchUnblock(rc);
+    TryCatchUnblock(rc);
 
     rc = rc_t{RC_INVALID};
     rc = table_index->WriteNormalTable(arena, table_index, txn, v1, NULL);
     // rc = table_index->CheckNormalTable(arena, table_index, txn, NULL);
-    if (rc._val != RC_TRUE)
-      TryCatchUnblock(rc);
+    TryCatchUnblock(rc);
 
-    rc = rc_t{RC_INVALID};
-    rc = db->Commit(txn);
-    if (rc._val != RC_TRUE)
-      TryCatchUnblock(rc);
-    // db->WriteUnlock(std::string("USERTABLE"));
+    TryCatchUnblock(db->Commit(txn));
     db->WriteUnlock(std::string("SCHEMA"));
 #elif SIDDL
     int count = 0;
@@ -232,7 +220,6 @@ public:
       db->Abort(txn);
       goto retry;
     }
-    // TryCatch(rc);
 
     TryCatch(db->Commit(txn));
     printf("%d attempts\n", count);
@@ -277,9 +264,7 @@ public:
 
   rc_t txn_read() {
 #ifdef BLOCKDDL
-    // CRITICAL_SECTION(cs, lock);
     db->ReadLock(std::string("SCHEMA"));
-    // db->ReadLock(std::string("USERTABLE"));
 #endif
     uint64_t a =
         r.next() % oddl_initial_table_size; // 0 ~ oddl_initial_table_size-1
@@ -351,16 +336,13 @@ public:
 #ifdef SIDDL
     if (record_test.v != schema_version) {
       TryCatch(rc_t{RC_ABORT_USER});
-      // db->Abort(txn);
-      // goto retry;
     }
 #endif
 
 #if !defined(NONEDDL)
     if (record_test.v != schema_version) {
-      printf("Read: It should get %lu, but get %lu\n", schema_version,
-             record_test.v);
-      ALWAYS_ASSERT(record_test.v == schema_version);
+      LOG(FATAL) << "Read: It should get " << schema_version << " ,but get "
+                 << record_test.v;
     }
 #endif
 
@@ -390,7 +372,6 @@ public:
 
     TryCatch(db->Commit(txn));
 #ifdef BLOCKDDL
-    // db->ReadUnlock(std::string("USERTABLE"));
     db->ReadUnlock(std::string("SCHEMA"));
 #endif
     return {RC_TRUE};
@@ -398,9 +379,7 @@ public:
 
   rc_t txn_rmw() {
 #ifdef BLOCKDDL
-    // CRITICAL_SECTION(cs, lock);
     db->ReadLock(std::string("SCHEMA"));
-    // db->ReadLock(std::string("USERTABLE"));
 #endif
     uint64_t a =
         r.next() % oddl_initial_table_size; // 0 ~ oddl_initial_table_size-1
@@ -461,8 +440,8 @@ public:
 
 #if !defined(NONEDDL)
     if (schema_version != record_test.v) {
-      printf("Write: It should get %lu, but get %lu\n", schema_version,
-record_test.v); ALWAYS_ASSERT(record_test.v == schema_version);
+      LOG(FATAL) << "Write: It should get " << schema_version << " ,but get " <<
+record_test.v;
     }
 #endif*/
 
@@ -505,7 +484,6 @@ record_test.v); ALWAYS_ASSERT(record_test.v == schema_version);
 
     TryCatch(db->Commit(txn));
 #ifdef BLOCKDDL
-    // db->ReadUnlock(std::string("USERTABLE"));
     db->ReadUnlock(std::string("SCHEMA"));
 #endif
     return {RC_TRUE};

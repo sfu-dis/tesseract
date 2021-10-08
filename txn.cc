@@ -157,7 +157,6 @@ void transaction::Abort() {
     ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
     MM::deallocate(entry);
   }
-  uninitialize();
 }
 
 rc_t transaction::commit() {
@@ -254,7 +253,7 @@ rc_t transaction::si_commit() {
     } else {
       lb = log->allocate_log_block(log_size, &lb_lsn, &segnum, xc->end);
     }
-    // log->set_dirty(true);
+    log->set_dirty(true);
   }
 
 #ifdef COPYDDL
@@ -264,15 +263,6 @@ rc_t transaction::si_commit() {
     write_record_t w = write_set.get(is_ddl(), 0);
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
-
-    // Set CSN
-    fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
-    object->SetCSN(csn_ptr);
-    ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
-
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-    ddl_running_2 = true;
-#endif
 
     uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
     uint64_t log_str_size = sizeof(varstr) + w.str->size();
@@ -299,16 +289,15 @@ rc_t transaction::si_commit() {
     ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
 
     // Set CSN
-    /*fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
+    fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
     object->SetCSN(csn_ptr);
     ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
-    */
   }
 #endif
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   if (is_ddl()) {
-    // ddl_running_2 = true;
+    ddl_running_2 = true;
     while (ddl_end.load() != ermia::config::cdc_threads) {
     }
   }
@@ -392,8 +381,8 @@ rc_t transaction::si_commit() {
   }
   // ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
 
-  // if (write_set.size())
-  //   log->set_dirty(false);
+  if (write_set.size())
+    log->set_dirty(false);
 
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!

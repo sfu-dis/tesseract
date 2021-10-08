@@ -1203,7 +1203,13 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   rc_t rc = {RC_INVALID};
   AWAIT GetOID(key, rc, t->xc, oid);
 
-#ifdef LAZYDDL
+#if defined(LAZYDDL) || defined(DCOPYDDL)
+#ifdef DCOPYDDL
+  if (!ddl_running_1) {
+    goto exit;
+  }
+#endif
+
   if (rc._val != RC_TRUE && old_table_descriptor) {
     int total = version;
   retry:
@@ -1225,11 +1231,12 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   }
 #endif
 
+exit:
   if (rc._val == RC_TRUE) {
     RETURN t->Update(table_descriptor, oid, &key, &value);
   } else {
 #if defined(COPYDDL) && !defined(LAZYDDL)
-    if (ddl_running_1) {
+    if (t->is_ddl()) {
       RETURN InsertRecord(t, key, value);
     }
 #endif

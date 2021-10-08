@@ -80,6 +80,7 @@ public:
 
   inline void Abort(transaction *t) {
     t->Abort();
+    t->uninitialize();
   }
 
   inline bool BuildIndexMap(std::string table_name) {

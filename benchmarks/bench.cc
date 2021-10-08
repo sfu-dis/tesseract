@@ -66,7 +66,7 @@ uint32_t bench_worker::fetch_workload() {
         ddling = true;
 #endif
 #elif defined(BLOCKDDL)
-        if (ddl_num_local != 1)
+        if (ddl_num_local != 4)
           continue;
 #else
         if (ddl_num_local != 2)
