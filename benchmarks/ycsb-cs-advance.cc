@@ -35,6 +35,7 @@ public:
       return;
     }
     ALWAYS_ASSERT(is_worker);
+    tlog = ermia::GetLog();
     workload = get_workload();
     txn_counts.resize(workload.size());
 
