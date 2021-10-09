@@ -181,7 +181,7 @@ public:
 
   void issue_read(int fd, char *buf, uint64_t size, uint64_t offset);
 
-  bool peek_read();
+  bool peek_read(char *buf);
 };
 
 extern std::vector<tls_log *>tlogs;

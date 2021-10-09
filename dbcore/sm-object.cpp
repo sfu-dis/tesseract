@@ -73,7 +73,7 @@ try_load:
     // TODO(khuang): add io_uring path here, and suspend right after issuing read 
     // size_t m = pread(segment->fd, (char *)logrec, data_sz, offset_in_seg);
     log->issue_read(segment->fd, (char *)logrec, data_sz, offset_in_seg);
-    while(log->peek_read()) {
+    while(!log->peek_read((char *)logrec)) {
       SUSPEND;
     }
     // ALWAYS_ASSERT(m == data_sz);
