@@ -81,14 +81,14 @@ get_property(THREAD_POOL_SRC GLOBAL PROPERTY THREAD_POOL_SRC)
 add_library(thread_pool SHARED ${THREAD_POOL_SRC})
 
 # SI
-#add_library(corobase_si SHARED ${LIB_SRC})
-#set_target_properties(corobase_si PROPERTIES COMPILE_FLAGS "")
+add_library(corobase_si SHARED ${LIB_SRC})
+set_target_properties(corobase_si PROPERTIES COMPILE_FLAGS "")
 #set_target_properties(corobase_si PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DBATCH_SAME_TRX -DCORO_UPDATE_VERSION_CHAIN")
 
-#add_executable(corobase_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-#set_target_properties(corobase_SI PROPERTIES COMPILE_FLAGS "")
+add_executable(corobase_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(corobase_SI PROPERTIES COMPILE_FLAGS "")
 #set_target_properties(corobase_SI PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DBATCH_SAME_TRX -DCORO_UPDATE_VERSION_CHAIN")
-#target_link_libraries(corobase_SI corobase_si thread_pool)
+target_link_libraries(corobase_SI corobase_si thread_pool)
 
 # SI with fully nested coroutine
 add_library(corobase_adv_coro_si SHARED ${LIB_SRC})
