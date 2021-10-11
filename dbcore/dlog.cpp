@@ -161,7 +161,7 @@ void tls_log::issue_read(int fd, char *buf, uint64_t size, uint64_t offset) {
   LOG_IF(FATAL, nsubmitted != 1);
 }
 
-bool tls_log::peek_read(char *buf) {
+bool tls_log::peek_read(char *buf, uint64_t size) {
 retry_peek:
   struct io_uring_cqe* cqe;
   int ret = io_uring_peek_cqe (&ring, &cqe);
@@ -175,14 +175,13 @@ retry_peek:
     }
   }
 
-
-  LOG_IF(FATAL, cqe->res < 0);
-
   auto completed_buf = (char *)cqe->user_data;
   if(completed_buf != buf) {
     goto retry_peek;
   }
   
+  ALWAYS_ASSERT(cqe->res == size);
+
   io_uring_cqe_seen(&ring, cqe);
   return true;
 }

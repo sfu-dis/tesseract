@@ -73,7 +73,7 @@ try_load:
 
     if (config::iouring_read_log) {
       log->issue_read(segment->fd, (char *)logrec, data_sz, offset_in_seg);
-      while(!log->peek_read((char *)logrec)) {
+      while(!log->peek_read((char *)logrec, data_sz)) {
         SUSPEND;
       }
     } else {
