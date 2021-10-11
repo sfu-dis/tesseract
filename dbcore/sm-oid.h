@@ -243,7 +243,7 @@ public:
   PROMISE(dbtuple *) oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc);
   dbtuple *oid_get_s2pl(oid_array *oa, OID o, TXN::xid_context *visitor_xc, bool for_write, rc_t &out_rc);
 
-  void oid_get_version_amac(oid_array *oa,
+  PROMISE(void) oid_get_version_amac(oid_array *oa,
                             std::vector<OIDAMACState> &requests,
                             TXN::xid_context *visitor_xc);
 

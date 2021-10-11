@@ -737,8 +737,7 @@ install:
   return NULL_PTR;
 }
 
-#if 0
-void sm_oid_mgr::oid_get_version_amac(oid_array *oa,
+PROMISE(void) sm_oid_mgr::oid_get_version_amac(oid_array *oa,
                                       std::vector<OIDAMACState> &requests,
                                       TXN::xid_context *visitor_xc) {
   uint32_t finished = 0;
@@ -757,7 +756,7 @@ void sm_oid_mgr::oid_get_version_amac(oid_array *oa,
           s.stage = 0;
         } else {
           if (visible) {
-            s.tuple = s.cur_obj->GetPinnedTuple();
+            s.tuple = AWAIT s.cur_obj->GetPinnedTuple();
             s.done = true;
             ++finished;
           } else  {
@@ -797,7 +796,6 @@ void sm_oid_mgr::oid_get_version_amac(oid_array *oa,
     }
   }
 }
-#endif
 
 // For tuple arrays only, i.e., entries are guaranteed to point to Objects.
 PROMISE(dbtuple *) sm_oid_mgr::oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc) {

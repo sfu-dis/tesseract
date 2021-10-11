@@ -69,7 +69,6 @@ void ConcurrentMasstreeIndex::adv_coro_MultiGet(
 }
 
 #else
-#if 0
 void ConcurrentMasstreeIndex::amac_MultiGet(
     transaction *t, std::vector<ConcurrentMasstree::AMACState> &requests,
     std::vector<varstr *> &values) {
@@ -1595,6 +1594,5 @@ void ConcurrentMasstreeIndex::simple_coro_MultiOps(std::vector<rc_t> &rcs,
     }
   }
 }
-#endif
 #endif
 } // namespace ermia
