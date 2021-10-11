@@ -92,6 +92,7 @@ try_load:
     fat_ptr csn_ptr = GenerateCsnPtr(logrec->csn);
     SetCSN(csn_ptr);
     ASSERT(GetCSN().asi_type() == fat_ptr::ASI_CSN);
+    free(logrec);
   } else {
     ALWAYS_ASSERT(0);
     /*
