@@ -112,6 +112,9 @@ private:
   // io_uring structures
   struct io_uring ring;
 
+  // latch for the ring
+  std::mutex latch;
+
   // Committer
   pcommit::tls_committer tcommitter;
 

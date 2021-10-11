@@ -103,7 +103,7 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
   DLOG(INFO) << "Log " << id << ": new segment " << segments.size() - 1 << ", start lsn " << current_lsn;
 
   // Initialize io_uring
-  int ret = io_uring_queue_init(16, &ring, 0);
+  int ret = io_uring_queue_init(256, &ring, 0);
   LOG_IF(FATAL, ret != 0) << "Error setting up io_uring: " << strerror(ret);
 
   // Initialize committer
@@ -147,31 +147,44 @@ void tls_log::last_flush() {
   }
 }
 
+// TODO(tzwang) - fd should correspond to the actual segment
 void tls_log::issue_read(int fd, char *buf, uint64_t size, uint64_t offset) {
+  std::lock_guard<std::mutex> lg(latch);
+
   struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
   LOG_IF(FATAL, !sqe);
 
   io_uring_prep_read(sqe, fd, buf, size, offset);
   io_uring_sqe_set_data(sqe, buf);
 
-  int ret = io_uring_submit(&ring);
-  LOG_IF(FATAL, ret < 0) << strerror(ret);
+  int nsubmitted = io_uring_submit(&ring);
+  LOG_IF(FATAL, nsubmitted != 1);
 }
 
 bool tls_log::peek_read(char *buf) {
+retry_peek:
   struct io_uring_cqe* cqe;
   int ret = io_uring_peek_cqe (&ring, &cqe);
 
-  LOG_IF(FATAL, ret < 0) << strerror(ret);
+  if (ret < 0) {
+    if (ret == -EAGAIN) {
+      // Nothing yet - caller should retry later
+      return false;
+    } else {
+      LOG(FATAL) << strerror(ret);
+    }
+  }
+
+
   LOG_IF(FATAL, cqe->res < 0);
 
-  auto completed_buf = io_uring_cqe_get_data(cqe);
-  if(completed_buf == buf) {
-    io_uring_cqe_seen(&ring, cqe);
-    return true;
-  } else {
-    return false;
+  auto completed_buf = (char *)cqe->user_data;
+  if(completed_buf != buf) {
+    goto retry_peek;
   }
+  
+  io_uring_cqe_seen(&ring, cqe);
+  return true;
 }
 
 void tls_log::issue_flush(const char *buf, uint64_t size) {
