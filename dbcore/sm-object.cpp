@@ -70,13 +70,16 @@ try_load:
 
     dlog::log_record *logrec = (dlog::log_record *)malloc(data_sz);
     uint64_t offset_in_seg = lsn.loffset() - segment->start_offset;
-    // TODO(khuang): add io_uring path here, and suspend right after issuing read 
-    // size_t m = pread(segment->fd, (char *)logrec, data_sz, offset_in_seg);
-    log->issue_read(segment->fd, (char *)logrec, data_sz, offset_in_seg);
-    while(!log->peek_read((char *)logrec)) {
-      SUSPEND;
+
+    if (config::iouring_read_log) {
+      log->issue_read(segment->fd, (char *)logrec, data_sz, offset_in_seg);
+      while(!log->peek_read((char *)logrec)) {
+        SUSPEND;
+      }
+    } else {
+      size_t m = pread(segment->fd, (char *)logrec, data_sz, offset_in_seg);
+      ALWAYS_ASSERT(m == data_sz);
     }
-    // ALWAYS_ASSERT(m == data_sz);
 
     // Copy the entire dbtuple including dbtuple header and data
     memcpy(tuple, &logrec->data[0], sizeof(dbtuple) + ((dbtuple *)logrec->data)->size);

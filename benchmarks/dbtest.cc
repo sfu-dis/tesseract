@@ -91,6 +91,7 @@ DEFINE_bool(pcommit_thread, false, "Whether to use a dedicated pipelined committ
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
 DEFINE_bool(always_load, false, "Whether to load versions from logs.");
 DEFINE_bool(kStateRunning, false, "Whether the benchmark is in the running phase.");
+DEFINE_bool(iouring_read_log, false, "Whether to use iouring to load versions from logs.");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -176,6 +177,7 @@ int main(int argc, char **argv) {
   ermia::config::enable_gc = FLAGS_enable_gc;
   ermia::config::always_load = FLAGS_always_load;
   ermia::config::kStateRunning = FLAGS_kStateRunning;
+  ermia::config::iouring_read_log = FLAGS_iouring_read_log;
 
   if (FLAGS_recovery_warm_up == "none") {
     ermia::config::recovery_warm_up_policy = ermia::config::WARM_UP_NONE;
@@ -220,7 +222,7 @@ int main(int argc, char **argv) {
   std::cerr << "  phantom-protection: " << ermia::config::phantom_prot << std::endl;
 
   std::cerr << "Settings and properties" << std::endl;
-  std::cerr << "  always_load       : " << FLAGS_always_load << std::endl;
+  std::cerr << "  always-load       : " << FLAGS_always_load << std::endl;
   std::cerr << "  amac-version-chain: " << FLAGS_amac_version_chain << std::endl;
   std::cerr << "  arena-size-mb     : " << FLAGS_arena_size_mb << std::endl;
   std::cerr << "  benchmark         : " << FLAGS_benchmark << std::endl;
@@ -232,6 +234,7 @@ int main(int argc, char **argv) {
   std::cerr << "  pipelined commit  : " << ermia::config::pcommit << std::endl;
   std::cerr << "  dedicated pcommit thread: " << ermia::config::pcommit_thread << std::endl;
   std::cerr << "  index-probe-only  : " << FLAGS_index_probe_only << std::endl;
+  std::cerr << "  iouring-read-log  : " << FLAGS_iouring_read_log << std::endl;
   std::cerr << "  log-buffer-mb     : " << ermia::config::log_buffer_mb << std::endl;
   std::cerr << "  log-dir           : " << ermia::config::log_dir << std::endl;
   std::cerr << "  log-segment-mb    : " << ermia::config::log_segment_mb << std::endl;

@@ -62,6 +62,7 @@ bool amac_version_chain = false;
 bool numa_spread = false;
 bool always_load = false;
 bool kStateRunning = false;
+bool iouring_read_log = false;
 
 void init() {
   ALWAYS_ASSERT(threads);
