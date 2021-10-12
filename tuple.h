@@ -164,6 +164,8 @@ struct dbtuple {
       }
       Object *myobj = GetObject();
       myobj->SetStatus(1); // kStatusMemory = 1
+      // Have to return here because size may become 0 once status is set to 1 (another IO finishes and changes it)
+      return rc_t{RC_TRUE};
     }
 
     return size > 0 ? rc_t{RC_TRUE} : rc_t{RC_FALSE};
