@@ -162,7 +162,6 @@ void tls_log::issue_read(int fd, char *buf, uint64_t size, uint64_t offset) {
 }
 
 bool tls_log::peek_read(char *buf, uint64_t size) {
-retry_peek:
   struct io_uring_cqe* cqe;
   int ret = io_uring_peek_cqe (&ring, &cqe);
 
@@ -177,7 +176,7 @@ retry_peek:
 
   auto completed_buf = (char *)cqe->user_data;
   if(completed_buf != buf) {
-    goto retry_peek;
+    return false;
   }
   
   ALWAYS_ASSERT(cqe->res == size);
@@ -204,7 +203,6 @@ void tls_log::issue_flush(const char *buf, uint64_t size) {
   LOG_IF(FATAL, !sqe);
 
   io_uring_prep_write(sqe, current_segment()->fd, buf, size, current_segment()->size);
-  //sqe->flags |= IOSQE_IO_LINK;
 
   // Encode data size which is useful upon completion (to add to durable_lsn)
   // Must be set after io_uring_prep_write (which sets user_data to 0)
@@ -212,7 +210,7 @@ void tls_log::issue_flush(const char *buf, uint64_t size) {
   current_segment()->expected_size += size;
 
   int nsubmitted = io_uring_submit(&ring);
-  LOG_IF(FATAL, nsubmitted < 1);
+  LOG_IF(FATAL, nsubmitted != 1);
 }
 
 void tls_log::poll_flush() {
