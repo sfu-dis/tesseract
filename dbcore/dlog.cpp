@@ -24,6 +24,8 @@ std::atomic<uint64_t> current_csn(0);
 
 std::mutex tls_log_lock;
 
+thread_local struct io_uring tls_read_ring;
+
 std::thread *pcommit_thread = nullptr;
 std::condition_variable pcommit_daemon_cond;
 std::mutex pcommit_daemon_lock;
@@ -149,21 +151,27 @@ void tls_log::last_flush() {
 
 // TODO(tzwang) - fd should correspond to the actual segment
 void tls_log::issue_read(int fd, char *buf, uint64_t size, uint64_t offset) {
-  std::lock_guard<std::mutex> lg(latch);
+  thread_local bool initialized = false;
+  if (unlikely(!initialized)) {
+    // Initialize the tls io_uring
+    int ret = io_uring_queue_init(256, &tls_read_ring, 0);
+    LOG_IF(FATAL, ret != 0) << "Error setting up io_uring: " << strerror(ret);
+    initialized = true;
+  }
 
-  struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+  struct io_uring_sqe *sqe = io_uring_get_sqe(&tls_read_ring);
   LOG_IF(FATAL, !sqe);
 
   io_uring_prep_read(sqe, fd, buf, size, offset);
   io_uring_sqe_set_data(sqe, buf);
 
-  int nsubmitted = io_uring_submit(&ring);
+  int nsubmitted = io_uring_submit(&tls_read_ring);
   LOG_IF(FATAL, nsubmitted != 1);
 }
 
 bool tls_log::peek_read(char *buf, uint64_t size) {
   struct io_uring_cqe* cqe;
-  int ret = io_uring_peek_cqe (&ring, &cqe);
+  int ret = io_uring_peek_cqe(&tls_read_ring, &cqe);
 
   if (ret < 0) {
     if (ret == -EAGAIN) {
@@ -175,13 +183,13 @@ bool tls_log::peek_read(char *buf, uint64_t size) {
   }
 
   auto completed_buf = (char *)cqe->user_data;
-  if(completed_buf != buf) {
+  if (completed_buf != buf) {
     return false;
   }
   
   ALWAYS_ASSERT(cqe->res == size);
 
-  io_uring_cqe_seen(&ring, cqe);
+  io_uring_cqe_seen(&tls_read_ring, cqe);
   return true;
 }
 
