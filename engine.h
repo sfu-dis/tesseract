@@ -118,10 +118,10 @@ private:
   TableDescriptor *td;
 
 public:
-  rc_t Insert(transaction &t, varstr *k, varstr *value, OID *out_oid);
-  rc_t Update(transaction &t, OID oid, varstr &value);
+  rc_t Insert(transaction &t, varstr *value, OID *out_oid);
+  PROMISE(rc_t) Update(transaction &t, OID oid, varstr &value);
   rc_t Read(transaction &t, OID oid, varstr *out_value);
-  rc_t Remove(transaction &t, OID oid);
+  PROMISE(rc_t) Remove(transaction &t, OID oid);
 };
 
 // User-facing concurrent Masstree

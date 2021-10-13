@@ -139,12 +139,16 @@ struct dbtuple {
     return obj;
   }
 
-  inline dbtuple *NextVolatile() {
+  inline PROMISE(dbtuple *) NextVolatile() {
     // So far this is only used by the primary
     Object *myobj = GetObject();
     ASSERT(myobj->GetPayload() == (char *)this);
     Object *next_obj = (Object*)myobj->GetNextVolatile().offset();
-    return next_obj ? next_obj->GetPinnedTuple() : nullptr;
+    if (next_obj) {
+      RETURN AWAIT next_obj->GetPinnedTuple();
+    } else {
+      RETURN nullptr;
+    }
   }
 
  public:
@@ -160,6 +164,9 @@ struct dbtuple {
        }
        Object *myobj = GetObject();
        myobj->SetStatus(1); // kStatusMemory = 1
+       // Have to return here because size may become 0 once status is set to 1
+       // (another IO finishes and changes it)
+       return rc_t{RC_TRUE};
      }
 
      return size > 0 ? rc_t{RC_TRUE} : rc_t{RC_FALSE};

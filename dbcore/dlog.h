@@ -177,8 +177,6 @@ public:
   log_block *allocate_log_block(uint32_t payload_size, uint64_t *out_cur_lsn,
                                 uint64_t *out_seg_num, uint64_t block_csn);
 
-  void commit_log_block(log_block *block);
-
   // Enqueue commit queue
   void enqueue_committed_xct(uint64_t csn);
 
@@ -196,6 +194,10 @@ public:
     active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];
     logbuf_offset = 0;
   }
+
+  void issue_read(int fd, char *buf, uint64_t size, uint64_t offset);
+
+  bool peek_read(char *buf, uint64_t size);
 };
 
 extern std::vector<tls_log *> tlogs;

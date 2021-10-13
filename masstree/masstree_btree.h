@@ -88,7 +88,9 @@ public:
 
   // memory allocation
   void *allocate(size_t sz, memtag) {
-    Object *obj = (Object *)MM::allocate(sz + sizeof(Object));
+    Object *obj = ermia::config::tls_alloc
+                      ? (Object *)MM::allocate(sz + sizeof(Object))
+                      : (Object *)malloc(sz + sizeof(Object));
     new (obj) Object(NULL_PTR, NULL_PTR, epoch_, true);
     return obj->GetPayload();
   }

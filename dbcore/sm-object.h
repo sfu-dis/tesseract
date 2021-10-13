@@ -1,5 +1,6 @@
 #pragma once
 
+#include <liburing.h>
 #include <list>
 
 #include "../varstr.h"
@@ -8,6 +9,7 @@
 #include "epoch.h"
 #include "sm-common.h"
 #include "sm-config.h"
+#include "sm-coroutine.h"
 #include "xid.h"
 
 namespace ermia {
@@ -46,25 +48,27 @@ class Object {
   // commit. 
   fat_ptr csn_;
 
- public:
-   static fat_ptr Create(const varstr *tuple_value, epoch_num epoch);
+  // io_uring structures
+  static struct io_uring ring;
 
-   Object()
-       : alloc_epoch_(0), status_(kStatusMemory), pdest_(NULL_PTR),
-         next_pdest_(NULL_PTR), next_volatile_(NULL_PTR) {}
+public:
+  static fat_ptr Create(const varstr *tuple_value, epoch_num epoch);
 
-   Object(fat_ptr pdest, fat_ptr next, epoch_num e, bool in_memory)
-       : alloc_epoch_(e), status_(in_memory ? kStatusMemory : kStatusStorage),
-         pdest_(pdest), next_pdest_(next), next_volatile_(NULL_PTR) {}
+  Object()
+      : alloc_epoch_(0), status_(kStatusMemory), pdest_(NULL_PTR),
+        next_pdest_(NULL_PTR), next_volatile_(NULL_PTR) {}
 
-   inline bool IsDeleted() { return status_ == kStatusDeleted; }
-   inline bool IsInMemory() { return status_ == kStatusMemory; }
-   inline fat_ptr *GetPersistentAddressPtr() { return &pdest_; }
-   inline fat_ptr GetPersistentAddress() { return pdest_; }
-   inline void SetPersistentAddress(fat_ptr ptr) { pdest_._ptr = ptr._ptr; }
-   inline fat_ptr GetCSN() { return csn_; }
-   inline void SetCSN(fat_ptr csnptr) {
-     volatile_write(csn_._ptr, csnptr._ptr); }
+  Object(fat_ptr pdest, fat_ptr next, epoch_num e, bool in_memory)
+      : alloc_epoch_(e), status_(in_memory ? kStatusMemory : kStatusStorage),
+        pdest_(pdest), next_pdest_(next), next_volatile_(NULL_PTR) {}
+
+  inline bool IsDeleted() { return status_ == kStatusDeleted; }
+  inline bool IsInMemory() { return status_ == kStatusMemory; }
+  inline fat_ptr *GetPersistentAddressPtr() { return &pdest_; }
+  inline fat_ptr GetPersistentAddress() { return pdest_; }
+  inline void SetPersistentAddress(fat_ptr ptr) { pdest_._ptr = ptr._ptr; }
+  inline fat_ptr GetCSN() { return csn_; }
+  inline void SetCSN(fat_ptr csnptr) { volatile_write(csn_._ptr, csnptr._ptr); }
   inline fat_ptr GetNextPersistent() { return volatile_read(next_pdest_); }
   inline fat_ptr* GetNextPersistentPtr() { return &next_pdest_; }
   inline fat_ptr GetNextVolatile() { return volatile_read(next_volatile_); }
@@ -75,23 +79,23 @@ class Object {
   inline void SetAllocateEpoch(epoch_num e) { alloc_epoch_ = e; }
   inline char* GetPayload() { return (char*)((char*)this + sizeof(Object)); }
   inline void SetStatus(uint32_t s) { volatile_write(status_, s); }
-  inline dbtuple* GetPinnedTuple() {
+  inline PROMISE(dbtuple *) GetPinnedTuple() {
     if (IsDeleted()) {
-      return nullptr;
+      RETURN nullptr;
     }
     if (!config::kStateRunning) {
       if (!IsInMemory()) {
-        Pin();
+        AWAIT Pin();
       }
     } else {
       if (config::always_load || !IsInMemory()) {
-        Pin();
+        AWAIT Pin();
       }
     }
-    return (dbtuple*)GetPayload();
+    RETURN(dbtuple *) GetPayload();
   }
   fat_ptr GenerateCsnPtr(uint64_t csn);
-  void Pin();  // Make sure the payload is in memory
+  PROMISE(void) Pin(); // Make sure the payload is in memory
 
   static inline void PrefetchHeader(Object *p) {
     uint32_t i = 0;

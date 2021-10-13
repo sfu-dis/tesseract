@@ -741,9 +741,10 @@ install:
   return NULL_PTR;
 }
 
-void sm_oid_mgr::oid_get_version_amac(oid_array *oa,
-                                      std::vector<OIDAMACState> &requests,
-                                      TXN::xid_context *visitor_xc) {
+PROMISE(void)
+sm_oid_mgr::oid_get_version_amac(oid_array *oa,
+                                 std::vector<OIDAMACState> &requests,
+                                 TXN::xid_context *visitor_xc) {
   uint32_t finished = 0;
   while (finished < requests.size()) {
     for (auto &s : requests) {
@@ -760,7 +761,7 @@ void sm_oid_mgr::oid_get_version_amac(oid_array *oa,
           s.stage = 0;
         } else {
           if (visible) {
-            s.tuple = s.cur_obj->GetPinnedTuple();
+            s.tuple = AWAIT s.cur_obj->GetPinnedTuple();
             s.done = true;
             ++finished;
           } else  {
@@ -841,7 +842,7 @@ start_over:
       goto start_over;
     }
     if (visible) {
-      RETURN cur_obj->GetPinnedTuple();
+      RETURN AWAIT cur_obj->GetPinnedTuple();
     }
     ptr = tentative_next;
     prev_obj = cur_obj;

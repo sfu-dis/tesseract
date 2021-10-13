@@ -26,6 +26,8 @@ std::atomic<uint64_t> commit_csn(0);
 
 std::mutex tls_log_lock;
 
+thread_local struct io_uring tls_read_ring;
+
 std::thread *pcommit_thread = nullptr;
 std::condition_variable pcommit_daemon_cond;
 std::mutex pcommit_daemon_lock;
@@ -107,7 +109,7 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
              << ", start lsn " << current_lsn;
 
   // Initialize io_uring
-  int ret = io_uring_queue_init(16, &ring, 0);
+  int ret = io_uring_queue_init(256, &ring, 0);
   LOG_IF(FATAL, ret != 0) << "Error setting up io_uring: " << strerror(ret);
 
   // Initialize committer
@@ -151,6 +153,50 @@ void tls_log::last_flush() {
   }
 }
 
+// TODO(tzwang) - fd should correspond to the actual segment
+void tls_log::issue_read(int fd, char *buf, uint64_t size, uint64_t offset) {
+  thread_local bool initialized = false;
+  if (unlikely(!initialized)) {
+    // Initialize the tls io_uring
+    int ret = io_uring_queue_init(256, &tls_read_ring, 0);
+    LOG_IF(FATAL, ret != 0) << "Error setting up io_uring: " << strerror(ret);
+    initialized = true;
+  }
+
+  struct io_uring_sqe *sqe = io_uring_get_sqe(&tls_read_ring);
+  LOG_IF(FATAL, !sqe);
+
+  io_uring_prep_read(sqe, fd, buf, size, offset);
+  io_uring_sqe_set_data(sqe, buf);
+
+  int nsubmitted = io_uring_submit(&tls_read_ring);
+  LOG_IF(FATAL, nsubmitted != 1);
+}
+
+bool tls_log::peek_read(char *buf, uint64_t size) {
+  struct io_uring_cqe *cqe;
+  int ret = io_uring_peek_cqe(&tls_read_ring, &cqe);
+
+  if (ret < 0) {
+    if (ret == -EAGAIN) {
+      // Nothing yet - caller should retry later
+      return false;
+    } else {
+      LOG(FATAL) << strerror(ret);
+    }
+  }
+
+  auto completed_buf = (char *)cqe->user_data;
+  if (completed_buf != buf) {
+    return false;
+  }
+
+  ALWAYS_ASSERT(cqe->res == size);
+
+  io_uring_cqe_seen(&tls_read_ring, cqe);
+  return true;
+}
+
 void tls_log::issue_flush(const char *buf, uint64_t size) {
   if (config::null_log_device) {
     durable_lsn += size;
@@ -169,7 +215,6 @@ void tls_log::issue_flush(const char *buf, uint64_t size) {
   LOG_IF(FATAL, !sqe);
 
   io_uring_prep_write(sqe, current_segment()->fd, buf, size, current_segment()->size);
-  sqe->flags |= IOSQE_IO_LINK;
 
   // Encode data size which is useful upon completion (to add to durable_lsn)
   // Must be set after io_uring_prep_write (which sets user_data to 0)
@@ -297,9 +342,6 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
   // the newly instantiated record can directly be filled out with its CSN
   lb->csn = block_csn;
   return lb;
-}
-
-void tls_log::commit_log_block(log_block *block) {
 }
 
 void tls_log::enqueue_committed_xct(uint64_t csn) {
