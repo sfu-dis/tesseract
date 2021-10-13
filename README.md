@@ -79,8 +79,44 @@ $run.sh \
 
 #### Run example
 ```
-Sequential (baseline) with TPC-C:
+Baseline (no DDL) with TPC-C (change ratio of StockLevel to 40000 in run.sh):
 $./run.sh ./corobase_SI tpcc_org 10 10 10 "-node_memory_gb=30"
+
+Block DDL with TPC-C (change ratio of StockLevel to 39999 in run.sh):
+$./run.sh ./corobase_DDL_BLOCK tpcc_org 10 10 30 "-node_memory_gb=50"
+
+Block DDL with ODDLB:
+$./run.sh ./corobase_DDL_BLOCK_MICROBENCH oddl_org 10 10 30 "-node_memory_gb=50"
+
+SI DDL with TPC-C (not supported yet) (change ratio of StockLevel to 39999 in run.sh):
+$./run.sh ./corobase_DDL_SI tpcc_org 10 10 30 "-node_memory_gb=50"
+
+SI DDL with ODDLB:
+$./run.sh ./corobase_DDL_SI_MICROBENCH oddl_org 10 10 30 "-node_memory_gb=50"
+
+Copy DDL with TPC-C (bugs in CDC log replay) (change ratio of StockLevel to 39999 in run.sh):
+$./run.sh ./corobase_DDL_COPY tpcc_org 10 10 30 "-node_memory_gb=50"
+
+Copy DDL with ODDLB (bugs in CDC log replay):
+$./run.sh ./corobase_DDL_COPY_MICROBENCH oddl_org 10 10 30 "-node_memory_gb=50"
+
+Lazy copy DDL with TPC-C (change ratio of StockLevel to 39999 in run.sh):
+$./run.sh ./corobase_DDL_LAZY_COPY tpcc_org 10 10 30 "-node_memory_gb=50"
+
+Lazy copy DDL with ODDLB:
+$./run.sh ./corobase_DDL_LAZY_COPY_MICROBENCH oddl_org 10 10 30 "-node_memory_gb=50"
+
+Double copy DDL with TPC-C (change ratio of StockLevel to 39999 in run.sh):
+$./run.sh ./corobase_DDL_DOUBLE_COPY tpcc_org 10 10 30 "-node_memory_gb=50"
+
+Double copy DDL with ODDLB (not supported yet):
+$./run.sh ./corobase_DDL_DOUBLE_COPY_MICROBENCH oddl_org 10 10 30 "-node_memory_gb=50"
+
+No copy no verification DDL with TPC-C (not supported yet) (change ratio of StockLevel to 39999 in run.sh):
+$./run.sh ./corobase_DDL_NO_COPY_VERIFICATION_MICROBENCH tpcc_org 10 10 30 "-node_memory_gb=50"
+
+No copy no verification DDL with ODDLB:
+$./run.sh ./corobase_DDL_NO_COPY_VERIFICATION_MICROBENCH oddl_org 10 10 30 "-node_memory_gb=50"
 ```
 
 #### System-wide runtime options
