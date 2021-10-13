@@ -161,8 +161,6 @@ public:
                                 uint64_t *out_seg_num,
                                 uint64_t block_csn);
 
-  void commit_log_block(log_block *block);
-
   // Enqueue commit queue
   void enqueue_committed_xct(uint64_t csn);
 

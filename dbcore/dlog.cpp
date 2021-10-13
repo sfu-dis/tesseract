@@ -336,9 +336,6 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
   return lb;
 }
 
-void tls_log::commit_log_block(log_block *block) {
-}
-
 void tls_log::enqueue_committed_xct(uint64_t csn) {
   bool flush = false;
   bool insert = true;
