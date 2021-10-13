@@ -91,16 +91,16 @@ set_target_properties(corobase_SI PROPERTIES COMPILE_FLAGS "")
 target_link_libraries(corobase_SI corobase_si thread_pool)
 
 # SI with fully nested coroutine
-#add_library(corobase_adv_coro_si SHARED ${LIB_SRC})
-#set_target_properties(corobase_adv_coro_si PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
+add_library(corobase_adv_coro_si SHARED ${LIB_SRC})
+set_target_properties(corobase_adv_coro_si PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
 
-#add_executable(corobase_adv_coro_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-#set_target_properties(corobase_adv_coro_SI PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
-#target_link_libraries(corobase_adv_coro_SI corobase_adv_coro_si thread_pool)
+add_executable(corobase_adv_coro_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(corobase_adv_coro_SI PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
+target_link_libraries(corobase_adv_coro_SI corobase_adv_coro_si thread_pool)
 
 # Thread pool library with SSN enabled
-add_library(thread_pool_ssn SHARED ${THREAD_POOL_SRC})
-set_target_properties(thread_pool_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
+#add_library(thread_pool_ssn SHARED ${THREAD_POOL_SRC})
+#set_target_properties(thread_pool_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
 
 # SI+SSN
 #add_library(corobase_si_ssn SHARED ${LIB_SRC})

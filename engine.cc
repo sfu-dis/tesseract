@@ -296,7 +296,7 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr
   AWAIT GetOID(key, rc, t->xc, oid);
 
   if (rc._val == RC_TRUE) {
-    rc_t rc = t->Update(table_descriptor, oid, &key, &value);
+    rc_t rc = AWAIT t->Update(table_descriptor, oid, &key, &value);
     RETURN rc;
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};
@@ -315,7 +315,8 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr
   if (rc._val == RC_TRUE) {
     // Allocate an empty record version as the "new" version
 		varstr *null_val = t->string_allocator().next(0);
-    RETURN t->Update(table_descriptor, oid, &key, null_val);
+    rc_t rc = AWAIT t->Update(table_descriptor, oid, &key, null_val);
+    RETURN rc;
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};
   }
@@ -405,12 +406,14 @@ rc_t Table::Read(transaction &t, OID oid, varstr *out_value) {
   return rc;
 }
 
-rc_t Table::Update(transaction &t, OID oid, varstr &value) {
-  return t.Update(td, oid, &value);
+PROMISE(rc_t) Table::Update(transaction &t, OID oid, varstr &value) {
+  rc_t rc = AWAIT t.Update(td, oid, &value);
+  RETURN rc;
 }
 
-rc_t Table::Remove(transaction &t, OID oid) {
-  return t.Update(td, oid, nullptr);
+PROMISE(rc_t) Table::Remove(transaction &t, OID oid) {
+  rc_t rc = AWAIT t.Update(td, oid, nullptr);
+  RETURN rc;
 }
 
 ////////////////// End of Table interfaces //////////

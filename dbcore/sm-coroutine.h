@@ -531,7 +531,7 @@ private:
   #define PROMISE(t) ermia::coro::task<t>
   #define RETURN co_return
   #define AWAIT co_await
-  #define SUSPEND co_await generic_suspend_always
+  #define SUSPEND co_await suspend_always{}
 
 template<typename T>
 inline T sync_wait_coro(ermia::coro::task<T> &&coro_task) {
