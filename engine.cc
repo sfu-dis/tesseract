@@ -510,19 +510,14 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
     if (tlog && csn) {
       tlog->last_flush();
       std::vector<dlog::segment> *segments = tlog->get_segments();
-      // printf("log %u cdc, seg size: %lu\n", tlog->get_id(), segments->size());
-      if (segments->size() > 1)
-        printf("> 1 files at log %u\n", tlog->get_id());
       bool stop_scan = false;
       uint64_t offset_in_seg = *cdc_offset;
       uint64_t offset_increment = 0;
       uint64_t last_csn = 0;
-      printf("offset_in_seg: %lu\n", offset_in_seg);
       for (std::vector<dlog::segment>::reverse_iterator seg =
                segments->rbegin();
            seg != segments->rend(); seg++) {
         uint64_t data_sz = seg->size;
-        printf("seg size: %lu\n", data_sz);
         char *data_buf = (char *)malloc(data_sz - offset_in_seg);
         size_t m = os_pread(seg->fd, (char *)data_buf, data_sz - offset_in_seg,
                             offset_in_seg);
@@ -537,20 +532,14 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
               (dlog::log_block *)(data_buf + offset_increment);
           if ((end_csn && begin_csn <= header->csn && header->csn <= end_csn) ||
               (!end_csn && begin_csn <= header->csn)) {
+            ALWAYS_ASSERT(header->csn > 100000000);
             last_csn = header->csn;
-            if (header->csn > 100000000)
-              printf("last csn: %lu, offset_increment: %lu, data_sz: %lu, "
-                     "offset_in_seg: %lu\n",
-                     last_csn, offset_increment, data_sz, offset_in_seg);
             uint64_t offset_in_block = block_sz;
             varstr *insert_key, *update_key, *insert_key_idx;
             while (offset_in_block < header->payload_size) {
               dlog::log_record *logrec =
                   (dlog::log_record *)(data_buf + offset_increment +
                                        offset_in_block);
-              // printf("logrec->fid: %u, logrec->rec_size: %u\n", logrec->fid,
-              // logrec->rec_size); ALWAYS_ASSERT(logrec->fid < 100);
-
               if (logrec->fid != fid) {
 	        offset_in_block += logrec->rec_size;
 	        continue;
@@ -558,7 +547,6 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
 
               if (logrec->type == dlog::log_record::logrec_type::INSERT) {
                 dbtuple *tuple = (dbtuple *)(logrec->data);
-                // printf("cdc insert, tuple->size: %u\n", tuple->size);
 		OID oid = 0;
                 varstr value(tuple->get_value_start(), tuple->size);
                 
@@ -567,19 +555,15 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
 
                 order_line_1::value v_ol_1;
                 v_ol_1.ol_i_id = v_ol->ol_i_id;
-                // printf("cdc insert, v_ol->ol_i_id: %u\n", v_ol->ol_i_id);
 		v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
                 v_ol_1.ol_amount = v_ol->ol_amount;
                 v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
                 v_ol_1.ol_quantity = v_ol->ol_quantity;
                 v_ol_1.v = v_ol->v + 1;
-                // printf("cdc insert, v_ol->v: %lu\n", v_ol->v);
 		v_ol_1.ol_tax = 0;
 		
 		order_line_1::key k_ol_temp;
 		const order_line_1::key *k_ol = Decode(*insert_key, k_ol_temp);
-
-                // printf("cdc insert, ol_w_id: %u, ol_d_id: %u, ol_o_id: %u\n", k_ol->ol_w_id, k_ol->ol_d_id, k_ol->ol_o_id);
 
                 const size_t order_line_sz = ::Size(v_ol_1);
                 varstr *d_v = arena->next(order_line_sz);
@@ -603,7 +587,6 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
               } else if (logrec->type ==
                          dlog::log_record::logrec_type::UPDATE) {
                 dbtuple *tuple = (dbtuple *)(logrec->data);
-                // printf("cdc update, tuple->size: %u\n", tuple->size);
                 varstr value(tuple->get_value_start(), tuple->size);
 
                 varstr *d_v = nullptr;
@@ -645,19 +628,15 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
 
                 order_line_1::value v_ol_1;
                 v_ol_1.ol_i_id = v_ol->ol_i_id;
-		// printf("cdc update, v_ol->ol_i_id: %u\n", v_ol->ol_i_id);
                 v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
                 v_ol_1.ol_amount = v_ol->ol_amount;
                 v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
                 v_ol_1.ol_quantity = v_ol->ol_quantity;
                 v_ol_1.v = v_ol->v + 1;
-                // printf("cdc update, v_ol->v: %lu\n", v_ol->v);
                 v_ol_1.ol_tax = 0;
 
 		order_line_1::key k_ol_temp;
                 const order_line_1::key *k_ol = Decode(*update_key, k_ol_temp);
-
-                // printf("cdc update, ol_w_id: %u, ol_d_id: %u, ol_o_id: %u\n", k_ol->ol_w_id, k_ol->ol_d_id, k_ol->ol_o_id);
 
                 const size_t order_line_sz = ::Size(v_ol_1);
                 d_v = arena->next(order_line_sz);
@@ -712,16 +691,13 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
 #endif
               } else if (logrec->type ==
                          dlog::log_record::logrec_type::INVALID) {
-                printf("Invalid type\n");
               } else {
-                printf("unknown type\n");
               }
 
               offset_in_block += logrec->rec_size;
             }
           } else {
             if (end_csn && header->csn > end_csn) {
-              printf("header->csn > end_csn\n");
               ddl_end_flag = true;
               stop_scan = true;
               break;
@@ -732,7 +708,6 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
         free(data_buf);
         if (insert_total != 0 || update_total != 0)
           ddl_end_tmp = false;
-        // printf("insert total: %d, insert fail: %d, update total: %d, update fail: %d\n", insert_total, insert_fail, update_total, update_fail);
         if (update_fail > 0)
           printf("update_fail, CDC conflicts with copy, %d\n", update_fail);
 
