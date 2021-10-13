@@ -13,8 +13,8 @@ public:
       spin_barrier *barrier_a, spin_barrier *barrier_b)
       : oddlb_base_worker(worker_id, seed, db, open_tables, barrier_a,
                           barrier_b) {
-    std::cerr << "Read/Write = " << read_ratio << "/" << write_ratio
-              << std::endl;
+    // std::cerr << "Read/Write = " << read_ratio << "/" << write_ratio
+    //           << std::endl;
   }
 
   double read_ratio = 0.2, write_ratio = 0.7999985;
@@ -108,11 +108,6 @@ public:
 
     txn->set_table_descriptors(schema.td, old_td);
 
-#if !defined(LAZYDDL) && !defined(DCOPYDDL)
-    std::vector<ermia::thread::Thread *> cdc_workers =
-        txn->changed_data_capture();
-#endif
-
     rc = rc_t{RC_INVALID};
     schema_index->WriteSchemaTable(txn, rc, k1, v2);
     TryCatch(rc);
@@ -122,15 +117,10 @@ public:
         (ermia::ConcurrentMasstreeIndex *)schema.index;
     rc = rc_t{RC_INVALID};
     rc = table_index->WriteNormalTable(arena, old_table_index, txn, v2, NULL);
-#if !defined(DCOPYDDL)
-    if (rc._val != RC_TRUE) {
-      txn->join_changed_data_capture_threads(cdc_workers);
-    }
-#endif
     TryCatch(rc);
 
 #ifdef DCOPYDDL
-    schema.state = ermia::TXN::TXN_CMMTD;
+    schema.state = 0;
     memcpy(str2, &schema, sizeof(str2));
     v2 = Encode_(str(sizeof(str2)), str2);
 
@@ -140,11 +130,6 @@ public:
 #endif
 
     TryCatch(db->Commit(txn));
-
-#if !defined(LAZYDDL) && !defined(DCOPYDDL)
-    txn->join_changed_data_capture_threads(cdc_workers);
-#endif
-
 #elif defined(BLOCKDDL)
     db->WriteLock(std::string("SCHEMA"));
     ermia::transaction *txn =
@@ -254,7 +239,7 @@ public:
 
     TryCatch(db->Commit(txn));
 #endif
-    printf("ddl commit ok\n");
+    printf("DDL commit OK\n");
 #if defined(COPYDDL) && !defined(LAZYDDL) && defined(MICROBENCH)
     return {RC_DDL_TRUE};
 #else
@@ -425,15 +410,12 @@ public:
 
     /*table_index->GetRecord(txn, rc, k1, v1, &oid);
     //TryVerifyRelaxed(rc);
-    if (rc._val != RC_TRUE) TryCatch(rc_t{RC_ABORT_USER});
 
     struct Schema_base record_test;
     memcpy(&record_test, (char *)v1.data(), sizeof(record_test));
 
 #ifdef SIDDL
     if (record_test.v != schema_version) {
-      //TryCatch(rc_t{RC_ABORT_USER});
-      //db->Abort(txn);
       goto retry;
     }
 #endif

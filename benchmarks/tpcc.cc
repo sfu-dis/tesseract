@@ -7,10 +7,6 @@
 
 #include "tpcc-common.h"
 
-/*volatile bool ddl_running_1 = true;
-volatile bool ddl_running_2 = false;
-std::atomic<uint64_t> ddl_end(0);
-*/
 rc_t tpcc_worker::txn_new_order() {
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
@@ -627,7 +623,6 @@ rc_t tpcc_worker::txn_delivery() {
             &Encode(str(Size(k_oo_1)), k_oo_1), c));
 #endif
       } else {
-
         static_limit_callback<15> c1(s_arena.get(), false);
         TryCatch(tbl_order_line(warehouse_id)
                      ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
@@ -656,7 +651,7 @@ rc_t tpcc_worker::txn_delivery() {
           TryCatch({RC_ABORT_USER});
         }
 #else
-        TryCatch({RC_ABORT_USER});
+          TryCatch({RC_ABORT_USER});
 #endif
       }
       }
@@ -1878,26 +1873,15 @@ rc_t tpcc_worker::txn_ddl() {
   memcpy(str4, &order_line_schema, sizeof(str4));
   ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
 
-  ermia::ddl_td = old_order_line_td;
   //txn->set_table_descriptors(oorder_schema.td, old_oorder_td);
   txn->set_table_descriptors(order_line_schema.td, old_order_line_td);
 
   // db->WriteUnlock(str3.c_str());
 
-#if !defined(LAZYDDL) && !defined(DCOPYDDL)
-  std::vector<ermia::thread::Thread *> cdc_workers =
-      txn->changed_data_capture();
-#endif
-
   //schema_index->WriteSchemaTable(txn, rc, k2, v3);
   schema_index->WriteSchemaTable(txn, rc, k1, v3);
   TryCatch(rc);
-  /*#ifdef DCOPYDDL
-    ermia::volatile_write(txn->GetXIDContext()->state, ermia::TXN::TXN_DDL);
-  #endif*/
-  // TryCatch(db->Commit(txn));
 
-  // txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 #if !defined(LAZYDDL)
   rc = rc_t{RC_INVALID};
   ermia::ConcurrentMasstreeIndex *new_order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
@@ -1909,11 +1893,6 @@ rc_t tpcc_worker::txn_ddl() {
   //ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index = (ermia::ConcurrentMasstreeIndex *) ermia::Catalog::GetIndex(secondary_index_name);
   //ALWAYS_ASSERT(oorder_table_secondary_index);
   //rc = oorder_table_index->WriteNormalTable1(arena, old_oorder_table_index, old_order_line_table_index, oorder_table_secondary_index, txn, v1, oorder_schema.op);
-#if !defined(DCOPYDDL)
-  if (rc._val != RC_TRUE) {
-    txn->join_changed_data_capture_threads(cdc_workers);
-  }
-#endif
   TryCatch(rc);
 
 #ifdef DCOPYDDL
@@ -1926,18 +1905,9 @@ rc_t tpcc_worker::txn_ddl() {
 #endif
 #endif
 
-#if !defined(LAZYDDL) && !defined(DCOPYDDL)
-  // txn->set_ddl_running_1(false);
-#endif
-
   TryCatch(db->Commit(txn));
-  ermia::ddl_td = NULL;
-
-#if !defined(LAZYDDL) && !defined(DCOPYDDL)
-  txn->join_changed_data_capture_threads(cdc_workers);
 #endif
-#endif
-  printf("Commit OK\n");
+  printf("DDL commit OK\n");
   return {RC_TRUE};
 }
 

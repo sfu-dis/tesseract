@@ -374,6 +374,7 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
   if (r.IsAbort()) __abort_txn_coro(r);            \
 }
 
+#ifdef BLOCKDDL
 // For Block DDL, release write lock when abort in DDL txn.
 #define TryCatchUnblock(rc)                                                    \
   {                                                                            \
@@ -381,9 +382,10 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
     if (r.IsAbort()) {                                                         \
       db->Abort(txn);                                                          \
       db->WriteUnlock(std::string("SCHEMA"));                                  \
+      return r;                                                                \
     }                                                                          \
-    return r;                                                                  \
   }
+#endif
 
 // No abort is allowed, usually for loading
 inline void TryVerifyStrict(rc_t rc) {

@@ -57,7 +57,8 @@ public:
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
   virtual PROMISE(bool)
-      changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn,
+      changed_data_capture(transaction *t, uint32_t thread_id,
+                           uint64_t begin_csn, uint64_t end_csn,
                            uint64_t *cdc_offset, uint32_t begin_log,
                            uint32_t end_log, str_arena *arena) = 0;
 #endif

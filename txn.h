@@ -153,7 +153,7 @@ protected:
   std::vector<ermia::thread::Thread *> changed_data_capture();
   void join_changed_data_capture_threads(
       std::vector<ermia::thread::Thread *> cdc_workers);
-  inline void set_ddl_running_1(bool dr1) { ddl_running_1 = dr1; }
+  uint64_t get_cdc_largest_csn();
 #endif
   bool DMLConsistencyHandler();
 #endif

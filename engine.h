@@ -35,7 +35,7 @@ dlog::tls_log *GetLog(uint32_t logid);
 class Table;
 
 extern TableDescriptor *schema_td;
-extern TableDescriptor *ddl_td;
+extern uint64_t *_cdc_last_csn;
 
 class Engine {
 private:
@@ -248,9 +248,10 @@ public:
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
   PROMISE(bool)
-  changed_data_capture(transaction *t, uint64_t begin_csn, uint64_t end_csn,
-                       uint64_t *cdc_offset, uint32_t begin_log,
-                       uint32_t end_log, str_arena *arena) override;
+  changed_data_capture(transaction *t, uint32_t thread_id, uint64_t begin_csn,
+                       uint64_t end_csn, uint64_t *cdc_offset,
+                       uint32_t begin_log, uint32_t end_log,
+                       str_arena *arena) override;
 #endif
 
   PROMISE(void)

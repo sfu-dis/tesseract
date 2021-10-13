@@ -8,6 +8,7 @@ extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 
 volatile bool ddl_running_1 = false;
 volatile bool ddl_running_2 = false;
+volatile bool cdc_running = false;
 std::atomic<uint64_t> ddl_end(0);
 uint64_t *_tls_durable_lsn =
     (uint64_t *)malloc(sizeof(uint64_t) * (ermia::config::worker_threads - 1));
@@ -21,14 +22,13 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     masstree_absent_set.clear();
   }
   if (is_ddl()) {
-    volatile_write(ddl_running_1, true);
+    ddl_running_1 = true;
     write_set.init_large_write_set();
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
     uint32_t j = 0;
-    for (uint32_t i = 0; i < config::MAX_THREADS; i++) {
+    for (uint32_t i = 0; i < ermia::dlog::tlogs.size(); i++) {
       dlog::tls_log *tlog = dlog::tlogs[i];
-      if (tlog && i != thread::MyId() &&
-          volatile_read(pcommit::_tls_durable_csn[i])) {
+      if (tlog && tlog != log && volatile_read(pcommit::_tls_durable_csn[i])) {
         _tls_durable_lsn[j++] = tlog->get_durable_lsn();
       }
     }
@@ -216,29 +216,25 @@ rc_t transaction::si_commit() {
     return rc_t{RC_ABORT_PHANTOM};
   }
 
+#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+  if (is_ddl()) {
+    std::vector<ermia::thread::Thread *> cdc_workers = changed_data_capture();
+    while (get_cdc_largest_csn() <
+           dlog::current_csn.load(std::memory_order_relaxed) - 100) {
+    }
+
+    join_changed_data_capture_threads(cdc_workers);
+  }
+#endif
+
   ASSERT(log);
   // Precommit: obtain a CSN
-  xc->end = dlog::current_csn.load(std::memory_order_relaxed) + 1;
-  // xc->end = dlog::current_csn.fetch_add(1);
+  xc->end = write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;
 
 #if defined(COPYDDL)
   if (ddl_running_1 && is_dml() && DMLConsistencyHandler()) {
-    // printf("DML failed\n");
+    printf("DML failed\n");
     return rc_t{RC_ABORT_SI_CONFLICT};
-  }
-#endif
-
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  if (is_ddl()) {
-    set_ddl_running_1(false);
-  }
-#endif
-
-  xc->end = write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;
-
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  if (is_ddl()) {
-    set_ddl_running_1(true);
   }
 #endif
 
@@ -253,7 +249,7 @@ rc_t transaction::si_commit() {
     } else {
       lb = log->allocate_log_block(log_size, &lb_lsn, &segnum, xc->end);
     }
-    log->set_dirty(true);
+    // log->set_dirty(true);
   }
 
 #ifdef COPYDDL
@@ -284,7 +280,10 @@ rc_t transaction::si_commit() {
 
     // Set persistent address
     auto tuple_size_code = encode_size_aligned(w.size);
-    fat_ptr tuple_pdest = LSN::make(log->get_id(), lb_lsn + tuple_off, segnum, tuple_size_code).to_ptr();
+    fat_ptr tuple_pdest =
+        LSN::make(log->get_id(), lb_lsn + sizeof(dlog::log_block) + tuple_off,
+                  segnum, tuple_size_code)
+            .to_ptr();
     object->SetPersistentAddress(tuple_pdest);
     ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
 
@@ -298,14 +297,18 @@ rc_t transaction::si_commit() {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   if (is_ddl()) {
     ddl_running_2 = true;
+    ddl_end.store(0);
+    std::vector<ermia::thread::Thread *> cdc_workers = changed_data_capture();
     while (ddl_end.load() != ermia::config::cdc_threads) {
     }
-  }
-#elif DCOPYDDL
-  if (is_ddl()) {
-    volatile_write(ddl_running_1, false);
+    join_changed_data_capture_threads(cdc_workers);
   }
 #endif
+
+  if (is_ddl()) {
+    // ddl_running_1 = false;
+    ddl_running_2 = false;
+  }
 
   volatile_write(xc->state, TXN::TXN_CMMTD);
 
@@ -381,8 +384,12 @@ rc_t transaction::si_commit() {
   }
   // ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
 
-  if (write_set.size())
-    log->set_dirty(false);
+  // if (write_set.size())
+  //   log->set_dirty(false);
+
+  if (is_ddl()) {
+    ddl_running_1 = false;
+  }
 
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!
@@ -394,28 +401,24 @@ rc_t transaction::si_commit() {
 #ifdef COPYDDL
 #if !defined(LAZYDDL) && !defined(DCOPYDDL)
 std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
+  cdc_running = true;
   transaction *txn = this;
   uint32_t cdc_threads = ermia::config::cdc_threads;
   uint32_t logs_per_cdc_thread =
       // (ermia::config::worker_threads - 1 - cdc_threads) / cdc_threads;
       (ermia::config::worker_threads - 1) / cdc_threads;
-  // if (logs_per_cdc_thread == 1)
-  //  logs_per_cdc_thread++;
-  uint32_t thread_id = ermia::thread::MyId();
-  printf("thread_id: %u\n", thread_id);
 
   uint32_t normal_workers[cdc_threads];
   uint j = 0;
-  for (uint i = 0; i < config::MAX_THREADS; i++) {
+  for (uint32_t i = 0; i < ermia::dlog::tlogs.size(); i++) {
     dlog::tls_log *tlog = dlog::tlogs[i];
-    uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
-    if (tlog && i != thread_id && csn) {
+    if (tlog && tlog != log && volatile_read(pcommit::_tls_durable_csn[i])) {
       normal_workers[j++] = i;
     }
   }
 
   std::vector<ermia::thread::Thread *> cdc_workers;
-  for (uint i = 0; i < cdc_threads; i++) {
+  for (uint32_t i = 0; i < cdc_threads; i++) {
     uint32_t begin_log = normal_workers[i * logs_per_cdc_thread];
     uint32_t end_log = normal_workers[(i + 1) * logs_per_cdc_thread - 1];
 
@@ -428,20 +431,17 @@ std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
       bool ddl_end_local = false;
       uint64_t cdc_offset = _tls_durable_lsn[i];
       // str_arena *arena = new str_arena(config::arena_size_mb);
-    retry:
-      while (ddl_running_1) {
+      while (cdc_running) {
         ddl_end_local = txn->new_td->GetPrimaryIndex()->changed_data_capture(
-            txn, txn->GetXIDContext()->begin,
+            txn, i, txn->GetXIDContext()->begin,
             ermia::volatile_read(txn->GetXIDContext()->end), &cdc_offset,
             begin_log, end_log, nullptr);
         if (ddl_end_local && ddl_running_2)
           break;
-        // usleep(1);
-      }
-      if (!ddl_running_2) {
-        goto retry;
+        // usleep(10);
       }
       ddl_end.fetch_add(1);
+      volatile_write(_tls_durable_lsn[i], cdc_offset);
     };
 
     thread->StartTask(parallel_changed_data_capture);
@@ -452,13 +452,21 @@ std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
 
 void transaction::join_changed_data_capture_threads(
     std::vector<ermia::thread::Thread *> cdc_workers) {
-  ddl_running_1 = false;
+  cdc_running = false;
   for (std::vector<ermia::thread::Thread *>::const_iterator it =
            cdc_workers.begin();
        it != cdc_workers.end(); ++it) {
     (*it)->Join();
     ermia::thread::PutThread(*it);
   }
+}
+
+uint64_t transaction::get_cdc_largest_csn() {
+  uint64_t max = 0;
+  for (uint32_t i = 0; i < config::cdc_threads; i++) {
+    max = std::max(volatile_read(_cdc_last_csn[i]), max);
+  }
+  return max;
 }
 #endif
 
@@ -482,17 +490,10 @@ bool transaction::DMLConsistencyHandler() {
       }
       struct Schema_record schema;
       memcpy(&schema, (char *)tuple_v.data(), sizeof(schema));
-#ifdef DCOPYDDL
       if (schema.td != v.first) {
         tmp_xc->begin = xc->begin;
         return true;
       }
-#else
-      if (schema.td != v.first) {
-        tmp_xc->begin = xc->begin;
-        return true;
-      }
-#endif
     }
   }
 

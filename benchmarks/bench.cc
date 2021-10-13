@@ -52,7 +52,7 @@ uint32_t bench_worker::fetch_workload() {
         ddl_num.fetch_add(1);
         int ddl_num_local = ddl_num.load();
 #if defined(COPYDDL) && defined(MICROBENCH)
-        if (ddl_num_local != 1 && ddl_num_local != 120)
+        if (ddl_num_local != 30)
           continue;
 #if !defined(LAZYDDL)
         ddl_worker_id = worker_id;
@@ -229,6 +229,8 @@ void bench_runner::run() {
     for (auto &tlog : ermia::dlog::tlogs) {
       LOG_IF(FATAL, tlog->get_commit_queue_size() > 0);
     }
+
+    ermia::dlog::tlogs[0]->reset_committer(true);
   }
 
   // if (ermia::config::enable_chkpt) {
