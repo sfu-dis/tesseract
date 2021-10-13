@@ -176,8 +176,6 @@ void ConcurrentMasstreeIndex::ReadSchemaTable(transaction *t, rc_t &rc,
   if (rc._val != RC_TRUE)
     DLOG(INFO) << "Read schema table failed";
 #endif
-  if (rc._val != RC_TRUE)
-    printf("Read schema table failed\n");
   ALWAYS_ASSERT(rc._val == RC_TRUE);
 
 #ifdef COPYDDL
