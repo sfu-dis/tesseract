@@ -22,6 +22,9 @@ using google::dense_hash_map;
 
 extern volatile bool ddl_running_1;
 extern volatile bool ddl_running_2;
+extern volatile bool cdc_running;
+extern volatile bool ddl_overlap_1;
+extern volatile bool ddl_overlap_2;
 extern std::atomic<uint64_t> ddl_end;
 extern uint64_t *_tls_durable_lsn CACHE_ALIGNED;
 
@@ -56,7 +59,7 @@ struct write_record_t {
 };
 
 struct write_set_t {
-  static const uint32_t kMaxEntries = 256, kMaxEntries_ = 50000000;
+  static const uint32_t kMaxEntries = 256, kMaxEntries_ = 100000000;
   uint32_t num_entries;
   write_record_t entries[kMaxEntries];
   write_record_t *entries_;

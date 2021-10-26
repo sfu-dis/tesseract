@@ -24,6 +24,8 @@ using std::suspend_never;
 
 namespace ermia {
 
+static const uint32_t BITMAP_SIZE = 1000;
+
 extern std::mutex tlog_lock;
 
 // Get "my" own log
@@ -32,10 +34,15 @@ dlog::tls_log *GetLog();
 // Get a log with a specified log id
 dlog::tls_log *GetLog(uint32_t logid);
 
+std::bitset<BITMAP_SIZE> *GetBitMap();
+
 class Table;
 
 extern TableDescriptor *schema_td;
+extern TableDescriptor *new_td;
+extern TableDescriptor *old_td;
 extern uint64_t *_cdc_last_csn;
+extern std::vector<std::bitset<BITMAP_SIZE> *> bitmaps;
 
 class Engine {
 private:
@@ -250,8 +257,8 @@ public:
   PROMISE(bool)
   changed_data_capture(transaction *t, uint32_t thread_id, uint64_t begin_csn,
                        uint64_t end_csn, uint64_t *cdc_offset,
-                       uint32_t begin_log, uint32_t end_log,
-                       str_arena *arena) override;
+                       uint32_t begin_log, uint32_t end_log, str_arena *arena,
+                       util::fast_random &r) override;
 #endif
 
   PROMISE(void)

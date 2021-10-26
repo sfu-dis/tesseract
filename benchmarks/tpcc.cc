@@ -1875,6 +1875,8 @@ rc_t tpcc_worker::txn_ddl() {
 
   //txn->set_table_descriptors(oorder_schema.td, old_oorder_td);
   txn->set_table_descriptors(order_line_schema.td, old_order_line_td);
+  ermia::new_td = order_line_schema.td;
+  ermia::old_td = old_order_line_td;
 
   // db->WriteUnlock(str3.c_str());
 

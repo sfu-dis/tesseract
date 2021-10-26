@@ -9,6 +9,8 @@ extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 volatile bool ddl_running_1 = false;
 volatile bool ddl_running_2 = false;
 volatile bool cdc_running = false;
+volatile bool ddl_overlap_1 = false;
+volatile bool ddl_overlap_2 = false;
 std::atomic<uint64_t> ddl_end(0);
 uint64_t *_tls_durable_lsn =
     (uint64_t *)malloc(sizeof(uint64_t) * (ermia::config::worker_threads - 1));
@@ -24,15 +26,6 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   if (is_ddl()) {
     ddl_running_1 = true;
     write_set.init_large_write_set();
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-    uint32_t j = 0;
-    for (uint32_t i = 0; i < ermia::dlog::tlogs.size(); i++) {
-      dlog::tls_log *tlog = dlog::tlogs[i];
-      if (tlog && tlog != log && volatile_read(pcommit::_tls_durable_csn[i])) {
-        _tls_durable_lsn[j++] = tlog->get_durable_lsn();
-      }
-    }
-#endif
   }
   write_set.clear();
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
@@ -85,6 +78,18 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   // to go through the queue as well
   if (ermia::config::pcommit) {
     log = GetLog();
+#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+    if (is_ddl()) {
+      uint32_t j = 0;
+      for (uint32_t i = 0; i < ermia::dlog::tlogs.size(); i++) {
+        dlog::tls_log *tlog = dlog::tlogs[i];
+        if (tlog && tlog != log &&
+            volatile_read(pcommit::_tls_durable_csn[i])) {
+          _tls_durable_lsn[j++] = tlog->get_durable_lsn();
+        }
+      }
+    }
+#endif
   }
 
 #ifdef DCOPYDDL
@@ -160,6 +165,15 @@ void transaction::Abort() {
 }
 
 rc_t transaction::commit() {
+#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+  if (is_ddl()) {
+    std::vector<ermia::thread::Thread *> cdc_workers = changed_data_capture();
+    while (cdc_running) {
+    }
+    join_changed_data_capture_threads(cdc_workers);
+  }
+#endif
+
   ALWAYS_ASSERT(state() == TXN::TXN_ACTIVE || state() == TXN::TXN_DDL);
   volatile_write(xc->state, TXN::TXN_COMMITTING);
   rc_t ret;
@@ -216,17 +230,6 @@ rc_t transaction::si_commit() {
     return rc_t{RC_ABORT_PHANTOM};
   }
 
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  if (is_ddl()) {
-    std::vector<ermia::thread::Thread *> cdc_workers = changed_data_capture();
-    while (get_cdc_largest_csn() <
-           dlog::current_csn.load(std::memory_order_relaxed) - 100) {
-    }
-
-    join_changed_data_capture_threads(cdc_workers);
-  }
-#endif
-
   ASSERT(log);
   // Precommit: obtain a CSN
   xc->end = write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;
@@ -255,6 +258,7 @@ rc_t transaction::si_commit() {
 #ifdef COPYDDL
   if (is_ddl()) {
     printf("DDL txn end: %lu\n", xc->end);
+    ddl_overlap_2 = true;
     // If txn is DDL, commit schema record first before CDC
     write_record_t w = write_set.get(is_ddl(), 0);
     Object *object = w.get_object();
@@ -294,21 +298,21 @@ rc_t transaction::si_commit() {
   }
 #endif
 
+  // volatile_write(xc->state, TXN::TXN_CMMTD);
+
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   if (is_ddl()) {
+    ddl_overlap_1 = false;
     ddl_running_2 = true;
     ddl_end.store(0);
     std::vector<ermia::thread::Thread *> cdc_workers = changed_data_capture();
     while (ddl_end.load() != ermia::config::cdc_threads) {
     }
+    ddl_running_2 = false;
     join_changed_data_capture_threads(cdc_workers);
+    ddl_overlap_2 = false;
   }
 #endif
-
-  if (is_ddl()) {
-    // ddl_running_1 = false;
-    ddl_running_2 = false;
-  }
 
   volatile_write(xc->state, TXN::TXN_CMMTD);
 
@@ -430,12 +434,13 @@ std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
     auto parallel_changed_data_capture = [=](char *) {
       bool ddl_end_local = false;
       uint64_t cdc_offset = _tls_durable_lsn[i];
-      // str_arena *arena = new str_arena(config::arena_size_mb);
+      str_arena *arena = new str_arena(config::arena_size_mb);
+      util::fast_random r(2343352 + i);
       while (cdc_running) {
         ddl_end_local = txn->new_td->GetPrimaryIndex()->changed_data_capture(
             txn, i, txn->GetXIDContext()->begin,
             ermia::volatile_read(txn->GetXIDContext()->end), &cdc_offset,
-            begin_log, end_log, nullptr);
+            begin_log, end_log, arena, r);
         if (ddl_end_local && ddl_running_2)
           break;
         // usleep(10);
@@ -660,7 +665,17 @@ OID transaction::Insert(TableDescriptor *td, const varstr *k, varstr *value, dbt
   oidmgr->oid_put_new(tuple_array, oid, new_head);
 
   ASSERT(tuple->size == value->size());
-  add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid, tuple->size, dlog::log_record::logrec_type::INSERT, k);
+
+  varstr *new_key = (varstr *)MM::allocate(sizeof(varstr) + k->size());
+  new (new_key) varstr((char *)new_key + sizeof(varstr), 0);
+  new_key->copy_from(k);
+  auto *key_array = td->GetKeyArray();
+  key_array->ensure_size(oid);
+  oidmgr->oid_put(key_array, oid,
+                  fat_ptr::make((void *)new_key, INVALID_SIZE_CODE));
+
+  add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid, tuple->size,
+                   dlog::log_record::logrec_type::INSERT, new_key);
 
   if (out_tuple) {
     *out_tuple = tuple;

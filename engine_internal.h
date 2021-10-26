@@ -60,7 +60,8 @@ public:
       changed_data_capture(transaction *t, uint32_t thread_id,
                            uint64_t begin_csn, uint64_t end_csn,
                            uint64_t *cdc_offset, uint32_t begin_log,
-                           uint32_t end_log, str_arena *arena) = 0;
+                           uint32_t end_log, str_arena *arena,
+                           util::fast_random &r) = 0;
 #endif
 
   // Get a record with a key of length keylen. The underlying DB does not manage
