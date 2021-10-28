@@ -1831,7 +1831,6 @@ rc_t tpcc_worker::txn_ddl() {
   std::cerr << "Change to a new schema, version: " << schema_version << std::endl;
   //oorder_schema.v = schema_version;
   order_line_schema.v = schema_version;
-  ALWAYS_ASSERT(order_line_schema.state == 0);
   order_line_schema.old_v = old_schema_version;
 
   rc = rc_t{RC_INVALID};
@@ -1844,7 +1843,8 @@ rc_t tpcc_worker::txn_ddl() {
   str3 += ss.str();
   
   db->CreateTable(str3.c_str());
-  db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
+  // For create index DDL
+  // db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
 
   /*std::string secondary_index_name = std::string("oorder_c_id_idx");
   secondary_index_name += ss.str();
@@ -1860,11 +1860,17 @@ rc_t tpcc_worker::txn_ddl() {
 #elif DCOPYDDL
   order_line_schema.old_td = old_order_line_td;
   order_line_schema.state = 1;
+#else
+  order_line_schema.state = 2;
 #endif
-  //oorder_schema.index = ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
-  //oorder_schema.td = ermia::Catalog::GetTable(str3.c_str());
-  //oorder_schema.op = precompute_aggregate_op;
-  order_line_schema.index = ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
+  // ermia::Catalog::GetTable(str3.c_str())->SetPrimaryIndex(oorder_schema.index,
+  // std::string(str2)); oorder_schema.index =
+  // ermia::Catalog::GetTable(str3)->GetPrimaryIndex(); oorder_schema.td =
+  // ermia::Catalog::GetTable(str3.c_str()); oorder_schema.op =
+  // precompute_aggregate_op;
+  ermia::Catalog::GetTable(str3.c_str())
+      ->SetPrimaryIndex(old_order_line_table_index, std::string(str1));
+  order_line_schema.index = ermia::Catalog::GetTable(str3)->GetPrimaryIndex();
   order_line_schema.td = ermia::Catalog::GetTable(str3.c_str());
   //order_line_schema.op = add_column_op;
   char str4[sizeof(Schema_record)];

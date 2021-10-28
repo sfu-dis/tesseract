@@ -51,10 +51,12 @@ struct write_record_t {
   OID oid;
   uint64_t size;
   dlog::log_record::logrec_type type;
-  const varstr *str;
-  write_record_t(fat_ptr *entry, FID fid, OID oid, uint64_t size, dlog::log_record::logrec_type type, const varstr *str)
-    : entry(entry), fid(fid), oid(oid), size(size), type(type), str(str) {}
-  write_record_t() : entry(nullptr), fid(0), oid(0), size(0), type(dlog::log_record::logrec_type::INVALID), str(nullptr) {}
+  write_record_t(fat_ptr *entry, FID fid, OID oid, uint64_t size,
+                 dlog::log_record::logrec_type type)
+      : entry(entry), fid(fid), oid(oid), size(size), type(type) {}
+  write_record_t()
+      : entry(nullptr), fid(0), oid(0), size(0),
+        type(dlog::log_record::logrec_type::INVALID) {}
   inline Object *get_object() { return (Object *)entry->offset(); }
 };
 
@@ -65,15 +67,15 @@ struct write_set_t {
   write_record_t *entries_;
   mcs_lock lock;
   write_set_t() : num_entries(0) {}
-  inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid, uint32_t size,
-                           dlog::log_record::logrec_type type, const varstr *str) {
+  inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid,
+                           uint32_t size, dlog::log_record::logrec_type type) {
     ALWAYS_ASSERT(num_entries < kMaxEntries_);
     if (is_ddl) {
       CRITICAL_SECTION(cs, lock);
-      new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, type, str);
+      new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, type);
       ++num_entries;
     } else {
-      new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type, str);
+      new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type);
       ++num_entries;
     }
   }
@@ -154,6 +156,9 @@ protected:
 #ifdef COPYDDL
 #if !defined(LAZYDDL) && !defined(DCOPYDDL)
   std::vector<ermia::thread::Thread *> changed_data_capture();
+  bool changed_data_capture_impl(uint32_t thread_id, uint64_t *cdc_offset,
+                                 uint32_t begin_log, uint32_t end_log,
+                                 str_arena *arena, util::fast_random &r);
   void join_changed_data_capture_threads(
       std::vector<ermia::thread::Thread *> cdc_workers);
   uint64_t get_cdc_largest_csn();
@@ -165,7 +170,7 @@ protected:
   void Abort();
 
   // Insert a record to the underlying table
-  OID Insert(TableDescriptor *td, const varstr *k, varstr *value, dbtuple **out_tuple = nullptr);
+  OID Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple = nullptr);
 
   PROMISE(rc_t)
   Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
@@ -186,7 +191,9 @@ public:
 
   inline str_arena &string_allocator() { return *sa; }
 
-  inline void add_to_write_set(bool is_ddl, fat_ptr *entry, FID fid, OID oid, uint64_t size, dlog::log_record::logrec_type type, const varstr *str) {
+  inline void add_to_write_set(bool is_ddl, fat_ptr *entry, FID fid, OID oid,
+                               uint64_t size,
+                               dlog::log_record::logrec_type type) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < is_ddl && write_set.size(); ++i) {
       auto &w = write_set.entries_[i];
@@ -196,16 +203,14 @@ public:
 #endif
 
     // Work out the encoded size to be added to the log block later
-    uint64_t logrec_size = 0;
-    if (type != dlog::log_record::logrec_type::OID_KEY) {
-      logrec_size = align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
-    }
-    uint64_t str_size = align_up(str->size() + sizeof(varstr) + sizeof(dlog::log_record));
-    log_size += logrec_size + str_size;
+    auto logrec_size =
+        align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
+    log_size += logrec_size;
     // Each write set entry still just records the size of the actual "data" to
     // be inserted to the log excluding dlog::log_record, which will be
     // prepended by log_insert/update etc.
-    write_set.emplace_back(is_ddl, entry, fid, oid, logrec_size, type, str);
+    write_set.emplace_back(is_ddl, entry, fid, oid, size + sizeof(dbtuple),
+                           type);
   }
 
   inline TXN::xid_context *GetXIDContext() { return xc; }

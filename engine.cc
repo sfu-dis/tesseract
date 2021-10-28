@@ -187,6 +187,7 @@ rc_t ConcurrentMasstreeIndex::WriteSchemaTable(transaction *t, rc_t &rc,
 void ConcurrentMasstreeIndex::ReadSchemaTable(transaction *t, rc_t &rc,
                                               const varstr &key, varstr &value,
                                               OID *out_oid) {
+retry:
   GetRecord(t, rc, key, value, out_oid);
 #ifndef NDEBUG
   if (rc._val != RC_TRUE)
@@ -196,15 +197,12 @@ void ConcurrentMasstreeIndex::ReadSchemaTable(transaction *t, rc_t &rc,
 
 #ifdef COPYDDL
   if (t->is_dml() && ddl_running_1) {
-    /*while (ddl_running_2) {
-    }*/
-    /*if (ddl_running_2) {
-      rc = rc_t{RC_ABORT_INTERNAL};
-      RETURN;
-    }*/
     struct Schema_record schema;
     memcpy(&schema, (char *)value.data(), sizeof(schema));
     ALWAYS_ASSERT(schema.td != nullptr);
+    if (schema.state == 2) {
+      goto retry;
+    }
     t->schema_read_map[schema.td] = *out_oid;
   }
 #endif
@@ -245,6 +243,14 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(
   r = index->Scan(t, *start_key, nullptr, c_add_column, arena);
   ALWAYS_ASSERT(c_add_column.n == 10000000);
 #else
+  size_t oid_array_sz = new_td->GetTupleArray()->nentries();
+  printf("oid size: %zu\n", oid_array_sz);
+  if (new_td->GetTupleArray()->get(0) != nullptr)
+    printf("0 not null\n");
+  ALWAYS_ASSERT(new_td->GetTupleArray()->get(0) != nullptr);
+  if (new_td->GetTupleArray()->get(oid_array_sz + 100) != nullptr)
+    printf("final not null\n");
+  ALWAYS_ASSERT(new_td->GetTupleArray()->get(oid_array_sz + 100) == nullptr);
   ddl_add_column_scan_callback c_add_column(this, t, schema_version, arena, op);
 
   const order_line::key k_ol_0(1, 1, 1, 0);
@@ -261,7 +267,8 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(
     return {RC_ABORT_INTERNAL};
   }
 
-  printf("scan ends\n");
+  printf("scan ends, current csn: %lu\n",
+         dlog::current_csn.load(std::memory_order_relaxed));
 
   return c_add_column.invoke_status;
 }
@@ -506,18 +513,23 @@ rc_t ConcurrentMasstreeIndex::CheckNormalTable(
   return c_add_constraint.invoke_status;
 }
 
-#if defined(COPYDDL) && !defined(LAZYDDL)
-bool ConcurrentMasstreeIndex::changed_data_capture(
-    transaction *t, uint32_t thread_id, uint64_t begin_csn, uint64_t end_csn,
-    uint64_t *cdc_offset, uint32_t begin_log, uint32_t end_log,
-    str_arena *arena, util::fast_random &r) {
+#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+bool transaction::changed_data_capture_impl(uint32_t thread_id,
+                                            uint64_t *cdc_offset,
+                                            uint32_t begin_log,
+                                            uint32_t end_log, str_arena *arena,
+                                            util::fast_random &r) {
+  uint64_t begin_csn = xc->begin;
+  uint64_t end_csn = xc->end;
   bool ddl_end_tmp = true, ddl_end_flag = false;
-  FID fid = t->old_td->GetTupleFid();
+  FID fid = this->old_td->GetTupleFid();
+  FID tuple_fid = this->new_td->GetTupleFid();
+  auto *tuple_array = this->new_td->GetTupleArray();
   // arena = new ermia::str_arena(ermia::config::arena_size_mb);
   ermia::ConcurrentMasstreeIndex *table_secondary_index = nullptr;
-  if (t->new_td->GetSecIndexes().size()) {
-    table_secondary_index =
-              (ermia::ConcurrentMasstreeIndex *) (*(t->new_td->GetSecIndexes().begin()));
+  if (this->new_td->GetSecIndexes().size()) {
+    table_secondary_index = (ermia::ConcurrentMasstreeIndex *)(*(
+        this->new_td->GetSecIndexes().begin()));
     ALWAYS_ASSERT(table_secondary_index);
   }
   for (uint32_t i = begin_log; i <= end_log; i++) {
@@ -535,9 +547,10 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
            seg != segments->rend(); seg++) {
         uint64_t data_sz = seg->size;
         // char *data_buf = (char *)malloc(data_sz - offset_in_seg);
-        char *data_buf = (char *)RCU::rcu_alloc(data_sz - offset_in_seg);
-        size_t m = os_pread(seg->fd, (char *)data_buf, data_sz - offset_in_seg,
-                            offset_in_seg);
+        // char *data_buf = (char *)RCU::rcu_alloc(data_sz - offset_in_seg);
+        // size_t m = os_pread(seg->fd, (char *)data_buf, data_sz -
+        // offset_in_seg,
+        //                     offset_in_seg);
         uint64_t block_sz = sizeof(dlog::log_block),
                  logrec_sz = sizeof(dlog::log_record),
                  tuple_sc = sizeof(dbtuple);
@@ -545,21 +558,29 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
         int insert_total = 0, update_total = 0;
 	int insert_fail = 0, update_fail = 0;
         while (offset_increment < data_sz - offset_in_seg) {
-          dlog::log_block *header =
-              (dlog::log_block *)(data_buf + offset_increment);
+          char *header_buf = (char *)RCU::rcu_alloc(block_sz);
+          size_t m = os_pread(seg->fd, (char *)header_buf, block_sz,
+                              offset_in_seg + offset_increment);
+          dlog::log_block *header = (dlog::log_block *)(header_buf);
           if ((end_csn && begin_csn <= header->csn && header->csn <= end_csn) ||
               (!end_csn && begin_csn <= header->csn)) {
             last_csn = header->csn;
+            uint32_t block_total_sz = header->total_size();
+            char *data_buf = (char *)RCU::rcu_alloc(block_total_sz);
+            size_t m = os_pread(seg->fd, (char *)data_buf, block_total_sz,
+                                offset_in_seg + offset_increment);
             uint64_t offset_in_block = 0;
             varstr *insert_key, *update_key, *insert_key_idx;
             while (offset_in_block < header->payload_size) {
               dlog::log_record *logrec =
-                  (dlog::log_record *)(data_buf + offset_increment +
-                                       offset_in_block + block_sz);
+                  (dlog::log_record *)(data_buf + offset_in_block + block_sz);
 
               ALWAYS_ASSERT(header->csn == logrec->csn);
 
-              if (logrec->fid != fid) {
+              FID f = logrec->fid;
+              OID o = logrec->oid;
+
+              if (f != fid) {
                 offset_in_block += logrec->rec_size;
                 continue;
               }
@@ -598,13 +619,22 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
                 d_v = &Encode(*d_v, v_ol_1);
 		
 		insert_total++;
-                if (this->InsertRecord(t, *insert_key, *d_v, &oid)._val !=
+                /*if (this->InsertRecord(t, *insert_key, *d_v, &oid)._val !=
                     RC_TRUE) {
                   insert_fail++;
-                }
+                }*/
+                fat_ptr new_head = Object::Create(&value, xc->begin_epoch);
+                auto *new_tuple =
+                    (dbtuple *)((Object *)new_head.offset())->GetPayload();
+                new_tuple->GetObject()->SetCSN(xid.to_ptr());
+                oidmgr->oid_put_new_if_absent(tuple_fid, o, new_head);
+                add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, o,
+                                 tuple->size,
+                                 dlog::log_record::logrec_type::INSERT);
                 if (table_secondary_index) {
-		//   table_secondary_index->InsertOID(t, *insert_key_idx, oid);
-		}
+                  //   table_secondary_index->InsertOID(t, *insert_key_idx,
+                  //   oid);
+                }
               } else if (logrec->type ==
                          dlog::log_record::logrec_type::UPDATE) {
                 dbtuple *tuple = (dbtuple *)(logrec->data);
@@ -672,26 +702,19 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
 #endif
 
                 update_total++;
-                if (this->UpdateRecord(t, *update_key, *d_v)._val != RC_TRUE) {
+                /*if (this->UpdateRecord(t, *update_key, *d_v)._val != RC_TRUE)
+                { update_fail++;
+                }*/
+                if (this->Update(this->new_td, o, d_v)._val != RC_TRUE) {
                   update_fail++;
                 }
-
-              } else if (logrec->type ==
+              }
+              /*else if (logrec->type ==
                          dlog::log_record::logrec_type::INSERT_KEY) {
 #ifdef MICROBENCH
                 insert_key = new varstr(logrec->data + sizeof(varstr), 8);
 #else
                 insert_key = new varstr(logrec->data + sizeof(varstr), 16);
-                /*const order_line_1::key k_ol;
-                const size_t order_line_key_sz = ::Size(k_ol);
-                insert_key = arena->next(order_line_key_sz);
-                if (!insert_key) {
-                  arena = new ermia::str_arena(ermia::config::arena_size_mb);
-                  insert_key = arena->next(order_line_key_sz);
-                }
-                insert_key->copy_from(logrec->data + sizeof(varstr),
-                                      order_line_key_sz);
-                */
 #endif
               } else if (logrec->type ==
                          dlog::log_record::logrec_type::UPDATE_KEY) {
@@ -699,38 +722,25 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
                 update_key = new varstr(logrec->data + sizeof(varstr), 8);
 #else
                 update_key = new varstr(logrec->data + sizeof(varstr), 16);
-                /*const order_line_1::key k_ol;
-                const size_t order_line_key_sz = ::Size(k_ol);
-                update_key = arena->next(order_line_key_sz);
-                if (!update_key) {
-                  arena = new ermia::str_arena(ermia::config::arena_size_mb);
-                  update_key = arena->next(order_line_key_sz);
-                }
-                update_key->copy_from(logrec->data + sizeof(varstr),
-                                      order_line_key_sz);
-                */
 #endif
-              } else if (logrec->type ==
-                         dlog::log_record::logrec_type::INVALID) {
-                // ALWAYS_ASSERT(logrec->type ==
-                // dlog::log_record::logrec_type::INVALID);
-              } else {
-                // ALWAYS_ASSERT(!logrec->type);
-              }
+              }*/
 
               offset_in_block += logrec->rec_size;
             }
+            RCU::rcu_free(data_buf);
           } else {
             if (end_csn && header->csn > end_csn) {
+              RCU::rcu_free(header_buf);
               ddl_end_flag = true;
               stop_scan = true;
               break;
             }
           }
           offset_increment += header->total_size();
+          RCU::rcu_free(header_buf);
         }
         // free(data_buf);
-        RCU::rcu_free(data_buf);
+        // RCU::rcu_free(data_buf);
         if (insert_total != 0 || update_total != 0)
           ddl_end_tmp = false;
         if (update_fail > 0)
@@ -747,13 +757,14 @@ bool ConcurrentMasstreeIndex::changed_data_capture(
         *cdc_offset = offset_in_seg + offset_increment;
       if (last_csn) {
         volatile_write(_cdc_last_csn[thread_id], last_csn);
-        printf("last csn: %lu, current csn: %lu\n", last_csn,
-               dlog::current_csn.load(std::memory_order_relaxed));
+        // printf("last csn: %lu, current csn: %lu\n", last_csn,
+        //        dlog::current_csn.load(std::memory_order_relaxed));
         if (!ddl_running_2 &&
             (last_csn >
              dlog::current_csn.load(std::memory_order_relaxed) - 10000)) {
-          ddl_overlap_1 = true;
-          cdc_running = false;
+          // ddl_overlap_1 = true;
+          // cdc_running = false;
+          ddl_end_flag = true;
         }
       }
     }
@@ -1097,21 +1108,6 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
 
   OID oid = 0;
 
-  /*#if defined(COPYDDL) && !defined(LAZYDDL)
-    if (t->is_ddl()) {
-      rc_t rc = {RC_INVALID};
-      AWAIT GetOID(key, rc, t->xc, oid);
-
-      if (rc._val == RC_TRUE) {
-        if (out_oid) {
-          *out_oid = oid;
-        }
-
-        RETURN rc_t{RC_TRUE};
-      }
-    }
-  #endif*/
-
 #ifdef LAZYDDL
   // Search for OID
   /*rc_t rc = {RC_INVALID};
@@ -1128,7 +1124,7 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
 
   // Insert to the table first
   dbtuple *tuple = nullptr;
-  oid = t->Insert(table_descriptor, &key, &value, &tuple);
+  oid = t->Insert(table_descriptor, &value, &tuple);
 
   // Done with table record, now set up index
   ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
@@ -1203,20 +1199,9 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
 
 exit:
   if (rc._val == RC_TRUE) {
-    /*if (ddl_overlap_1 && table_descriptor == old_td) {
-      bitmap[oid] = 1;
-    }
-    if (ddl_overlap_2 && table_descriptor == new_td && bitmap[oid] == 1) {
-      goto exit;
-    }*/
     rc_t rc = AWAIT t->Update(table_descriptor, oid, &key, &value);
     RETURN rc;
   } else {
-#if defined(COPYDDL) && !defined(LAZYDDL)
-    /*if (t->is_ddl()) {
-      RETURN InsertRecord(t, key, value);
-    }*/
-#endif
     RETURN rc_t{RC_ABORT_INTERNAL};
   }
 }
@@ -1310,9 +1295,9 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
 ////////////////// End of index interfaces //////////
 
 ////////////////// Table interfaces /////////////////
-rc_t Table::Insert(transaction &t, varstr *k, varstr *value, OID *out_oid) {
+rc_t Table::Insert(transaction &t, varstr *value, OID *out_oid) {
   t.ensure_active();
-  OID oid = t.Insert(td, k, value);
+  OID oid = t.Insert(td, value);
   if (out_oid) {
     *out_oid = oid;
   }

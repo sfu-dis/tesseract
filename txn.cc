@@ -99,6 +99,9 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
 #endif
 
   xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
+  /*while (ddl_running_1 && is_dml() && xc->begin > 120000000) { // 13500000
+    // usleep(1);
+  }*/
 #endif
 }
 
@@ -168,7 +171,7 @@ rc_t transaction::commit() {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   if (is_ddl()) {
     std::vector<ermia::thread::Thread *> cdc_workers = changed_data_capture();
-    while (cdc_running) {
+    while (ddl_end.load() != ermia::config::cdc_threads) {
     }
     join_changed_data_capture_threads(cdc_workers);
   }
@@ -264,31 +267,33 @@ rc_t transaction::si_commit() {
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
 
-    uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
-    uint64_t log_str_size = sizeof(varstr) + w.str->size();
-
-    if (lb->payload_size + align_up(log_tuple_size + sizeof(dlog::log_record)) + align_up(log_str_size + sizeof(dlog::log_record)) > lb->capacity) { 
-      lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
-    }
-
     // Populate log block and obtain persistent address
-    uint32_t str_off = lb->payload_size, tuple_off = str_off + align_up(log_str_size + sizeof(dlog::log_record));
+    uint32_t off = lb->payload_size;
     if (w.type == dlog::log_record::logrec_type::INSERT) {
-      dlog::log_insert_key(lb, w.fid, w.oid, (char *)w.str, log_str_size);
-      dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+      auto ret_off = dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, w.size);
+      ALWAYS_ASSERT(ret_off == off);
     } else if (w.type == dlog::log_record::logrec_type::UPDATE) {
-      dlog::log_update_key(lb, w.fid, w.oid, (char *)w.str, log_str_size);
-      dlog::log_update(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+      auto ret_off = dlog::log_update(lb, w.fid, w.oid, (char *)tuple, w.size);
+      ALWAYS_ASSERT(ret_off == off);
     }
     ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
 
-    // Set persistent address
-    auto tuple_size_code = encode_size_aligned(w.size);
-    fat_ptr tuple_pdest =
-        LSN::make(log->get_id(), lb_lsn + sizeof(dlog::log_block) + tuple_off,
-                  segnum, tuple_size_code)
+    // This aligned_size should match what was calculated during
+    // add_to_write_set, and the size_code calculated based on this aligned size
+    // will be part of the persistent address, which a read can directly use to
+    // load the log record from the log (i.e., knowing how many bytes to read to
+    // obtain the log record header + dbtuple header + record data).
+    auto aligned_size = align_up(w.size + sizeof(dlog::log_record));
+    auto size_code = encode_size_aligned(aligned_size);
+
+    // lb_lsn points to the start of the log block which has a header, followed
+    // by individual log records, so the log record's direct address would be
+    // lb_lsn + sizeof(log_block) + off
+    fat_ptr pdest =
+        LSN::make(log->get_id(), lb_lsn + sizeof(dlog::log_block) + off, segnum,
+                  size_code)
             .to_ptr();
-    object->SetPersistentAddress(tuple_pdest);
+    object->SetPersistentAddress(pdest);
     ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
 
     // Set CSN
@@ -316,6 +321,27 @@ rc_t transaction::si_commit() {
 
   volatile_write(xc->state, TXN::TXN_CMMTD);
 
+  if (is_ddl()) {
+    write_record_t w = write_set.get(is_ddl(), 0);
+    Object *object = w.get_object();
+    dbtuple *tuple = (dbtuple *)object->GetPayload();
+
+    varstr value(tuple->get_value_start(), tuple->size);
+    struct Schema_record schema;
+    memcpy(&schema, (char *)value.data(), sizeof(schema));
+    schema.state = 0;
+
+    char schema_str[sizeof(Schema_record)];
+    memcpy(schema_str, &schema, sizeof(schema_str));
+    varstr *new_value = string_allocator().next(sizeof(schema_str));
+    new_value->copy_from(schema_str, sizeof(schema_str));
+
+    // ALWAYS_ASSERT(Update(schema_td, w.oid, w.str, new_value)._val ==
+    // RC_TRUE);
+
+    ddl_running_1 = false;
+  }
+
   // Normally, we'd generate each version's persitent address along the way or
   // here first before toggling the CSN's "committed" bit. But we can actually
   // do it first, and generate the log block as we scan the write set once,
@@ -331,54 +357,44 @@ rc_t transaction::si_commit() {
 #endif
   for (uint32_t i = start; i < write_set.size(); ++i) {
     write_record_t w = write_set.get(is_ddl(), i);
-   
-    uint64_t log_str_size = sizeof(varstr) + w.str->size();
-    if (w.type == dlog::log_record::logrec_type::OID_KEY) {
-      if (lb->payload_size + align_up(log_str_size + sizeof(dlog::log_record)) > lb->capacity) {
-        lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
-      }
-      dlog::log_oid_key(lb, w.fid, w.oid, (char *)w.str, log_str_size);
-      ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
-      continue;
-    }
-   
-    ALWAYS_ASSERT(w.type != dlog::log_record::logrec_type::OID_KEY);
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
 
     uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
-    if (lb->payload_size + align_up(log_tuple_size + sizeof(dlog::log_record)) + align_up(log_str_size + sizeof(dlog::log_record)) > lb->capacity) {
+    if (lb->payload_size + align_up(log_tuple_size + sizeof(dlog::log_record)) >
+        lb->capacity) {
       lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
     }
 
     // Populate log block and obtain persistent address
-    uint32_t str_off = lb->payload_size, tuple_off = str_off + align_up(log_str_size + sizeof(dlog::log_record));
+    uint32_t off = lb->payload_size;
     if (w.type == dlog::log_record::logrec_type::INSERT) {
-      dlog::log_insert_key(lb, w.fid, w.oid, (char *)w.str, log_str_size);
-      dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+      auto ret_off =
+          dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+      ALWAYS_ASSERT(ret_off == off);
     } else if (w.type == dlog::log_record::logrec_type::UPDATE) {
-      dlog::log_update_key(lb, w.fid, w.oid, (char *)w.str, log_str_size);
-      dlog::log_update(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+      auto ret_off =
+          dlog::log_update(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+      ALWAYS_ASSERT(ret_off == off);
     }
     ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
-
-    // Set persistent address
 
     // This aligned_size should match what was calculated during
     // add_to_write_set, and the size_code calculated based on this aligned size
     // will be part of the persistent address, which a read can directly use to
     // load the log record from the log (i.e., knowing how many bytes to read to
     // obtain the log record header + dbtuple header + record data).
-    auto tuple_size_code = encode_size_aligned(w.size);
+    auto aligned_size = align_up(w.size + sizeof(dlog::log_record));
+    auto size_code = encode_size_aligned(aligned_size);
 
     // lb_lsn points to the start of the log block which has a header, followed
     // by individual log records, so the log record's direct address would be
     // lb_lsn + sizeof(log_block) + off
-    fat_ptr tuple_pdest =
-        LSN::make(log->get_id(), lb_lsn + sizeof(dlog::log_block) + tuple_off,
-                  segnum, tuple_size_code)
+    fat_ptr pdest =
+        LSN::make(log->get_id(), lb_lsn + sizeof(dlog::log_block) + off, segnum,
+                  size_code)
             .to_ptr();
-    object->SetPersistentAddress(tuple_pdest);
+    object->SetPersistentAddress(pdest);
     ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
 
     // Set CSN
@@ -390,10 +406,6 @@ rc_t transaction::si_commit() {
 
   // if (write_set.size())
   //   log->set_dirty(false);
-
-  if (is_ddl()) {
-    ddl_running_1 = false;
-  }
 
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!
@@ -437,11 +449,9 @@ std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
       str_arena *arena = new str_arena(config::arena_size_mb);
       util::fast_random r(2343352 + i);
       while (cdc_running) {
-        ddl_end_local = txn->new_td->GetPrimaryIndex()->changed_data_capture(
-            txn, i, txn->GetXIDContext()->begin,
-            ermia::volatile_read(txn->GetXIDContext()->end), &cdc_offset,
-            begin_log, end_log, arena, r);
-        if (ddl_end_local && ddl_running_2)
+        ddl_end_local = changed_data_capture_impl(i, &cdc_offset, begin_log,
+                                                  end_log, arena, r);
+        if (ddl_end_local)
           break;
         // usleep(10);
       }
@@ -635,7 +645,8 @@ transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v) {
       ASSERT(XID::from_ptr(prev->sstamp) == xc->owner);
       ASSERT(tuple->NextVolatile() == prev);
 #endif
-      add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid, tuple->size, dlog::log_record::logrec_type::UPDATE, k);
+      add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid,
+                       tuple->size, dlog::log_record::logrec_type::UPDATE);
       prev_persistent_ptr = prev_obj->GetPersistentAddress();
     }
 
@@ -650,7 +661,8 @@ transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v) {
   }
 }
 
-OID transaction::Insert(TableDescriptor *td, const varstr *k, varstr *value, dbtuple **out_tuple) {
+OID transaction::Insert(TableDescriptor *td, varstr *value,
+                        dbtuple **out_tuple) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
 
@@ -665,17 +677,8 @@ OID transaction::Insert(TableDescriptor *td, const varstr *k, varstr *value, dbt
   oidmgr->oid_put_new(tuple_array, oid, new_head);
 
   ASSERT(tuple->size == value->size());
-
-  varstr *new_key = (varstr *)MM::allocate(sizeof(varstr) + k->size());
-  new (new_key) varstr((char *)new_key + sizeof(varstr), 0);
-  new_key->copy_from(k);
-  auto *key_array = td->GetKeyArray();
-  key_array->ensure_size(oid);
-  oidmgr->oid_put(key_array, oid,
-                  fat_ptr::make((void *)new_key, INVALID_SIZE_CODE));
-
   add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid, tuple->size,
-                   dlog::log_record::logrec_type::INSERT, new_key);
+                   dlog::log_record::logrec_type::INSERT);
 
   if (out_tuple) {
     *out_tuple = tuple;

@@ -125,7 +125,7 @@ private:
   TableDescriptor *td;
 
 public:
-  rc_t Insert(transaction &t, varstr *k, varstr *value, OID *out_oid);
+  rc_t Insert(transaction &t, varstr *value, OID *out_oid);
   PROMISE(rc_t) Update(transaction &t, OID oid, varstr &value);
   rc_t Read(transaction &t, OID oid, varstr *out_value);
   PROMISE(rc_t) Remove(transaction &t, OID oid);
@@ -252,14 +252,6 @@ public:
   PROMISE(rc_t)
   CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t,
                    std::function<bool(uint64_t)> op) override;
-
-#if defined(COPYDDL) && !defined(LAZYDDL)
-  PROMISE(bool)
-  changed_data_capture(transaction *t, uint32_t thread_id, uint64_t begin_csn,
-                       uint64_t end_csn, uint64_t *cdc_offset,
-                       uint32_t begin_log, uint32_t end_log, str_arena *arena,
-                       util::fast_random &r) override;
-#endif
 
   PROMISE(void)
   GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,

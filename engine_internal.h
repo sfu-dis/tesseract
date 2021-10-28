@@ -55,15 +55,6 @@ public:
       CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t,
                        std::function<bool(uint64_t)> op) = 0;
 
-#if defined(COPYDDL) && !defined(LAZYDDL)
-  virtual PROMISE(bool)
-      changed_data_capture(transaction *t, uint32_t thread_id,
-                           uint64_t begin_csn, uint64_t end_csn,
-                           uint64_t *cdc_offset, uint32_t begin_log,
-                           uint32_t end_log, str_arena *arena,
-                           util::fast_random &r) = 0;
-#endif
-
   // Get a record with a key of length keylen. The underlying DB does not manage
   // the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
   virtual PROMISE(void)
