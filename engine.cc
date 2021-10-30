@@ -52,24 +52,14 @@ dlog::tls_log *GetLog() {
 
 class ddl_add_column_scan_callback : public OrderedIndex::ScanCallback {
 public:
-  ddl_add_column_scan_callback(
-      OrderedIndex *index, transaction *t, uint64_t schema_version,
-      ermia::str_arena *arena,
-      std::function<ermia::varstr *(
-          const char *keyp, size_t keylen, const ermia::varstr &value,
-          uint64_t schema_version, ermia::transaction *txn,
-          ermia::str_arena *arena, ermia::OrderedIndex *index)>
-          op)
-      : _index(index), _txn(t), _version(schema_version), _op(op), n(0) {}
+  ddl_add_column_scan_callback(OrderedIndex *index, transaction *t,
+                               uint64_t schema_version, ermia::str_arena *arena)
+      : _index(index), _txn(t), _version(schema_version), n(0) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const varstr &value) {
     MARK_REFERENCED(value);
     _arena->reset();
 
     varstr *k = _arena->next(keylen);
-    /*if (!k) {
-      _arena = new ermia::str_arena(ermia::config::arena_size_mb);
-      k = _arena->next(keylen);
-    }*/
     ASSERT(k);
     k->copy_from(keyp, keylen);
 
@@ -95,10 +85,6 @@ public:
     record2.c = _version;
     memcpy(str2, &record2, sizeof(str2));
     d_v = _arena->next(sizeof(str2));
-    /*if (!d_v) {
-      _arena = new ermia::str_arena(ermia::config::arena_size_mb);
-      d_v = _arena->next(sizeof(str2));
-    }*/
     d_v->copy_from(str2, sizeof(str2));
 #else
 
@@ -116,11 +102,6 @@ public:
 
     const size_t order_line_sz = Size(v_ol_1);
     d_v = _arena->next(order_line_sz);
-
-    /*if (!d_v) {
-      _arena = new ermia::str_arena(ermia::config::arena_size_mb);
-      d_v = _arena->next(order_line_sz);
-    }*/
     d_v = &Encode(*d_v, v_ol_1);
 #endif
 
@@ -158,14 +139,6 @@ public:
   transaction *_txn;
   uint64_t _version;
   ermia::str_arena *_arena = new ermia::str_arena(ermia::config::arena_size_mb);
-  std::function<ermia::varstr *(
-		const char *keyp,
-		size_t keylen,
-		const ermia::varstr &value,
-		uint64_t schema_version,
-		ermia::transaction *txn,
-		ermia::str_arena *arena,
-	        ermia::OrderedIndex *index)> _op;
   rc_t invoke_status = rc_t{RC_TRUE};
   size_t n;
 };
@@ -208,14 +181,9 @@ retry:
 #endif
 }
 
-rc_t ConcurrentMasstreeIndex::WriteNormalTable(
-    str_arena *arena, OrderedIndex *index, transaction *t, varstr &value,
-    std::function<ermia::varstr *(
-        const char *keyp, size_t keylen, const ermia::varstr &value,
-        uint64_t schema_version, ermia::transaction *txn,
-        ermia::str_arena *arena, ermia::OrderedIndex *index)>
-        op,
-    OrderedIndex *district_index) {
+rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
+                                               OrderedIndex *index,
+                                               transaction *t, varstr &value) {
   rc_t r;
 #ifdef COPYDDL
   struct Schema_record schema;
@@ -228,49 +196,75 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(
   printf("begin op\n");
 
 #ifdef MICROBENCH
-  ddl_add_column_scan_callback c_add_column(this, t, schema_version, arena, op);
+  ddl_add_column_scan_callback c_add_column(this, t, schema_version, arena);
 
   char str1[sizeof(uint64_t)];
   uint64_t start = 0;
   memcpy(str1, &start, sizeof(str1));
   varstr *start_key = arena->next(sizeof(str1));
-  /*if (!start_key) {
-    arena = new ermia::str_arena(ermia::config::arena_size_mb);
-    start_key = arena->next(sizeof(str1));
-  }*/
   start_key->copy_from(str1, sizeof(str1));
 
   r = index->Scan(t, *start_key, nullptr, c_add_column, arena);
   ALWAYS_ASSERT(c_add_column.n == 10000000);
 #else
-  size_t oid_array_sz = new_td->GetTupleArray()->nentries();
-  printf("oid size: %zu\n", oid_array_sz);
-  if (new_td->GetTupleArray()->get(0) != nullptr)
-    printf("0 not null\n");
-  ALWAYS_ASSERT(new_td->GetTupleArray()->get(0) != nullptr);
-  if (new_td->GetTupleArray()->get(oid_array_sz + 100) != nullptr)
-    printf("final not null\n");
-  ALWAYS_ASSERT(new_td->GetTupleArray()->get(oid_array_sz + 100) == nullptr);
-  ddl_add_column_scan_callback c_add_column(this, t, schema_version, arena, op);
+  ALWAYS_ASSERT(table_descriptor->GetTupleArray() ==
+                t->old_td->GetTupleArray());
+  uint64_t count = 0;
+  auto *alloc = oidmgr->get_allocator(t->old_td->GetTupleFid());
+  uint32_t oid_array_sz = alloc->head.hiwater_mark;
+  printf("oid_array_sz: %d\n", oid_array_sz);
+  // ermia::str_arena *_arena = new
+  // ermia::str_arena(ermia::config::arena_size_mb);
+  for (uint32_t oid = 0; oid <= oid_array_sz; oid++) {
+    if (table_descriptor->GetTupleArray()->get(oid) != NULL_PTR) {
+      dbtuple *tuple = AWAIT oidmgr->oid_get_version(
+          table_descriptor->GetTupleArray(), oid, t->xc);
+      varstr value;
+      if (tuple && t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
+        arena->reset();
+        varstr *d_v = nullptr;
+        order_line::value v_ol_temp;
+        const order_line::value *v_ol = Decode(value, v_ol_temp);
+
+        order_line_1::value v_ol_1;
+        v_ol_1.ol_i_id = v_ol->ol_i_id;
+        v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
+        v_ol_1.ol_amount = v_ol->ol_amount;
+        v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
+        v_ol_1.ol_quantity = v_ol->ol_quantity;
+        v_ol_1.v = schema_version;
+        v_ol_1.ol_tax = 0;
+
+        const size_t order_line_sz = ::Size(v_ol_1);
+        d_v = arena->next(order_line_sz);
+        d_v = &Encode(*d_v, v_ol_1);
+
+        t->DDLScanInsert(t->new_td, oid, d_v);
+
+        count++;
+      }
+    }
+  }
+  printf("real oid_array_sz: %lu\n", count);
+
+  /*ddl_add_column_scan_callback c_add_column(this, t, schema_version, arena);
 
   const order_line::key k_ol_0(1, 1, 1, 0);
   varstr *start_key = arena->next(::Size(k_ol_0));
-  /*if (!start_key) {
-    arena = new ermia::str_arena(ermia::config::arena_size_mb);
-    start_key = arena->next(::Size(k_ol_0));
-  }*/
   r = index->Scan(t, Encode(*start_key, k_ol_0), nullptr, c_add_column, arena);
+  */
 #endif
 
-  if (r._val != RC_TRUE) {
+  /*if (r._val != RC_TRUE) {
     printf("DDL scan false\n");
     return {RC_ABORT_INTERNAL};
-  }
+  }*/
 
   printf("scan ends, current csn: %lu\n",
          dlog::current_csn.load(std::memory_order_relaxed));
 
-  return c_add_column.invoke_status;
+  // return c_add_column.invoke_status;
+  return rc_t{RC_TRUE};
 }
 
 class ddl_precompute_aggregate_scan_callback
@@ -523,9 +517,6 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
   uint64_t end_csn = xc->end;
   bool ddl_end_tmp = true, ddl_end_flag = false;
   FID fid = this->old_td->GetTupleFid();
-  FID tuple_fid = this->new_td->GetTupleFid();
-  auto *tuple_array = this->new_td->GetTupleArray();
-  // arena = new ermia::str_arena(ermia::config::arena_size_mb);
   ermia::ConcurrentMasstreeIndex *table_secondary_index = nullptr;
   if (this->new_td->GetSecIndexes().size()) {
     table_secondary_index = (ermia::ConcurrentMasstreeIndex *)(*(
@@ -546,11 +537,6 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
                segments->rbegin();
            seg != segments->rend(); seg++) {
         uint64_t data_sz = seg->size;
-        // char *data_buf = (char *)malloc(data_sz - offset_in_seg);
-        // char *data_buf = (char *)RCU::rcu_alloc(data_sz - offset_in_seg);
-        // size_t m = os_pread(seg->fd, (char *)data_buf, data_sz -
-        // offset_in_seg,
-        //                     offset_in_seg);
         uint64_t block_sz = sizeof(dlog::log_block),
                  logrec_sz = sizeof(dlog::log_record),
                  tuple_sc = sizeof(dbtuple);
@@ -559,6 +545,7 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
 	int insert_fail = 0, update_fail = 0;
         while (offset_increment < data_sz - offset_in_seg) {
           char *header_buf = (char *)RCU::rcu_alloc(block_sz);
+          // char *header_buf = (char *)malloc(block_sz);
           size_t m = os_pread(seg->fd, (char *)header_buf, block_sz,
                               offset_in_seg + offset_increment);
           dlog::log_block *header = (dlog::log_block *)(header_buf);
@@ -567,6 +554,7 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
             last_csn = header->csn;
             uint32_t block_total_sz = header->total_size();
             char *data_buf = (char *)RCU::rcu_alloc(block_total_sz);
+            // char *data_buf = (char *)malloc(block_total_sz);
             size_t m = os_pread(seg->fd, (char *)data_buf, block_total_sz,
                                 offset_in_seg + offset_increment);
             uint64_t offset_in_block = 0;
@@ -589,7 +577,7 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
 
               if (logrec->type == dlog::log_record::logrec_type::INSERT) {
                 dbtuple *tuple = (dbtuple *)(logrec->data);
-		OID oid = 0;
+                // OID oid = 0;
                 varstr value(tuple->get_value_start(), tuple->size);
                 
 		order_line::value v_ol_temp;
@@ -604,18 +592,9 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
                 v_ol_1.v = v_ol->v + 1;
 		v_ol_1.ol_tax = 0;
 		
-		order_line_1::key k_ol_temp;
-		const order_line_1::key *k_ol = Decode(*insert_key, k_ol_temp);
-
                 const size_t order_line_sz = ::Size(v_ol_1);
                 varstr *d_v = arena->next(order_line_sz);
 
-                /*if (!d_v) {
-                  arena = new ermia::str_arena(ermia::config::arena_size_mb);
-                  // arenas.emplace_back(arena);
-                  // arena->reset();
-                  d_v = arena->next(order_line_sz);
-                }*/
                 d_v = &Encode(*d_v, v_ol_1);
 		
 		insert_total++;
@@ -623,14 +602,10 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
                     RC_TRUE) {
                   insert_fail++;
                 }*/
-                fat_ptr new_head = Object::Create(&value, xc->begin_epoch);
-                auto *new_tuple =
-                    (dbtuple *)((Object *)new_head.offset())->GetPayload();
-                new_tuple->GetObject()->SetCSN(xid.to_ptr());
-                oidmgr->oid_put_new_if_absent(tuple_fid, o, new_head);
-                add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, o,
-                                 tuple->size,
-                                 dlog::log_record::logrec_type::INSERT);
+                if (DDLCDCInsert(this->new_td, o, d_v, logrec)._val !=
+                    RC_TRUE) {
+                  insert_fail++;
+                }
                 if (table_secondary_index) {
                   //   table_secondary_index->InsertOID(t, *insert_key_idx,
                   //   oid);
@@ -667,11 +642,6 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
                 record2.c = version;
                 memcpy(str2, &record2, sizeof(str2));
                 d_v = arena->next(sizeof(str2));
-                /*if (!d_v) {
-                  arena = new ermia::str_arena(ermia::config::arena_size_mb);
-                  // arenas.emplace_back(arena);
-                  d_v = arena->next(sizeof(str2));
-                }*/
                 d_v->copy_from(str2, sizeof(str2));
 #else
                 order_line::value v_ol_temp;
@@ -686,18 +656,8 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
                 v_ol_1.v = v_ol->v + 1;
                 v_ol_1.ol_tax = 0;
 
-		order_line_1::key k_ol_temp;
-                const order_line_1::key *k_ol = Decode(*update_key, k_ol_temp);
-
                 const size_t order_line_sz = ::Size(v_ol_1);
                 d_v = arena->next(order_line_sz);
-
-                /*if (!d_v) {
-                  arena = new ermia::str_arena(ermia::config::arena_size_mb);
-                  // arenas.emplace_back(arena);
-                  // arena->reset();
-                  d_v = arena->next(order_line_sz);
-                }*/
                 d_v = &Encode(*d_v, v_ol_1);
 #endif
 
@@ -705,7 +665,8 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
                 /*if (this->UpdateRecord(t, *update_key, *d_v)._val != RC_TRUE)
                 { update_fail++;
                 }*/
-                if (this->Update(this->new_td, o, d_v)._val != RC_TRUE) {
+                if (this->DDLCDCUpdate(this->new_td, o, d_v, logrec)._val !=
+                    RC_TRUE) {
                   update_fail++;
                 }
               }
@@ -728,9 +689,11 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
               offset_in_block += logrec->rec_size;
             }
             RCU::rcu_free(data_buf);
+            // free(data_buf);
           } else {
             if (end_csn && header->csn > end_csn) {
               RCU::rcu_free(header_buf);
+              // free(header_buf);
               ddl_end_flag = true;
               stop_scan = true;
               break;
@@ -738,9 +701,8 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
           }
           offset_increment += header->total_size();
           RCU::rcu_free(header_buf);
+          // free(header_buf);
         }
-        // free(data_buf);
-        // RCU::rcu_free(data_buf);
         if (insert_total != 0 || update_total != 0)
           ddl_end_tmp = false;
         if (update_fail > 0)
@@ -748,6 +710,8 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
 
         if (insert_fail > 0)
           printf("insert_fail, CDC conflicts with copy, %d\n", insert_fail);
+
+        // printf("%d, %d\n", update_total, insert_total);
 
         if (stop_scan)
           break;
@@ -758,10 +722,10 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
       if (last_csn) {
         volatile_write(_cdc_last_csn[thread_id], last_csn);
         // printf("last csn: %lu, current csn: %lu\n", last_csn,
-        //        dlog::current_csn.load(std::memory_order_relaxed));
+        //       dlog::current_csn.load(std::memory_order_relaxed));
         if (!ddl_running_2 &&
             (last_csn >
-             dlog::current_csn.load(std::memory_order_relaxed) - 10000)) {
+             dlog::current_csn.load(std::memory_order_relaxed) - 100)) {
           // ddl_overlap_1 = true;
           // cdc_running = false;
           ddl_end_flag = true;

@@ -131,11 +131,11 @@ int main(int argc, char **argv) {
   ermia::config::ddl_write_set_length = FLAGS_ddl_write_set_length;
   if (ermia::config::physical_workers_only)
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-    // if (ermia::config::cdc_physical_workers_only) {
-    //  ermia::config::threads = 2 * FLAGS_threads - 1;
-    //} else {
-    ermia::config::threads = FLAGS_threads;
-    //}
+    if (ermia::config::cdc_physical_workers_only) {
+      ermia::config::threads = 2 * FLAGS_threads - 1;
+    } else {
+      ermia::config::threads = FLAGS_threads;
+    }
 #else
     ermia::config::threads = FLAGS_threads;
 #endif

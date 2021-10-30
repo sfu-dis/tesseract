@@ -1740,7 +1740,7 @@ rc_t tpcc_worker::txn_ddl() {
   TryCatchUnblock(rc);
 
   rc = order_line_table_index->WriteNormalTable(arena, order_line_table_index,
-                                                txn, v2, add_column_op);
+                                                txn, v2);
   TryCatchUnblock(rc);
 
   TryCatchUnblock(db->Commit(txn));
@@ -1871,6 +1871,7 @@ rc_t tpcc_worker::txn_ddl() {
   ermia::Catalog::GetTable(str3.c_str())
       ->SetPrimaryIndex(old_order_line_table_index, std::string(str1));
   order_line_schema.index = ermia::Catalog::GetTable(str3)->GetPrimaryIndex();
+  ALWAYS_ASSERT(old_order_line_table_index == order_line_schema.index);
   order_line_schema.td = ermia::Catalog::GetTable(str3.c_str());
   //order_line_schema.op = add_column_op;
   char str4[sizeof(Schema_record)];
@@ -1881,8 +1882,8 @@ rc_t tpcc_worker::txn_ddl() {
 
   //txn->set_table_descriptors(oorder_schema.td, old_oorder_td);
   txn->set_table_descriptors(order_line_schema.td, old_order_line_td);
-  ermia::new_td = order_line_schema.td;
-  ermia::old_td = old_order_line_td;
+  // ermia::new_td = order_line_schema.td;
+  // ermia::old_td = old_order_line_td;
 
   // db->WriteUnlock(str3.c_str());
 
@@ -1895,8 +1896,7 @@ rc_t tpcc_worker::txn_ddl() {
   ermia::ConcurrentMasstreeIndex *new_order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
   ALWAYS_ASSERT(new_order_line_table_index);
   rc = new_order_line_table_index->WriteNormalTable(
-      arena, old_order_line_table_index, txn, v3, add_column_op,
-      tbl_new_order(1));
+      arena, old_order_line_table_index, txn, v3);
   //ermia::ConcurrentMasstreeIndex *oorder_table_index = (ermia::ConcurrentMasstreeIndex *) oorder_schema.index;
   //ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index = (ermia::ConcurrentMasstreeIndex *) ermia::Catalog::GetIndex(secondary_index_name);
   //ALWAYS_ASSERT(oorder_table_secondary_index);

@@ -67,21 +67,15 @@ struct write_set_t {
   write_record_t *entries_;
   mcs_lock lock;
   write_set_t() : num_entries(0) {}
-  inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid,
-                           uint32_t size, dlog::log_record::logrec_type type) {
-    ALWAYS_ASSERT(num_entries < kMaxEntries_);
-    if (is_ddl) {
-      CRITICAL_SECTION(cs, lock);
-      new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, type);
-      ++num_entries;
-    } else {
-      new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type);
-      ++num_entries;
-    }
+  inline void emplace_back(fat_ptr *oe, FID fid, OID oid, uint32_t size,
+                           dlog::log_record::logrec_type type) {
+    ALWAYS_ASSERT(num_entries < kMaxEntries);
+    new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type);
+    ++num_entries;
   }
   inline uint32_t size() { return num_entries; }
   inline void clear() { num_entries = 0; }
-  inline write_record_t get(bool is_ddl, uint32_t idx) { return is_ddl ? entries_[idx] : entries[idx]; }
+  inline write_record_t get(uint32_t idx) { return entries[idx]; }
   inline void init_large_write_set() { entries_ = new write_record_t[kMaxEntries_]; }
 };
 
@@ -172,6 +166,19 @@ protected:
   // Insert a record to the underlying table
   OID Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple = nullptr);
 
+  // DDL scan insert
+  void DDLScanInsert(TableDescriptor *td, OID oid, varstr *value);
+
+  // DDL CDC insert
+  PROMISE(rc_t)
+  DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value,
+               dlog::log_record *logrec);
+
+  // DDL CDC update
+  PROMISE(rc_t)
+  DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value,
+               dlog::log_record *logrec);
+
   PROMISE(rc_t)
   Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
 
@@ -191,11 +198,11 @@ public:
 
   inline str_arena &string_allocator() { return *sa; }
 
-  inline void add_to_write_set(bool is_ddl, fat_ptr *entry, FID fid, OID oid,
-                               uint64_t size,
+  inline void add_to_write_set(bool is_allowed, fat_ptr *entry, FID fid,
+                               OID oid, uint64_t size,
                                dlog::log_record::logrec_type type) {
 #ifndef NDEBUG
-    for (uint32_t i = 0; i < is_ddl && write_set.size(); ++i) {
+    for (uint32_t i = 0; i < is_ddl() && write_set.size(); ++i) {
       auto &w = write_set.entries_[i];
       ASSERT(w.entry);
       ASSERT(w.entry != entry);
@@ -209,8 +216,9 @@ public:
     // Each write set entry still just records the size of the actual "data" to
     // be inserted to the log excluding dlog::log_record, which will be
     // prepended by log_insert/update etc.
-    write_set.emplace_back(is_ddl, entry, fid, oid, size + sizeof(dbtuple),
-                           type);
+    if (!is_ddl() || (is_ddl() && fid == is_allowed)) {
+      write_set.emplace_back(entry, fid, oid, size + sizeof(dbtuple), type);
+    }
   }
 
   inline TXN::xid_context *GetXIDContext() { return xc; }
@@ -227,11 +235,11 @@ public:
   uint64_t log_size;
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
-#ifdef COPYDDL
+                           // #ifdef COPYDDL
   std::unordered_map<TableDescriptor*, OID> schema_read_map;
   TableDescriptor *new_td;
   TableDescriptor *old_td;
-#endif
+  // #endif
   util::timer timer;
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)

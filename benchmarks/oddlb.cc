@@ -116,7 +116,7 @@ public:
     ermia::ConcurrentMasstreeIndex *table_index =
         (ermia::ConcurrentMasstreeIndex *)schema.index;
     rc = rc_t{RC_INVALID};
-    rc = table_index->WriteNormalTable(arena, old_table_index, txn, v2, NULL);
+    rc = table_index->WriteNormalTable(arena, old_table_index, txn, v2);
     TryCatch(rc);
 
 #ifdef DCOPYDDL
@@ -160,8 +160,8 @@ public:
     TryCatchUnblock(rc);
 
     rc = rc_t{RC_INVALID};
-    rc = table_index->WriteNormalTable(arena, table_index, txn, v1, NULL);
-    // rc = table_index->CheckNormalTable(arena, table_index, txn, NULL);
+    rc = table_index->WriteNormalTable(arena, table_index, txn, v1);
+    // rc = table_index->CheckNormalTable(arena, table_index, txn);
     TryCatchUnblock(rc);
 
     TryCatchUnblock(db->Commit(txn));
@@ -198,8 +198,8 @@ public:
     TryCatch(rc);
 
     rc = rc_t{RC_INVALID};
-    rc = table_index->WriteNormalTable(arena, table_index, txn, v, NULL);
-    // rc = table_index->CheckNormalTable(arena, table_index, txn, NULL);
+    rc = table_index->WriteNormalTable(arena, table_index, txn, v);
+    // rc = table_index->CheckNormalTable(arena, table_index, txn);
     if (rc._val != RC_TRUE) {
       count++;
       db->Abort(txn);

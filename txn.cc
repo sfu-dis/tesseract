@@ -25,7 +25,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   }
   if (is_ddl()) {
     ddl_running_1 = true;
-    write_set.init_large_write_set();
+    // write_set.init_large_write_set();
   }
   write_set.clear();
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
@@ -145,7 +145,7 @@ void transaction::Abort() {
 #endif
 
   for (uint32_t i = 0; i < write_set.size(); ++i) {
-    write_record_t w = write_set.get(is_ddl(), i);
+    write_record_t w = write_set.get(i);
     dbtuple *tuple = (dbtuple *)w.get_object()->GetPayload();
     ASSERT(tuple);
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
@@ -170,6 +170,7 @@ void transaction::Abort() {
 rc_t transaction::commit() {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   if (is_ddl()) {
+    printf("CDC begins\n");
     std::vector<ermia::thread::Thread *> cdc_workers = changed_data_capture();
     while (ddl_end.load() != ermia::config::cdc_threads) {
     }
@@ -263,7 +264,7 @@ rc_t transaction::si_commit() {
     printf("DDL txn end: %lu\n", xc->end);
     ddl_overlap_2 = true;
     // If txn is DDL, commit schema record first before CDC
-    write_record_t w = write_set.get(is_ddl(), 0);
+    write_record_t w = write_set.get(0);
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
 
@@ -316,13 +317,15 @@ rc_t transaction::si_commit() {
     ddl_running_2 = false;
     join_changed_data_capture_threads(cdc_workers);
     ddl_overlap_2 = false;
+    new_td->GetPrimaryIndex()->SetTableDescriptor(new_td);
+    printf("CDC ends\n");
   }
 #endif
 
   volatile_write(xc->state, TXN::TXN_CMMTD);
 
   if (is_ddl()) {
-    write_record_t w = write_set.get(is_ddl(), 0);
+    /*write_record_t w = write_set.get(is_ddl(), 0);
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
 
@@ -336,9 +339,8 @@ rc_t transaction::si_commit() {
     varstr *new_value = string_allocator().next(sizeof(schema_str));
     new_value->copy_from(schema_str, sizeof(schema_str));
 
-    // ALWAYS_ASSERT(Update(schema_td, w.oid, w.str, new_value)._val ==
-    // RC_TRUE);
-
+    ALWAYS_ASSERT(Update(schema_td, w.oid, w.str, new_value)._val == RC_TRUE);
+    */
     ddl_running_1 = false;
   }
 
@@ -356,7 +358,7 @@ rc_t transaction::si_commit() {
   }
 #endif
   for (uint32_t i = start; i < write_set.size(); ++i) {
-    write_record_t w = write_set.get(is_ddl(), i);
+    write_record_t w = write_set.get(i);
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
 
@@ -645,8 +647,9 @@ transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v) {
       ASSERT(XID::from_ptr(prev->sstamp) == xc->owner);
       ASSERT(tuple->NextVolatile() == prev);
 #endif
-      add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid,
-                       tuple->size, dlog::log_record::logrec_type::UPDATE);
+      add_to_write_set(tuple_fid == schema_td->GetTupleFid(),
+                       tuple_array->get(oid), tuple_fid, oid, tuple->size,
+                       dlog::log_record::logrec_type::UPDATE);
       prev_persistent_ptr = prev_obj->GetPersistentAddress();
     }
 
@@ -677,13 +680,118 @@ OID transaction::Insert(TableDescriptor *td, varstr *value,
   oidmgr->oid_put_new(tuple_array, oid, new_head);
 
   ASSERT(tuple->size == value->size());
-  add_to_write_set(is_ddl(), tuple_array->get(oid), tuple_fid, oid, tuple->size,
+  add_to_write_set(tuple_fid == schema_td->GetTupleFid(), tuple_array->get(oid),
+                   tuple_fid, oid, tuple->size,
                    dlog::log_record::logrec_type::INSERT);
 
   if (out_tuple) {
     *out_tuple = tuple;
   }
   return oid;
+}
+
+PROMISE(rc_t)
+transaction::DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value,
+                          dlog::log_record *logrec) {
+  auto *tuple_array = td->GetTupleArray();
+  FID tuple_fid = td->GetTupleFid();
+  tuple_array->ensure_size(oid);
+
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
+  ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
+  ASSERT(new_head.asi_type() == 0);
+  Object *new_object = (Object *)new_head.offset();
+  auto *new_tuple = (dbtuple *)new_object->GetPayload();
+  new_object->SetCSN(new_object->GenerateCsnPtr(logrec->csn));
+
+retry:
+  fat_ptr *entry_ptr = tuple_array->get(oid);
+  fat_ptr expected = *entry_ptr;
+  new_object->SetNextVolatile(expected);
+  Object *obj = (Object *)expected.offset();
+  auto csn = obj->GetCSN();
+  bool overwrite = true;
+  if (expected == NULL_PTR) {
+    overwrite = false;
+  }
+  if (csn.asi_type() == fat_ptr::ASI_XID ||
+      CSN::from_ptr(csn).offset() < logrec->csn) {
+    if (!__sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr,
+                                      new_head._ptr)) {
+      goto retry;
+    }
+  } else {
+    MM::deallocate(new_head);
+    RETURN rc_t{RC_ABORT_SI_CONFLICT};
+  }
+
+  if (!overwrite) {
+    ASSERT(new_tuple->size == value->size());
+    add_to_write_set(tuple_fid == schema_td->GetTupleFid(),
+                     tuple_array->get(oid), tuple_fid, oid, new_tuple->size,
+                     dlog::log_record::logrec_type::INSERT);
+  }
+
+  RETURN rc_t{RC_TRUE};
+}
+
+void transaction::DDLScanInsert(TableDescriptor *td, OID oid, varstr *value) {
+  auto *tuple_array = td->GetTupleArray();
+  FID tuple_fid = td->GetTupleFid();
+  tuple_array->ensure_size(oid);
+
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
+  ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
+  ASSERT(new_head.asi_type() == 0);
+  auto *new_tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
+  new_tuple->GetObject()->SetCSN(xid.to_ptr());
+  oidmgr->oid_put_new(tuple_fid, oid, new_head);
+
+  ASSERT(new_tuple->size == value->size());
+  add_to_write_set(tuple_fid == schema_td->GetTupleFid(), tuple_array->get(oid),
+                   tuple_fid, oid, new_tuple->size,
+                   dlog::log_record::logrec_type::INSERT);
+}
+
+PROMISE(rc_t)
+transaction::DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value,
+                          dlog::log_record *logrec) {
+  auto *tuple_array = td->GetTupleArray();
+  FID tuple_fid = td->GetTupleFid();
+  tuple_array->ensure_size(oid);
+
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
+  ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
+  ASSERT(new_head.asi_type() == 0);
+  Object *new_object = (Object *)new_head.offset();
+  auto *new_tuple = (dbtuple *)new_object->GetPayload();
+  new_object->SetCSN(new_object->GenerateCsnPtr(logrec->csn));
+
+  fat_ptr *entry_ptr = tuple_array->get(oid);
+  fat_ptr expected = *entry_ptr;
+  Object *obj = (Object *)expected.offset();
+  auto csn = obj->GetCSN();
+  bool overwrite = true;
+  if (expected == NULL_PTR) {
+    overwrite = false;
+  }
+  if (expected == NULL_PTR || csn.asi_type() == fat_ptr::ASI_XID ||
+      CSN::from_ptr(csn).offset() < logrec->csn) {
+    __sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr,
+                                 new_head._ptr);
+  } else {
+    MM::deallocate(new_head);
+    RETURN rc_t{RC_ABORT_SI_CONFLICT};
+  }
+
+  if (!overwrite) {
+    ASSERT(new_tuple->size == value->size());
+    add_to_write_set(tuple_fid == schema_td->GetTupleFid(),
+                     tuple_array->get(oid), tuple_fid, oid, new_tuple->size,
+                     dlog::log_record::logrec_type::INSERT);
+  }
+
+  RETURN rc_t{RC_TRUE};
 }
 
 void transaction::LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key) {
