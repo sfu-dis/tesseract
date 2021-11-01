@@ -171,13 +171,16 @@ protected:
 
   // DDL CDC insert
   PROMISE(rc_t)
-  DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value,
-               dlog::log_record *logrec);
+  DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn);
 
   // DDL CDC update
   PROMISE(rc_t)
-  DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value,
-               dlog::log_record *logrec);
+  DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn);
+
+  // DDL schema unblock
+  PROMISE(rc_t)
+  DDLSchemaUnblock(TableDescriptor *td, OID oid, varstr *value,
+                   uint64_t tuple_csn);
 
   PROMISE(rc_t)
   Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
@@ -202,11 +205,11 @@ public:
                                OID oid, uint64_t size,
                                dlog::log_record::logrec_type type) {
 #ifndef NDEBUG
-    for (uint32_t i = 0; i < is_ddl() && write_set.size(); ++i) {
+    /*for (uint32_t i = 0; i < is_ddl() && write_set.size(); ++i) {
       auto &w = write_set.entries_[i];
       ASSERT(w.entry);
       ASSERT(w.entry != entry);
-    }
+    }*/
 #endif
 
     // Work out the encoded size to be added to the log block later
@@ -216,7 +219,7 @@ public:
     // Each write set entry still just records the size of the actual "data" to
     // be inserted to the log excluding dlog::log_record, which will be
     // prepended by log_insert/update etc.
-    if (!is_ddl() || (is_ddl() && fid == is_allowed)) {
+    if (!is_ddl() || (is_ddl() && is_allowed)) {
       write_set.emplace_back(entry, fid, oid, size + sizeof(dbtuple), type);
     }
   }

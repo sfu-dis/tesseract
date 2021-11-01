@@ -17,7 +17,9 @@ public:
   OrderedIndex(std::string table_name, bool is_primary);
   virtual ~OrderedIndex() {}
   inline TableDescriptor *GetTableDescriptor() { return table_descriptor; }
-  inline void SetTableDescriptor(TableDescriptor *td) { table_descriptor = td; }
+  inline void SetTableDescriptor(TableDescriptor *td) {
+    volatile_write(table_descriptor, td);
+  }
   inline bool IsPrimary() { return is_primary; }
   inline FID GetIndexFid() { return self_fid; }
   virtual void *GetTable() = 0;

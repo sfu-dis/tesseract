@@ -39,8 +39,6 @@ std::bitset<BITMAP_SIZE> *GetBitMap();
 class Table;
 
 extern TableDescriptor *schema_td;
-extern TableDescriptor *new_td;
-extern TableDescriptor *old_td;
 extern uint64_t *_cdc_last_csn;
 extern std::vector<std::bitset<BITMAP_SIZE> *> bitmaps;
 

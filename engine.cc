@@ -7,8 +7,6 @@
 namespace ermia {
 
 TableDescriptor *schema_td = NULL;
-TableDescriptor *new_td = NULL;
-TableDescriptor *old_td = NULL;
 uint64_t *_cdc_last_csn =
     (uint64_t *)malloc(sizeof(uint64_t) * config::cdc_threads);
 
@@ -193,38 +191,52 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
   memcpy(&schema, (char *)value.data(), sizeof(schema));
   uint64_t schema_version = schema.v;
 
-  printf("begin op\n");
-
-#ifdef MICROBENCH
-  ddl_add_column_scan_callback c_add_column(this, t, schema_version, arena);
-
-  char str1[sizeof(uint64_t)];
-  uint64_t start = 0;
-  memcpy(str1, &start, sizeof(str1));
-  varstr *start_key = arena->next(sizeof(str1));
-  start_key->copy_from(str1, sizeof(str1));
-
-  r = index->Scan(t, *start_key, nullptr, c_add_column, arena);
-  ALWAYS_ASSERT(c_add_column.n == 10000000);
-#else
+  printf("DDL scan begins\n");
   ALWAYS_ASSERT(table_descriptor->GetTupleArray() ==
                 t->old_td->GetTupleArray());
   uint64_t count = 0;
   auto *alloc = oidmgr->get_allocator(t->old_td->GetTupleFid());
-  uint32_t oid_array_sz = alloc->head.hiwater_mark;
-  printf("oid_array_sz: %d\n", oid_array_sz);
-  // ermia::str_arena *_arena = new
-  // ermia::str_arena(ermia::config::arena_size_mb);
-  for (uint32_t oid = 0; oid <= oid_array_sz; oid++) {
-    if (table_descriptor->GetTupleArray()->get(oid) != NULL_PTR) {
-      dbtuple *tuple = AWAIT oidmgr->oid_get_version(
-          table_descriptor->GetTupleArray(), oid, t->xc);
-      varstr value;
-      if (tuple && t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
+  uint32_t himark = alloc->head.hiwater_mark;
+  auto *old_tuple_array = t->old_td->GetTupleArray();
+  printf("himark: %d\n", himark);
+  auto *new_tuple_array = t->new_td->GetTupleArray();
+  new_tuple_array->ensure_size(new_tuple_array->alloc_size(himark));
+  oidmgr->recreate_allocator(t->new_td->GetTupleFid(), himark);
+  for (uint32_t oid = 1; oid <= himark; oid++) {
+    fat_ptr *entry = old_tuple_array->get(oid);
+    if (*entry != NULL_PTR) {
+      dbtuple *tuple =
+          AWAIT oidmgr->oid_get_version(old_tuple_array, oid, t->xc);
+      // Object *object = (Object *)entry->offset();
+      // dbtuple *tuple = (dbtuple *)object->GetPayload();
+      varstr tuple_value;
+      if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
         arena->reset();
         varstr *d_v = nullptr;
+#ifdef MICROBENCH
+        uint64_t a = 0;
+        if (schema_version == 1) {
+          struct Schema1 record;
+          memcpy(&record, (char *)tuple_value.data(), sizeof(record));
+          a = record.a;
+        } else {
+          struct Schema2 record;
+          memcpy(&record, (char *)tuple_value.data(), sizeof(record));
+          a = record.a;
+        }
+
+        char str2[sizeof(Schema2)];
+        struct Schema2 record2;
+        record2.v = schema_version;
+        record2.a = a;
+        record2.b = schema_version;
+        record2.c = schema_version;
+        memcpy(str2, &record2, sizeof(str2));
+        d_v = arena->next(sizeof(str2));
+        d_v->copy_from(str2, sizeof(str2));
+#else
         order_line::value v_ol_temp;
-        const order_line::value *v_ol = Decode(value, v_ol_temp);
+        const order_line::value *v_ol = Decode(tuple_value, v_ol_temp);
 
         order_line_1::value v_ol_1;
         v_ol_1.ol_i_id = v_ol->ol_i_id;
@@ -233,11 +245,12 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
         v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
         v_ol_1.ol_quantity = v_ol->ol_quantity;
         v_ol_1.v = schema_version;
-        v_ol_1.ol_tax = 0;
+        v_ol_1.ol_tax = 0.1;
 
         const size_t order_line_sz = ::Size(v_ol_1);
         d_v = arena->next(order_line_sz);
         d_v = &Encode(*d_v, v_ol_1);
+#endif
 
         t->DDLScanInsert(t->new_td, oid, d_v);
 
@@ -247,23 +260,9 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
   }
   printf("real oid_array_sz: %lu\n", count);
 
-  /*ddl_add_column_scan_callback c_add_column(this, t, schema_version, arena);
-
-  const order_line::key k_ol_0(1, 1, 1, 0);
-  varstr *start_key = arena->next(::Size(k_ol_0));
-  r = index->Scan(t, Encode(*start_key, k_ol_0), nullptr, c_add_column, arena);
-  */
-#endif
-
-  /*if (r._val != RC_TRUE) {
-    printf("DDL scan false\n");
-    return {RC_ABORT_INTERNAL};
-  }*/
-
-  printf("scan ends, current csn: %lu\n",
+  printf("DDL scan ends, current csn: %lu\n",
          dlog::current_csn.load(std::memory_order_relaxed));
 
-  // return c_add_column.invoke_status;
   return rc_t{RC_TRUE};
 }
 
@@ -513,6 +512,7 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
                                             uint32_t begin_log,
                                             uint32_t end_log, str_arena *arena,
                                             util::fast_random &r) {
+  RCU::rcu_enter();
   uint64_t begin_csn = xc->begin;
   uint64_t end_csn = xc->end;
   bool ddl_end_tmp = true, ddl_end_flag = false;
@@ -590,11 +590,10 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
                 v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
                 v_ol_1.ol_quantity = v_ol->ol_quantity;
                 v_ol_1.v = v_ol->v + 1;
-		v_ol_1.ol_tax = 0;
-		
+                v_ol_1.ol_tax = 0.1;
+
                 const size_t order_line_sz = ::Size(v_ol_1);
                 varstr *d_v = arena->next(order_line_sz);
-
                 d_v = &Encode(*d_v, v_ol_1);
 		
 		insert_total++;
@@ -602,7 +601,7 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
                     RC_TRUE) {
                   insert_fail++;
                 }*/
-                if (DDLCDCInsert(this->new_td, o, d_v, logrec)._val !=
+                if (DDLCDCInsert(this->new_td, o, d_v, logrec->csn)._val !=
                     RC_TRUE) {
                   insert_fail++;
                 }
@@ -654,7 +653,7 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
                 v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
                 v_ol_1.ol_quantity = v_ol->ol_quantity;
                 v_ol_1.v = v_ol->v + 1;
-                v_ol_1.ol_tax = 0;
+                v_ol_1.ol_tax = 0.1;
 
                 const size_t order_line_sz = ::Size(v_ol_1);
                 d_v = arena->next(order_line_sz);
@@ -665,8 +664,8 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
                 /*if (this->UpdateRecord(t, *update_key, *d_v)._val != RC_TRUE)
                 { update_fail++;
                 }*/
-                if (this->DDLCDCUpdate(this->new_td, o, d_v, logrec)._val !=
-                    RC_TRUE) {
+                if (this->DDLCDCUpdate(this->new_td, o, d_v, logrec->csn)
+                        ._val != RC_TRUE) {
                   update_fail++;
                 }
               }
@@ -733,6 +732,7 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
       }
     }
   }
+  RCU::rcu_exit();
   return ddl_end_flag || ddl_end_tmp;
 }
 #endif
@@ -1088,7 +1088,10 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
 
   // Insert to the table first
   dbtuple *tuple = nullptr;
+  TableDescriptor *td = table_descriptor;
   oid = t->Insert(table_descriptor, &value, &tuple);
+  if (td != table_descriptor)
+    printf("not equal\n");
 
   // Done with table record, now set up index
   ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
@@ -1163,7 +1166,10 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
 
 exit:
   if (rc._val == RC_TRUE) {
+    TableDescriptor *td = table_descriptor;
     rc_t rc = AWAIT t->Update(table_descriptor, oid, &key, &value);
+    if (td != table_descriptor)
+      printf("not equal\n");
     RETURN rc;
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};

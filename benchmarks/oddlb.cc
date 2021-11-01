@@ -88,17 +88,22 @@ public:
     db->WriteLock(str3.c_str());
 
     db->CreateTable(str3.c_str());
-    db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
+    // For create index DDL
+    // db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
 
-    schema.index = ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
+    ermia::Catalog::GetTable(str3.c_str())
+        ->SetPrimaryIndex(old_table_index, std::string(str1));
+    schema.index = ermia::Catalog::GetTable(str1)->GetPrimaryIndex();
     schema.td = ermia::Catalog::GetTable(str3.c_str());
-    schema.state = ermia::TXN::TXN_CMMTD;
+    schema.state = 0;
 #ifdef LAZYDDL
     schema.old_index = old_table_index;
     schema.old_td = old_td;
     schema.old_tds[old_schema_version] = old_td;
 #elif DCOPYDDL
-    schema.state = ermia::TXN::TXN_DDL;
+    schema.state = 1;
+#else
+    schema.state = 2;
 #endif
     memcpy(str2, &schema, sizeof(str2));
     ermia::varstr &v2 = str(sizeof(str2));
