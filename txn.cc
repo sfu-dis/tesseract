@@ -236,7 +236,7 @@ rc_t transaction::si_commit() {
   xc->end = write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;
 
 #if defined(COPYDDL)
-  if (is_dml() && DMLConsistencyHandler() && ddl_running_1) {
+  if (is_dml() && DMLConsistencyHandler()) {
     // printf("DML failed with begin: %lu, end: %lu\n", xc->begin, xc->end);
     return rc_t{RC_ABORT_SI_CONFLICT};
   }
@@ -314,8 +314,8 @@ rc_t transaction::si_commit() {
     std::vector<ermia::thread::Thread *> cdc_workers = changed_data_capture();
     while (ddl_end.load() != ermia::config::cdc_threads) {
     }
-    ddl_running_2 = false;
     join_changed_data_capture_threads(cdc_workers);
+    ddl_running_2 = false;
     printf("CDC ends\n");
 
     // Fix new table file's marks
@@ -331,6 +331,22 @@ rc_t transaction::si_commit() {
     this->new_td->GetPrimaryIndex()->SetArrays(true);
     ALWAYS_ASSERT(this->new_td->GetPrimaryIndex()->GetTableDescriptor() ==
                   this->new_td);
+
+    /*auto *old_tuple_array = this->old_td->GetTupleArray();
+    uint32_t old_count = 0, new_count = 0;
+    for (uint32_t oid = 0; oid <= himark; oid++) {
+      fat_ptr *entry = new_tuple_array->get(oid);
+      if (*entry != NULL_PTR) {
+        new_count++;
+        Object *object = (Object *)entry->offset();
+        object->SetCSN(xid.to_ptr());
+      }
+      // entry = old_tuple_array->get(oid);
+      // if (*entry != NULL_PTR) {
+      //  old_count++;
+      //}
+    }*/
+    // printf("DDL test with size %d, old size %d\n", new_count, old_count);
 
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       write_record_t w = write_set.get(i);
@@ -352,22 +368,6 @@ rc_t transaction::si_commit() {
           DDLSchemaUnblock(schema_td, w.oid, new_value, xc->end)._val ==
           RC_TRUE);
     }
-
-    auto *old_tuple_array = this->old_td->GetTupleArray();
-    uint32_t old_count = 0, new_count = 0;
-    for (uint32_t oid = 0; oid <= himark; oid++) {
-      fat_ptr *entry = new_tuple_array->get(oid);
-      if (*entry != NULL_PTR) {
-        new_count++;
-        Object *object = (Object *)entry->offset();
-        object->SetCSN(xid.to_ptr());
-      }
-      // entry = old_tuple_array->get(oid);
-      // if (*entry != NULL_PTR) {
-      //  old_count++;
-      //}
-    }
-    // printf("DDL test with size %d, old size %d\n", new_count, old_count);
   }
 #endif
 
@@ -384,7 +384,7 @@ rc_t transaction::si_commit() {
     // Post-commit for DDL normal table(s)
     for (uint32_t oid = 0; oid <= himark; oid++) {
       fat_ptr *entry = new_tuple_array->get(oid);
-      if (*entry != NULL_PTR) {
+      if (entry && *entry != NULL_PTR) {
         Object *object = (Object *)entry->offset();
         dbtuple *tuple = (dbtuple *)object->GetPayload();
 
@@ -861,8 +861,10 @@ retry:
   bool overwrite = true;
   if (expected == NULL_PTR) {
     overwrite = false;
-    __sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr,
-                                 new_head._ptr);
+    if (!__sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr,
+                                      new_head._ptr)) {
+      goto retry;
+    }
   } else {
     MM::deallocate(new_head);
     RETURN rc_t{RC_ABORT_SI_CONFLICT};

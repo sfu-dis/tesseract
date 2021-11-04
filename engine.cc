@@ -164,10 +164,12 @@ retry:
   if (rc._val != RC_TRUE)
     DLOG(INFO) << "Read schema table failed";
 #endif
-  ALWAYS_ASSERT(rc._val == RC_TRUE);
+  if (rc._val != RC_TRUE) {
+    goto retry;
+  }
 
 #ifdef COPYDDL
-  if (t->is_dml() && ddl_running_1) {
+  if (t->is_dml()) {
     struct Schema_record schema;
     memcpy(&schema, (char *)value.data(), sizeof(schema));
     ALWAYS_ASSERT(schema.td != nullptr);
@@ -705,10 +707,10 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
         if (insert_total != 0 || update_total != 0)
           ddl_end_tmp = false;
         if (update_fail > 0)
-          printf("update_fail, CDC conflicts with copy, %d\n", update_fail);
+          printf("CDC update fail, %d\n", update_fail);
 
         if (insert_fail > 0)
-          printf("insert_fail, CDC conflicts with copy, %d\n", insert_fail);
+          printf("CDC insert fail, %d\n", insert_fail);
 
         // printf("%d, %d\n", update_total, insert_total);
 
