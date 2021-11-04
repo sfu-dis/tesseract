@@ -226,18 +226,16 @@ void tls_log::issue_flush(const char *buf, uint64_t size) {
 }
 
 void tls_log::poll_flush() {
-  if (config::null_log_device) {
-    return;
+  if (!config::null_log_device) {
+    struct io_uring_cqe *cqe = nullptr;
+    int ret = io_uring_wait_cqe(&ring, &cqe);
+    LOG_IF(FATAL, ret < 0) << "Error waiting for completion: " << strerror(-ret);
+    LOG_IF(FATAL, cqe->res < 0) << "Error in async operation: " << strerror(-cqe->res);
+    uint64_t size = cqe->user_data;
+    io_uring_cqe_seen(&ring, cqe);
+    durable_lsn += size;
+    current_segment()->size += size;
   }
-
-  struct io_uring_cqe *cqe = nullptr;
-  int ret = io_uring_wait_cqe(&ring, &cqe);
-  LOG_IF(FATAL, ret < 0) << "Error waiting for completion: " << strerror(-ret);
-  LOG_IF(FATAL, cqe->res < 0) << "Error in async operation: " << strerror(-cqe->res);
-  uint64_t size = cqe->user_data;
-  io_uring_cqe_seen(&ring, cqe);
-  durable_lsn += size;
-  current_segment()->size += size;
 
   if (!dirty) {
     // get last tls durable csn

@@ -14,16 +14,18 @@ CoroBase inherits the shared-everything architecture, synchronization and concur
 
 #### Software dependencies
 * cmake
+* python2
 * [clang; libcxx; libcxxabi](https://github.com/llvm/llvm-project)
 * libnuma
 * libibverbs
 * libgflags
 * libgoogle-glog
+* liburing
 
 Ubuntu
 ```
 apt-get install -y cmake gcc-10 g++-10 clang-8 libc++-8-dev libc++abi-8-dev
-apt-get install -y libnuma-dev libibverbs-dev libgflags-dev libgoogle-glog-dev
+apt-get install -y libnuma-dev libibverbs-dev libgflags-dev libgoogle-glog-dev liburing-dev
 ```
 
 #### Environment configurations
@@ -147,3 +149,4 @@ $./run.sh ./corobase_DDL_NO_COPY_VERIFICATION_MICROBENCH oddl_org 10 10 30 "-nod
 `-r 10`: 10 querys per transaction.
 
 `-t sequential`: 'sequential' for ERMIA implementation, 'simple-coro' for the optimized 2-level coroutine-to-transaction implementation, and 'adv-coro' for the fully-nested coroutines implementation.
+

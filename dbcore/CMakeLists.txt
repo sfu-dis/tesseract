@@ -2,7 +2,11 @@
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/burt-hash.cpp")
   set(BURT_HASH_GEN python2 ${CMAKE_CURRENT_SOURCE_DIR}/burt-hash.py)
   execute_process(COMMAND ${BURT_HASH_GEN} ERROR_VARIABLE out OUTPUT_VARIABLE out)
-  file(WRITE ${CMAKE_CURRENT_SOURCE_DIR}/burt-hash.cpp "${out}")
+  if ("${out}" STREQUAL "")
+    message(FATAL_ERROR "Generating burt-hash.cpp failed. Please make sure python2 is installed.")
+  else()
+    file(WRITE ${CMAKE_CURRENT_SOURCE_DIR}/burt-hash.cpp "${out}")
+  endif()
 endif()
 
 set(DBCORE_SRC
