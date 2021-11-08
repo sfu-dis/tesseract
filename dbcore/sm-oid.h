@@ -230,7 +230,8 @@ public:
   /* Return a fat_ptr to the overwritten object (could be an in-flight version!)
    */
   fat_ptr UpdateTuple(oid_array *oa, OID o, const varstr *value,
-                      TXN::xid_context *updater_xc, fat_ptr *new_obj_ptr);
+                      TXN::xid_context *updater_xc, fat_ptr *new_obj_ptr,
+                      bool wait_for_new_schema = false);
   inline fat_ptr UpdateTuple(FID f, OID o, const varstr *value,
                              TXN::xid_context *updater_xc, fat_ptr *new_obj_ptr) {
     return UpdateTuple(get_array(f), o, value, updater_xc, new_obj_ptr);

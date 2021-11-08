@@ -614,11 +614,16 @@ fat_ptr sm_oid_mgr::free_oid(FID f, OID o) {
 
 fat_ptr sm_oid_mgr::UpdateTuple(oid_array *oa, OID o, const varstr *value,
                                 TXN::xid_context *updater_xc,
-                                fat_ptr *new_obj_ptr) {
+                                fat_ptr *new_obj_ptr,
+                                bool wait_for_new_schema) {
 wait_for_commit:
   auto *ptr = oa->get(o);
 start_over:
   fat_ptr head = volatile_read(*ptr);
+  if (head == NULL_PTR) {
+    std::cerr << "NULL_PTR" << std::endl;
+    return NULL_PTR;
+  }
   ASSERT(head.asi_type() == 0);
   Object *old_desc = (Object *)head.offset();
   ASSERT(old_desc);
@@ -668,6 +673,9 @@ start_over:
 
     // Wait if the transaction is finalizing for commit
     if (state == TXN::TXN_COMMITTING) {
+      if (wait_for_new_schema) {
+        goto install;
+      }
       goto wait_for_commit;
     }
 

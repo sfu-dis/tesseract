@@ -150,7 +150,7 @@ protected:
 #ifdef COPYDDL
 #if !defined(LAZYDDL) && !defined(DCOPYDDL)
   std::vector<ermia::thread::Thread *> changed_data_capture();
-  bool changed_data_capture_impl(uint32_t thread_id, uint64_t *cdc_offset,
+  bool changed_data_capture_impl(uint32_t thread_id, uint32_t ddl_thread_id,
                                  uint32_t begin_log, uint32_t end_log,
                                  str_arena *arena, util::fast_random &r);
   void join_changed_data_capture_threads(
@@ -181,6 +181,10 @@ protected:
   PROMISE(rc_t)
   DDLSchemaUnblock(TableDescriptor *td, OID oid, varstr *value,
                    uint64_t tuple_csn);
+
+  // DML & DDL overlap check
+  PROMISE(bool)
+  OverlapCheck(TableDescriptor *td, OID oid);
 
   PROMISE(rc_t)
   Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
@@ -226,6 +230,12 @@ public:
 
   inline TXN::xid_context *GetXIDContext() { return xc; }
 
+  inline void SetWaitForNewSchema(bool _wait_for_new_schema) {
+    wait_for_new_schema = _wait_for_new_schema;
+  }
+
+  inline bool IsWaitForNewSchema() { return wait_for_new_schema; }
+
 #ifdef COPYDDL
   inline void set_table_descriptors(TableDescriptor *_new_td, TableDescriptor *_old_td) { new_td = _new_td, old_td = _old_td; }
 #endif
@@ -238,11 +248,10 @@ public:
   uint64_t log_size;
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
-                           // #ifdef COPYDDL
   std::unordered_map<TableDescriptor*, OID> schema_read_map;
   TableDescriptor *new_td;
   TableDescriptor *old_td;
-  // #endif
+  bool wait_for_new_schema;
   util::timer timer;
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)

@@ -623,19 +623,17 @@ rc_t tpcc_worker::txn_delivery() {
             &Encode(str(Size(k_oo_1)), k_oo_1), c));
 #endif
       } else {
-        static_limit_callback<15> c1(s_arena.get(), false);
-        /*TryCatch(tbl_order_line(warehouse_id)
+        /*static_limit_callback<15> c1(s_arena.get(), false);
+        TryCatch(tbl_order_line(warehouse_id)
                      ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
                             &Encode(str(Size(k_oo_1)), k_oo_1), c1));
         */
+
         TryCatch(order_line_table_index->Scan(
             txn, Encode(str(Size(k_oo_0)), k_oo_0),
             &Encode(str(Size(k_oo_1)), k_oo_1), c));
 
-        if (c.size() == 0)
-          TryCatch({RC_ABORT_USER});
-
-        /*if ((c1.size() != 0 && c.size() != c1.size())) {
+        if (c.size() == 0) {
 #ifdef LAZYDDL
           ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
               (ermia::ConcurrentMasstreeIndex *)order_line_schema.old_index;
@@ -649,14 +647,10 @@ rc_t tpcc_worker::txn_delivery() {
               &Encode(str(Size(k_oo_1)), k_oo_1), c_order_line_1));
 
           TryCatch(c_order_line_1.invoke_status);
-
-          if (c1.size() != c_order_line_1.n) {
-            TryCatch({RC_ABORT_USER});
-          }
 #else
           TryCatch({RC_ABORT_USER});
 #endif
-        }*/
+        }
       }
     }
 
@@ -678,16 +672,9 @@ rc_t tpcc_worker::txn_delivery() {
         v_ol_new.v = order_line_schema.v;
 	ASSERT(s_arena.get()->manages(c.values[i].first));
 
-        /*if (tbl_order_line(warehouse_id)->GetTableDescriptor()->GetTupleFid()
-        == 130) { std::cerr << "ol_i_id: " << v_ol_new.ol_i_id << ", txn begin:
-        " << txn->GetXIDContext()->begin << std::endl;
-          // TryCatch(rc_t{RC_ABORT_SI_CONFLICT});
-        }*/
-
         TryCatch(tbl_order_line(warehouse_id)
                      ->UpdateRecord(txn, *c.values[i].first,
                                     Encode(str(Size(v_ol_new)), v_ol_new)));
-
       } else {
 #ifdef DCOPYDDL
         if (order_line_schema.state == 1 &&
@@ -1160,14 +1147,12 @@ rc_t tpcc_worker::txn_stock_level() {
                    ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
                           &Encode(str(Size(k_ol_1)), k_ol_1), c1));
       */
+
       TryCatch(
           order_line_table_index->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
                                        &Encode(str(Size(k_ol_1)), k_ol_1), c));
 
-      if (c.n == 0)
-        TryCatch({RC_ABORT_USER});
-
-      /*if ((c1.n != 0 && c.n != c1.n)) {
+      if (c.n == 0) {
 #ifdef LAZYDDL
         ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
             (ermia::ConcurrentMasstreeIndex *)order_line_schema.old_index;
@@ -1178,14 +1163,10 @@ rc_t tpcc_worker::txn_stock_level() {
         TryCatch(old_order_line_table_index->Scan(
             txn, Encode(str(Size(k_ol_0)), k_ol_0),
             &Encode(str(Size(k_ol_1)), k_ol_1), c2));
-
-        if (c1.n != c2.n) {
-          TryCatch({RC_ABORT_USER});
-        }
 #else
         TryCatch({RC_ABORT_USER});
 #endif
-      }*/
+      }
     }
   }
   {
@@ -1875,6 +1856,7 @@ rc_t tpcc_worker::txn_ddl() {
   order_line_schema.old_td = old_order_line_td;
   order_line_schema.state = 1;
 #else
+  order_line_schema.old_td = old_order_line_td;
   order_line_schema.state = 2;
 #endif
   // ermia::Catalog::GetTable(str3.c_str())->SetPrimaryIndex(oorder_schema.index,

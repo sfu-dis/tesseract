@@ -99,7 +99,7 @@ DEFINE_bool(iouring_read_log, false,
 // DDL & CDC settings
 DEFINE_bool(cdc_physical_workers_only, true,
             "Whether to use physical workers for CDC");
-DEFINE_uint64(ddl_write_set_length, 50000000, "Length of DDL transaction");
+DEFINE_uint64(cdc_threads, 3, "Number of CDC threads");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -128,11 +128,15 @@ int main(int argc, char **argv) {
   ermia::config::perf_record_event = FLAGS_perf_record_event;
   ermia::config::physical_workers_only = FLAGS_physical_workers_only;
   ermia::config::cdc_physical_workers_only = FLAGS_cdc_physical_workers_only;
-  ermia::config::ddl_write_set_length = FLAGS_ddl_write_set_length;
+
+  ermia::config::replay_threads = 0;
+  ermia::config::worker_threads = FLAGS_threads;
+  ermia::config::cdc_threads = FLAGS_cdc_threads;
+
   if (ermia::config::physical_workers_only)
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
     if (ermia::config::cdc_physical_workers_only) {
-      ermia::config::threads = 2 * FLAGS_threads - 1;
+      ermia::config::threads = FLAGS_threads + FLAGS_cdc_threads;
     } else {
       ermia::config::threads = FLAGS_threads;
     }
@@ -180,9 +184,6 @@ int main(int argc, char **argv) {
   ermia::config::null_log_device = FLAGS_null_log_device;
   ermia::config::truncate_at_bench_start = FLAGS_truncate_at_bench_start;
 
-  ermia::config::replay_threads = 0;
-  ermia::config::worker_threads = FLAGS_threads;
-
   ermia::config::pcommit = FLAGS_pcommit;
   ermia::config::pcommit_queue_length = FLAGS_pcommit_queue_length;
   ermia::config::pcommit_timeout_ms = FLAGS_pcommit_timeout_ms;
@@ -211,7 +212,7 @@ int main(int argc, char **argv) {
   ermia::config::log_key_for_update = FLAGS_log_key_for_update;
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
-  ermia::config::cdc_threads = FLAGS_threads - 1;
+  // ermia::config::cdc_threads = FLAGS_threads - 1;
 #endif
 
   ermia::thread::Initialize();
