@@ -1,7 +1,6 @@
 #pragma once
 
 #include <list>
-#include <liburing.h>
 
 #include "dlog.h"
 #include "dlog-defs.h"
@@ -48,9 +47,6 @@ class Object {
   // Commit timestamp of this version. Type is XID (CSN) before (after)
   // commit. 
   fat_ptr csn_;
-
-  // io_uring structures
-  static struct io_uring ring;
 
  public:
   static fat_ptr Create(const varstr* tuple_value, epoch_num epoch);
