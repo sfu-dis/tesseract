@@ -145,7 +145,6 @@ void bench_worker::MyWork(char *) {
   if (is_worker) {
     tlog = ermia::GetLog();
     tlog->reset_committer(false);
-    ermia::GetBitMap();
     workload = get_workload();
     txn_counts.resize(workload.size());
     barrier_a->count_down();

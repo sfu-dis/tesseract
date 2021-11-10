@@ -621,7 +621,7 @@ wait_for_commit:
 start_over:
   fat_ptr head = volatile_read(*ptr);
   if (head == NULL_PTR) {
-    std::cerr << "NULL_PTR" << std::endl;
+    // std::cerr << "NULL_PTR" << std::endl;
     return NULL_PTR;
   }
   ASSERT(head.asi_type() == 0);
@@ -673,9 +673,6 @@ start_over:
 
     // Wait if the transaction is finalizing for commit
     if (state == TXN::TXN_COMMITTING) {
-      if (wait_for_new_schema) {
-        goto install;
-      }
       goto wait_for_commit;
     }
 

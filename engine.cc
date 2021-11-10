@@ -10,22 +10,8 @@ TableDescriptor *schema_td = NULL;
 uint64_t *_cdc_last_csn =
     (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
 
-std::vector<std::bitset<BITMAP_SIZE> *> bitmaps;
-thread_local std::bitset<BITMAP_SIZE> *bitmap;
-
 thread_local dlog::tls_log tlog;
 std::mutex tlog_lock;
-
-std::bitset<BITMAP_SIZE> *GetBitMap() {
-  thread_local bool bitmap_initialized = false;
-  if (!bitmap_initialized) {
-    bitmap_initialized = true;
-    bitmap =
-        (std::bitset<BITMAP_SIZE> *)malloc(sizeof(std::bitset<BITMAP_SIZE>));
-    bitmaps.push_back(bitmap);
-  }
-  return bitmap;
-}
 
 dlog::tls_log *GetLog(uint32_t logid) {
   // XXX(tzwang): this lock may become a problem; should be safe to not use it -
@@ -172,16 +158,23 @@ retry:
   if (t->is_dml()) {
     struct Schema_record schema;
     memcpy(&schema, (char *)value.data(), sizeof(schema));
-    ALWAYS_ASSERT(schema.td != nullptr);
-    if (schema.td != schema.index->GetTableDescriptor()) {
-      volatile_write(rc._val, RC_ABORT_INTERNAL);
-      return;
+    ALWAYS_ASSERT(schema.td != schema.old_td);
+    if (schema.td->GetTupleArray() != schema.index->GetTupleArray()) {
+      goto retry;
     }
     if (schema.state == 2) {
-      // goto retry;
-      t->SetWaitForNewSchema(true);
-      ALWAYS_ASSERT(schema.old_td != nullptr);
-      t->set_table_descriptors(schema.td, schema.old_td);
+      /*auto *alloc = oidmgr->get_allocator(schema.td->GetTupleFid());
+      uint32_t himark = alloc->head.hiwater_mark;
+      printf("mark; %d\n", himark);
+      if (himark == 0) {
+        goto retry;
+      }*/
+      if (config::cdc_schema_lock) {
+        goto retry;
+      } else {
+        t->SetWaitForNewSchema(true);
+        t->set_table_descriptors(schema.td, schema.old_td);
+      }
     }
     t->schema_read_map[schema.td] = *out_oid;
   }
@@ -200,17 +193,17 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
   memcpy(&schema, (char *)value.data(), sizeof(schema));
   uint64_t schema_version = schema.v;
 
-  printf("DDL scan begins\n");
+  // printf("DDL scan begins\n");
   ALWAYS_ASSERT(table_descriptor->GetTupleArray() ==
                 t->old_td->GetTupleArray());
   uint64_t count = 0;
   auto *alloc = oidmgr->get_allocator(t->old_td->GetTupleFid());
   uint32_t himark = alloc->head.hiwater_mark;
   auto *old_tuple_array = t->old_td->GetTupleArray();
-  printf("himark: %d\n", himark);
+  // printf("himark: %d\n", himark);
   auto *new_tuple_array = t->new_td->GetTupleArray();
   new_tuple_array->ensure_size(new_tuple_array->alloc_size(himark));
-  oidmgr->recreate_allocator(t->new_td->GetTupleFid(), himark);
+  // oidmgr->recreate_allocator(t->new_td->GetTupleFid(), himark);
   for (uint32_t oid = 1; oid <= himark; oid++) {
     fat_ptr *entry = old_tuple_array->get(oid);
     if (*entry != NULL_PTR) {
@@ -267,10 +260,10 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
       }
     }
   }
-  printf("real oid_array_sz: %lu\n", count);
+  // printf("real oid_array_sz: %lu\n", count);
 
-  printf("DDL scan ends, current csn: %lu\n",
-         dlog::current_csn.load(std::memory_order_relaxed));
+  // printf("DDL scan ends, current csn: %lu\n",
+  //       dlog::current_csn.load(std::memory_order_relaxed));
 
   return rc_t{RC_TRUE};
 }
@@ -532,6 +525,15 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
         this->new_td->GetSecIndexes().begin()));
     ALWAYS_ASSERT(table_secondary_index);
   }
+  uint32_t count = 0;
+  for (uint32_t i = begin_log; i <= end_log; i++) {
+    dlog::tls_log *tlog = dlog::tlogs[i];
+    uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
+    if (tlog && csn && tlog != GetLog() && i != ddl_thread_id) {
+      count++;
+    }
+  }
+  // printf("count: %d\n", count);
   for (uint32_t i = begin_log; i <= end_log; i++) {
     dlog::tls_log *tlog = dlog::tlogs[i];
     uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
@@ -605,10 +607,12 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
                 d_v = &Encode(*d_v, v_ol_1);
 		
 		insert_total++;
+                // if (!ddl_running_2) {
                 if (DDLCDCInsert(this->new_td, o, d_v, logrec->csn)._val !=
                     RC_TRUE) {
                   insert_fail++;
                 }
+                //}
                 if (table_secondary_index) {
                   //   table_secondary_index->InsertOID(t, *insert_key_idx,
                   //   oid);
@@ -665,10 +669,12 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
 #endif
 
                 update_total++;
+                // if (!ddl_running_2) {
                 if (this->DDLCDCUpdate(this->new_td, o, d_v, logrec->csn)
                         ._val != RC_TRUE) {
                   update_fail++;
                 }
+                //}
               }
 
               offset_in_block += logrec->rec_size;
@@ -678,7 +684,8 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
             if (end_csn && header->csn > end_csn) {
               RCU::rcu_free(header_buf);
               printf("header->csn > end_csn\n");
-              ddl_end_flag = true;
+              // ddl_end_flag = true;
+              count--;
               stop_scan = true;
               break;
             }
@@ -686,42 +693,49 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
           offset_increment += header->total_size();
           RCU::rcu_free(header_buf);
         }
-        if (insert_total != 0 || update_total != 0)
-          ddl_end_tmp = false;
+        // if (insert_total != 0 || update_total != 0)
+        //  ddl_end_tmp = false;
+        if (insert_total == 0 || update_total == 0)
+          count--;
+
         if (update_fail > 0)
-          printf("CDC update fail, %d\n", update_fail);
+          // printf("CDC update fail, %d\n", update_fail);
 
-        if (insert_fail > 0)
-          printf("CDC insert fail, %d\n", insert_fail);
+          if (insert_fail > 0)
+            // printf("CDC insert fail, %d\n", insert_fail);
 
-        // printf("%d, %d\n", update_total, insert_total);
+            // printf("%d, %d\n", update_total, insert_total);
 
-        if (stop_scan)
-          break;
+            if (stop_scan)
+              break;
       }
 
       if (offset_increment)
         volatile_write(_tls_durable_lsn[i], offset_in_seg + offset_increment);
       if (last_csn) {
-        // volatile_write(_cdc_last_csn[i], last_csn);
+        volatile_write(_cdc_last_csn[i], last_csn);
         // printf("last csn: %lu, current csn: %lu\n", last_csn,
         //       dlog::current_csn.load(std::memory_order_relaxed));
         if (!ddl_running_2) {
-          volatile_write(_cdc_last_csn[i], last_csn);
+          // volatile_write(_cdc_last_csn[i], last_csn);
           if (last_csn <=
               dlog::current_csn.load(std::memory_order_relaxed) - 50) {
-            ddl_end_flag = true;
+            // ddl_end_flag = true;
+            count--;
           } else {
             goto process;
           }
         }
       }
-      if (ddl_running_2 && (insert_total != 0 || update_total != 0))
+      if (ddl_running_2 && !ddl_end_flag &&
+          (insert_total != 0 || update_total != 0))
         goto process;
     }
   }
   RCU::rcu_exit();
-  return ddl_end_flag || ddl_end_tmp;
+  // return ddl_end_flag || ddl_end_tmp;
+  // printf("count: %d\n", count);
+  return count == 0;
 }
 #endif
 
@@ -797,9 +811,9 @@ PROMISE(rc_t)
 ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
                               const varstr *end_key, ScanCallback &callback,
                               str_arena *arena) {
-  if (t->IsWaitForNewSchema()) {
+  /*if (t->IsWaitForNewSchema()) {
     RETURN rc_t{RC_ABORT_INTERNAL};
-  }
+  }*/
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 
@@ -1058,6 +1072,10 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
+  /*if (t->IsWaitForNewSchema()) {
+    RETURN rc_t{RC_ABORT_INTERNAL};
+  }*/
+
   ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
   t->ensure_active();
 
@@ -1079,11 +1097,18 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
 
   // Insert to the table first
   dbtuple *tuple = nullptr;
-  TableDescriptor *td = table_descriptor;
+  TableDescriptor *td = nullptr;
   if (t->IsWaitForNewSchema()) {
     td = t->new_td;
+    // oid = AWAIT t->DDLInsert(td, &value);
+    oid = t->Insert(td, &value, &tuple);
+    if (oid == INVALID_OID) {
+      RETURN rc_t{RC_ABORT_INTERNAL};
+    }
+  } else {
+    td = table_descriptor;
+    oid = t->Insert(td, &value, &tuple);
   }
-  oid = t->Insert(td, &value, &tuple);
 
   // Done with table record, now set up index
   ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
@@ -1124,13 +1149,17 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
+  /*if (t->IsWaitForNewSchema()) {
+    RETURN rc_t{RC_ABORT_INTERNAL};
+  }*/
+
   // Search for OID
   OID oid = 0;
   rc_t rc = {RC_INVALID};
   AWAIT GetOID(key, rc, t->xc, oid);
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  if (t->IsWaitForNewSchema()) {
+  if (t->IsWaitForNewSchema() && rc._val == RC_TRUE) {
     if (AWAIT t->OverlapCheck(t->old_td, oid)) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
@@ -1166,11 +1195,12 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
 
 exit:
   if (rc._val == RC_TRUE) {
-    TableDescriptor *td = table_descriptor;
+    rc_t rc = rc_t{RC_INVALID};
     if (t->IsWaitForNewSchema()) {
-      td = t->new_td;
+      rc = AWAIT t->DDLCDCUpdate(t->new_td, oid, &value, 0);
+    } else {
+      rc = AWAIT t->Update(table_descriptor, oid, &key, &value);
     }
-    rc_t rc = AWAIT t->Update(td, oid, &key, &value);
     RETURN rc;
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};
@@ -1189,8 +1219,8 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
   AWAIT GetOID(key, rc, t->xc, oid);
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  if (t->IsWaitForNewSchema()) {
-    if (AWAIT t->OverlapCheck(table_descriptor, oid)) {
+  if (t->IsWaitForNewSchema() && rc._val == RC_TRUE) {
+    if (AWAIT t->OverlapCheck(t->old_td, oid)) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
   }

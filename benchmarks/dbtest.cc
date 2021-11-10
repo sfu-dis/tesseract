@@ -100,6 +100,7 @@ DEFINE_bool(iouring_read_log, false,
 DEFINE_bool(cdc_physical_workers_only, true,
             "Whether to use physical workers for CDC");
 DEFINE_uint64(cdc_threads, 3, "Number of CDC threads");
+DEFINE_bool(cdc_schema_lock, true, "Whether to lock schema records when CDC");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -132,6 +133,7 @@ int main(int argc, char **argv) {
   ermia::config::replay_threads = 0;
   ermia::config::worker_threads = FLAGS_threads;
   ermia::config::cdc_threads = FLAGS_cdc_threads;
+  ermia::config::cdc_schema_lock = FLAGS_cdc_schema_lock;
 
   if (ermia::config::physical_workers_only)
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
@@ -210,10 +212,6 @@ int main(int argc, char **argv) {
   }
 
   ermia::config::log_key_for_update = FLAGS_log_key_for_update;
-
-#if defined(COPYDDL) && !defined(LAZYDDL)
-  // ermia::config::cdc_threads = FLAGS_threads - 1;
-#endif
 
   ermia::thread::Initialize();
   ermia::config::init();

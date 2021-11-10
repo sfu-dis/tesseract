@@ -29,13 +29,13 @@ int g_hybrid = 0;
 // 7: Microbenchmark-random - same as Microbenchmark, but uses random read-set range
 // 8: DDL
 unsigned g_txn_workload_mix[8] = {
-    45, 43, 0, 4, 4, 4, 0, 0};  // default TPC-C workload mix
+    450000, 430000, 0, 40000, 40000, 39999, 0, 0}; // default TPC-C workload mix
 
 // how much % of time a worker should use a random home wh
 // 0 - always use home wh
 // 0.5 - 50% of time use random wh
 // 1 - always use a random wh
-double g_wh_spread = 1;
+double g_wh_spread = 0;
 
 util::aligned_padded_elem<std::atomic<uint64_t>> *g_district_ids = nullptr;
 

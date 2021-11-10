@@ -62,6 +62,7 @@ bool amac_version_chain = false;
 bool numa_spread = false;
 uint32_t cdc_threads = 0;
 bool cdc_physical_workers_only = true;
+bool cdc_schema_lock = true;
 bool always_load = false;
 bool kStateRunning = false;
 bool iouring_read_log = false;

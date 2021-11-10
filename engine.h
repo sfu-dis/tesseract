@@ -24,8 +24,6 @@ using std::suspend_never;
 
 namespace ermia {
 
-static const uint32_t BITMAP_SIZE = 1000;
-
 extern std::mutex tlog_lock;
 
 // Get "my" own log
@@ -34,13 +32,10 @@ dlog::tls_log *GetLog();
 // Get a log with a specified log id
 dlog::tls_log *GetLog(uint32_t logid);
 
-std::bitset<BITMAP_SIZE> *GetBitMap();
-
 class Table;
 
 extern TableDescriptor *schema_td;
 extern uint64_t *_cdc_last_csn;
-extern std::vector<std::bitset<BITMAP_SIZE> *> bitmaps;
 
 class Engine {
 private:
@@ -268,6 +263,9 @@ public:
   inline size_t Size() override { return masstree_.size(); }
   std::map<std::string, uint64_t> Clear() override;
   inline void SetArrays(bool primary) override { masstree_.set_arrays(table_descriptor, primary); }
+  inline oid_array *GetTupleArray() override {
+    return masstree_.get_table()->tuple_array_;
+  }
 
   inline PROMISE(void)
   GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,

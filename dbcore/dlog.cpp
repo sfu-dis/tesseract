@@ -364,7 +364,7 @@ retry:
     flush = false;
   }
   tcommitter.enqueue_committed_xct(csn, &flush, &insert);
-  if (count >= 2) {
+  if (count >= 10) {
     tcommitter.extend_queue();
     tcommitter.enqueue_committed_xct(csn, &flush, &insert);
     count = 0;

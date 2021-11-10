@@ -1822,8 +1822,9 @@ rc_t tpcc_worker::txn_ddl() {
   //uint64_t schema_version = oorder_schema.v + 1;
   uint64_t old_schema_version = order_line_schema.v;
   uint64_t schema_version = order_line_schema.v + 1;
-  std::cerr << "Change to a new schema, version: " << schema_version << std::endl;
-  //oorder_schema.v = schema_version;
+  // std::cerr << "Change to a new schema, version: " << schema_version <<
+  // std::endl;
+  // oorder_schema.v = schema_version;
   order_line_schema.v = schema_version;
   order_line_schema.old_v = old_schema_version;
   order_line_schema.state = 0;

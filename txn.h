@@ -177,6 +177,10 @@ protected:
   PROMISE(rc_t)
   DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn);
 
+  // DDL update
+  PROMISE(OID)
+  DDLInsert(TableDescriptor *td, varstr *value);
+
   // DDL schema unblock
   PROMISE(rc_t)
   DDLSchemaUnblock(TableDescriptor *td, OID oid, varstr *value,
