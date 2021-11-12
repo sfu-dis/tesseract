@@ -9,6 +9,7 @@ namespace ermia {
 TableDescriptor *schema_td = NULL;
 uint64_t *_cdc_last_csn =
     (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
+uint64_t t3 = 0;
 
 thread_local dlog::tls_log tlog;
 std::mutex tlog_lock;
@@ -163,12 +164,6 @@ retry:
       goto retry;
     }
     if (schema.state == 2) {
-      /*auto *alloc = oidmgr->get_allocator(schema.td->GetTupleFid());
-      uint32_t himark = alloc->head.hiwater_mark;
-      printf("mark; %d\n", himark);
-      if (himark == 0) {
-        goto retry;
-      }*/
       if (config::cdc_schema_lock) {
         goto retry;
       } else {
@@ -204,7 +199,91 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
   auto *new_tuple_array = t->new_td->GetTupleArray();
   new_tuple_array->ensure_size(new_tuple_array->alloc_size(himark));
   // oidmgr->recreate_allocator(t->new_td->GetTupleFid(), himark);
-  for (uint32_t oid = 1; oid <= himark; oid++) {
+
+  uint32_t scan_threads =
+      (thread::cpu_cores.size() / 2) * config::numa_nodes - config::threads;
+  printf("scan_threads: %d\n", scan_threads);
+  uint32_t num_per_scan_thread = himark / (scan_threads + 1);
+
+#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+  printf("First CDC begins\n");
+  std::vector<ermia::thread::Thread *> cdc_workers = t->changed_data_capture();
+#endif
+
+  /*std::vector<ermia::thread::Thread *> scan_workers;
+  for (uint32_t i = 1; i <= scan_threads; i++) {
+    uint32_t begin = i * num_per_scan_thread;
+    uint32_t end = (i + 1) * num_per_scan_thread;
+    if (i == scan_threads)
+      end = himark;
+    // printf("%d, %d\n", begin, end);
+
+    thread::Thread *thread =
+        thread::GetThread(config::cdc_physical_workers_only);
+    ALWAYS_ASSERT(thread);
+    scan_workers.push_back(thread);
+
+    auto parallel_scan = [=](char *) {
+      for (uint32_t oid = begin; oid <= end; oid++) {
+        fat_ptr *entry = old_tuple_array->get(oid);
+        if (*entry != NULL_PTR) {
+          dbtuple *tuple =
+              AWAIT oidmgr->oid_get_version(old_tuple_array, oid, t->xc);
+          // Object *object = (Object *)entry->offset();
+          // dbtuple *tuple = (dbtuple *)object->GetPayload();
+          varstr tuple_value;
+          if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
+            arena->reset();
+            varstr *d_v = nullptr;
+#ifdef MICROBENCH
+            uint64_t a = 0;
+            if (schema_version == 1) {
+              struct Schema1 record;
+              memcpy(&record, (char *)tuple_value.data(), sizeof(record));
+              a = record.a;
+            } else {
+              struct Schema2 record;
+              memcpy(&record, (char *)tuple_value.data(), sizeof(record));
+              a = record.a;
+            }
+
+            char str2[sizeof(Schema2)];
+            struct Schema2 record2;
+            record2.v = schema_version;
+            record2.a = a;
+            record2.b = schema_version;
+            record2.c = schema_version;
+            memcpy(str2, &record2, sizeof(str2));
+            d_v = arena->next(sizeof(str2));
+            d_v->copy_from(str2, sizeof(str2));
+#else
+            order_line::value v_ol_temp;
+            const order_line::value *v_ol = Decode(tuple_value, v_ol_temp);
+
+            order_line_1::value v_ol_1;
+            v_ol_1.ol_i_id = v_ol->ol_i_id;
+            v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
+            v_ol_1.ol_amount = v_ol->ol_amount;
+            v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
+            v_ol_1.ol_quantity = v_ol->ol_quantity;
+            v_ol_1.v = schema_version;
+            v_ol_1.ol_tax = 0.1;
+
+            const size_t order_line_sz = ::Size(v_ol_1);
+            d_v = arena->next(order_line_sz);
+            d_v = &Encode(*d_v, v_ol_1);
+#endif
+
+            t->DDLCDCInsert(t->new_td, oid, d_v, t->GetXIDContext()->begin);
+          }
+        }
+      }
+    };
+
+    thread->StartTask(parallel_scan);
+  }*/
+
+  for (OID oid = 0; oid <= himark; oid++) {
     fat_ptr *entry = old_tuple_array->get(oid);
     if (*entry != NULL_PTR) {
       dbtuple *tuple =
@@ -254,16 +333,29 @@ rc_t ConcurrentMasstreeIndex::WriteNormalTable(str_arena *arena,
         d_v = &Encode(*d_v, v_ol_1);
 #endif
 
-        t->DDLScanInsert(t->new_td, oid, d_v);
-
-        count++;
+        t->DDLCDCInsert(t->new_td, oid, d_v, t->GetXIDContext()->begin);
       }
     }
   }
-  // printf("real oid_array_sz: %lu\n", count);
 
-  // printf("DDL scan ends, current csn: %lu\n",
-  //       dlog::current_csn.load(std::memory_order_relaxed));
+  /*for (std::vector<ermia::thread::Thread *>::const_iterator it =
+           scan_workers.begin();
+       it != scan_workers.end(); ++it) {
+    (*it)->Join();
+    ermia::thread::PutThread(*it);
+  }*/
+
+  uint64_t current_csn = dlog::current_csn.load(std::memory_order_relaxed);
+  volatile_write(t3, current_csn - 1000000);
+  printf("DDL scan ends, current csn: %lu, t3: %lu\n", current_csn, t3);
+
+#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+  while (t->get_cdc_smallest_csn() < volatile_read(t3)) {
+  }
+  t->join_changed_data_capture_threads(cdc_workers);
+  printf("First CDC ends\n");
+  printf("Now go to grab a t4\n");
+#endif
 
   return rc_t{RC_TRUE};
 }
@@ -540,8 +632,9 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
     if (tlog && csn && tlog != GetLog() && i != ddl_thread_id) {
       // printf("log %d cdc\n", i);
     process:
-      tlog->last_flush();
       std::vector<dlog::segment> *segments = tlog->get_segments();
+      if (segments->size() > 1)
+        printf("segments > 1\n");
       bool stop_scan = false;
       uint64_t offset_in_seg = volatile_read(_tls_durable_lsn[i]);
       uint64_t offset_increment = 0;
@@ -556,24 +649,35 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
                  logrec_sz = sizeof(dlog::log_record),
                  tuple_sc = sizeof(dbtuple);
 
-        while (offset_increment < data_sz - offset_in_seg) {
+        while (offset_increment <
+                   (data_sz = volatile_read(seg->size)) - offset_in_seg &&
+               cdc_running) {
           char *header_buf = (char *)RCU::rcu_alloc(block_sz);
+          // char *header_buf = (char *)malloc(block_sz);
           size_t m = os_pread(seg->fd, (char *)header_buf, block_sz,
                               offset_in_seg + offset_increment);
           dlog::log_block *header = (dlog::log_block *)(header_buf);
           if ((end_csn && begin_csn <= header->csn && header->csn <= end_csn) ||
               (!end_csn && begin_csn <= header->csn)) {
             last_csn = header->csn;
+            volatile_write(_cdc_last_csn[i], last_csn);
             uint32_t block_total_sz = header->total_size();
             char *data_buf = (char *)RCU::rcu_alloc(block_total_sz);
+            // char *data_buf = (char *)malloc(block_total_sz);
             size_t m = os_pread(seg->fd, (char *)data_buf, block_total_sz,
                                 offset_in_seg + offset_increment);
             uint64_t offset_in_block = 0;
             varstr *insert_key, *update_key, *insert_key_idx;
-            while (offset_in_block < header->payload_size) {
+            while (offset_in_block < header->payload_size && cdc_running) {
               dlog::log_record *logrec =
-                  (dlog::log_record *)(data_buf + offset_in_block + block_sz);
+                  (dlog::log_record *)(data_buf + block_sz + offset_in_block);
 
+              // if (header->csn != logrec->csn) printf("csn bug, header->csn:
+              // %lu, logrec->csn: %lu, data_sz: %lu, offset_in_seg: %lu,
+              // block_total_sz: %d, offset_in_block: %lu, header->payload_size:
+              // %u, offset_increment: %lu\n", header->csn, logrec->csn,
+              // data_sz, offset_in_seg, block_total_sz, offset_in_block,
+              // header->payload_size, offset_increment);
               ALWAYS_ASSERT(header->csn == logrec->csn);
 
               FID f = logrec->fid;
@@ -680,9 +784,11 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
               offset_in_block += logrec->rec_size;
             }
             RCU::rcu_free(data_buf);
+            // free(data_buf);
           } else {
             if (end_csn && header->csn > end_csn) {
               RCU::rcu_free(header_buf);
+              // free(header_buf);
               printf("header->csn > end_csn\n");
               // ddl_end_flag = true;
               count--;
@@ -691,50 +797,70 @@ bool transaction::changed_data_capture_impl(uint32_t thread_id,
             }
           }
           offset_increment += header->total_size();
+          volatile_write(_tls_durable_lsn[i], offset_in_seg + offset_increment);
           RCU::rcu_free(header_buf);
+          // free(header_buf);
         }
         // if (insert_total != 0 || update_total != 0)
-        //  ddl_end_tmp = false;
-        if (insert_total == 0 || update_total == 0)
+        //   ddl_end_tmp = false;
+        if (!stop_scan && (insert_total == 0 || update_total == 0)) {
           count--;
+        }
 
-        if (update_fail > 0)
-          // printf("CDC update fail, %d\n", update_fail);
+        /*if (update_fail > 0) {
+          printf("CDC update fail, %d\n", update_fail);
+        }
 
-          if (insert_fail > 0)
-            // printf("CDC insert fail, %d\n", insert_fail);
+        if (insert_fail > 0) {
+          printf("CDC insert fail, %d\n", insert_fail);
+        }*/
 
-            // printf("%d, %d\n", update_total, insert_total);
+        // printf("%d, %d\n", update_total, insert_total);
 
-            if (stop_scan)
-              break;
+        if (stop_scan)
+          break;
       }
 
-      if (offset_increment)
-        volatile_write(_tls_durable_lsn[i], offset_in_seg + offset_increment);
+      if (offset_increment) {
+        // volatile_write(_tls_durable_lsn[i], offset_in_seg +
+        // offset_increment);
+      }
       if (last_csn) {
-        volatile_write(_cdc_last_csn[i], last_csn);
-        // printf("last csn: %lu, current csn: %lu\n", last_csn,
-        //       dlog::current_csn.load(std::memory_order_relaxed));
-        if (!ddl_running_2) {
+        // volatile_write(_cdc_last_csn[i], last_csn);
+        // printf("log %d, last csn: %lu, current csn: %lu\n", i, last_csn,
+        //        dlog::current_csn.load(std::memory_order_relaxed));
+        /*if (!ddl_running_2) {
           // volatile_write(_cdc_last_csn[i], last_csn);
-          if (last_csn <=
-              dlog::current_csn.load(std::memory_order_relaxed) - 50) {
+          if (last_csn >=
+              dlog::current_csn.load(std::memory_order_relaxed) - 100000) {
             // ddl_end_flag = true;
             count--;
           } else {
             goto process;
           }
-        }
+        }*/
       }
-      if (ddl_running_2 && !ddl_end_flag &&
-          (insert_total != 0 || update_total != 0))
+      /*if (ddl_running_2 && !ddl_end_flag &&
+          (insert_total != 0 || update_total != 0)) {
         goto process;
+      }*/
+    }
+    if (!cdc_running) {
+      break;
     }
   }
   RCU::rcu_exit();
   // return ddl_end_flag || ddl_end_tmp;
   // printf("count: %d\n", count);
+  /*uint64_t current_csn = dlog::current_csn.load(std::memory_order_relaxed);
+  for (uint32_t i = begin_log; i <= end_log; i++) {
+    dlog::tls_log *tlog = dlog::tlogs[i];
+    uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
+    if (tlog && csn && tlog != GetLog() && i != ddl_thread_id) {
+      if (!ddl_running_2) printf("log %d, gap: %lu\n", i, current_csn -
+  _cdc_last_csn[i]);
+    }
+  }*/
   return count == 0;
 }
 #endif

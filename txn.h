@@ -155,6 +155,7 @@ protected:
                                  str_arena *arena, util::fast_random &r);
   void join_changed_data_capture_threads(
       std::vector<ermia::thread::Thread *> cdc_workers);
+  uint64_t get_cdc_smallest_csn();
   uint64_t get_cdc_largest_csn();
 #endif
   bool DMLConsistencyHandler();

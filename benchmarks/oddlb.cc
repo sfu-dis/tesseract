@@ -80,20 +80,16 @@ public:
     std::string str3 = std::string(str1);
     str3 += ss.str();
 
-    if (!db->BuildIndexMap(str3.c_str())) {
-      db->Abort(txn);
-      return {RC_ABORT_USER};
-    }
-
-    db->WriteLock(str3.c_str());
-
     db->CreateTable(str3.c_str());
+#ifdef LAZYDDL
     // For create index DDL
-    // db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
-
+    db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
+    schema.index = ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
+#else
     ermia::Catalog::GetTable(str3.c_str())
         ->SetPrimaryIndex(old_table_index, std::string(str1));
     schema.index = ermia::Catalog::GetTable(str1)->GetPrimaryIndex();
+#endif
     schema.td = ermia::Catalog::GetTable(str3.c_str());
     schema.state = 0;
 #ifdef LAZYDDL
@@ -101,15 +97,15 @@ public:
     schema.old_td = old_td;
     schema.old_tds[old_schema_version] = old_td;
 #elif DCOPYDDL
+    schema.old_td = old_td;
     schema.state = 1;
 #else
+    schema.old_td = old_td;
     schema.state = 2;
 #endif
     memcpy(str2, &schema, sizeof(str2));
     ermia::varstr &v2 = str(sizeof(str2));
     v2.copy_from(str2, sizeof(str2));
-
-    db->WriteUnlock(str3.c_str());
 
     txn->set_table_descriptors(schema.td, old_td);
 
@@ -355,6 +351,9 @@ public:
       memcpy(&record2_test, (char *)v2.data(), sizeof(record2_test));
 #endif
 
+      if (record2_test.a != a)
+        printf("here 1, real a: %lu, a: %lu, b: %lu, c: %lu\n", a,
+               record2_test.a, record2_test.b, record2_test.c);
       ALWAYS_ASSERT(record2_test.a == a);
       ALWAYS_ASSERT(record2_test.b == schema_version);
       ALWAYS_ASSERT(record2_test.c == schema_version);
@@ -414,7 +413,7 @@ public:
     oid = ermia::INVALID_OID;
 
     /*table_index->GetRecord(txn, rc, k1, v1, &oid);
-    //TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(rc);
 
     struct Schema_base record_test;
     memcpy(&record_test, (char *)v1.data(), sizeof(record_test));
@@ -444,7 +443,6 @@ record_test.v;
       v2.copy_from(str2, sizeof(str2));
 
       TryCatch(table_index->UpdateRecord(txn, k1, v2));
-
     } else {
       struct Schema2 record2;
 

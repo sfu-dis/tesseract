@@ -128,7 +128,7 @@ private:
   inline segment *current_segment() { return &segments[segments.size() - 1]; }
 
   // Do flush when doing enqueue commits
-  void enqueue_flush();
+  // void enqueue_flush();
 
   // Issue an async I/O to flush the current active log buffer
   void issue_flush(const char *buf, uint64_t size);
@@ -198,6 +198,8 @@ public:
   void issue_read(int fd, char *buf, uint64_t size, uint64_t offset);
 
   bool peek_read(char *buf, uint64_t size);
+
+  void enqueue_flush();
 };
 
 extern std::vector<tls_log *> tlogs;

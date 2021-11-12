@@ -36,6 +36,7 @@ class Table;
 
 extern TableDescriptor *schema_td;
 extern uint64_t *_cdc_last_csn;
+extern uint64_t t3;
 
 class Engine {
 private:

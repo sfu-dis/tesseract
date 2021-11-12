@@ -163,16 +163,19 @@ void transaction::Abort() {
 }
 
 rc_t transaction::commit() {
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  if (is_ddl()) {
-    // printf("First CDC begins\n");
-    std::vector<ermia::thread::Thread *> cdc_workers = changed_data_capture();
-    while (ddl_end.load() != ermia::config::cdc_threads) {
+  /*#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+    if (is_ddl()) {
+      printf("First CDC begins\n");
+      std::vector<ermia::thread::Thread *> cdc_workers = changed_data_capture();
+      //while (ddl_end.load() != ermia::config::cdc_threads) {
+      //}
+      while (get_cdc_smallest_csn() < volatile_read(t3)) {
+      }
+      printf("Now go to grab a t4\n");
+      join_changed_data_capture_threads(cdc_workers);
+      printf("First CDC ends\n");
     }
-    join_changed_data_capture_threads(cdc_workers);
-    // printf("First CDC ends\n");
-  }
-#endif
+  #endif*/
 
   ALWAYS_ASSERT(state() == TXN::TXN_ACTIVE || state() == TXN::TXN_DDL);
   volatile_write(xc->state, TXN::TXN_COMMITTING);
@@ -237,7 +240,7 @@ rc_t transaction::si_commit() {
 #if defined(COPYDDL)
   if (is_dml() && DMLConsistencyHandler()) {
     // printf("DML failed with begin: %lu, end: %lu\n", xc->begin, xc->end);
-    // std::cerr << "DML failed" << std::endl;
+    std::cerr << "DML failed" << std::endl;
     return rc_t{RC_ABORT_SI_CONFLICT};
   }
 #endif
@@ -258,7 +261,7 @@ rc_t transaction::si_commit() {
 
 #ifdef COPYDDL
   if (is_ddl()) {
-    // printf("DDL txn end: %lu\n", xc->end);
+    printf("DDL txn end: %lu\n", xc->end);
     // If txn is DDL, commit schema record(s) first before CDC
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       write_record_t w = write_set.get(i);
@@ -301,7 +304,7 @@ rc_t transaction::si_commit() {
       fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
       object->SetCSN(csn_ptr);
       ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
-      // printf("DDL schema commit with size %d\n", write_set.size());
+      printf("DDL schema commit with size %d\n", write_set.size());
     }
   }
 #endif
@@ -331,15 +334,15 @@ rc_t transaction::si_commit() {
     // printf("old td sz 2: %d\n", himark);
 
     // Start the second round of CDC
-    // printf("Second CDC begins\n");
+    printf("Second CDC begins\n");
     ddl_running_2 = true;
     ddl_end.store(0);
     std::vector<ermia::thread::Thread *> cdc_workers = changed_data_capture();
     while (ddl_end.load() != ermia::config::cdc_threads) {
     }
-    join_changed_data_capture_threads(cdc_workers);
-    ddl_running_2 = false;
-    // printf("Second CDC ends\n");
+    // while (get_cdc_largest_csn() != xc->end - 1) {
+    //}
+    printf("Second CDC ends\n");
 
     /*auto *old_tuple_array = this->old_td->GetTupleArray();
     uint32_t old_count = 0, new_count = 0;
@@ -377,6 +380,9 @@ rc_t transaction::si_commit() {
           DDLSchemaUnblock(schema_td, w.oid, new_value, xc->end)._val ==
           RC_TRUE);
     }
+
+    join_changed_data_capture_threads(cdc_workers);
+    ddl_running_2 = false;
   }
 #endif
 
@@ -386,10 +392,11 @@ rc_t transaction::si_commit() {
   if (is_ddl()) {
     ddl_running_1 = false;
     // printf("DDL backfill begins\n");
-    auto *alloc = oidmgr->get_allocator(this->old_td->GetTupleFid());
+    /*auto *alloc = oidmgr->get_allocator(this->old_td->GetTupleFid());
     uint32_t himark = alloc->head.hiwater_mark;
     auto *new_tuple_array = this->new_td->GetTupleArray();
     FID new_tuple_fid = this->new_td->GetTupleFid();
+    */
     // Post-commit for DDL normal table(s)
     /*for (uint32_t oid = 0; oid <= himark; oid++) {
       fat_ptr *entry = new_tuple_array->get(oid);
@@ -542,6 +549,7 @@ std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
     if (tlog && tlog != log && volatile_read(pcommit::_tls_durable_csn[i])) {
       // printf("normal_workers[%d]: %d\n", j, i);
       normal_workers[j++] = i;
+      tlog->last_flush();
     } else if (tlog == log) {
       ddl_thread_id = i;
     }
@@ -568,7 +576,7 @@ std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
       while (cdc_running) {
         ddl_end_local = changed_data_capture_impl(i, ddl_thread_id, begin_log,
                                                   end_log, arena, r);
-        if (ddl_end_local)
+        if (ddl_end_local && ddl_running_2)
           break;
         // usleep(10);
       }
@@ -595,9 +603,25 @@ void transaction::join_changed_data_capture_threads(
 uint64_t transaction::get_cdc_largest_csn() {
   uint64_t max = 0;
   for (uint32_t i = 0; i < config::MAX_THREADS; i++) {
-    max = std::max(volatile_read(_cdc_last_csn[i]), max);
+    dlog::tls_log *tlog = dlog::tlogs[i];
+    if (tlog && tlog != log && volatile_read(pcommit::_tls_durable_csn[i])) {
+      max = std::max(volatile_read(_cdc_last_csn[i]), max);
+    }
   }
   return max;
+}
+
+uint64_t transaction::get_cdc_smallest_csn() {
+  uint64_t min = std::numeric_limits<uint64_t>::max();
+  for (uint32_t i = 0; i < config::MAX_THREADS; i++) {
+    dlog::tls_log *tlog = dlog::tlogs[i];
+    if (tlog && tlog != log && volatile_read(pcommit::_tls_durable_csn[i])) {
+      min = std::min(volatile_read(_cdc_last_csn[i]), min);
+    }
+  }
+  if (t3 && min >= t3)
+    printf("get t3, min: %lu\n", min);
+  return min;
 }
 #endif
 

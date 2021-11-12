@@ -235,6 +235,8 @@ void tls_log::poll_flush() {
     io_uring_cqe_seen(&ring, cqe);
     durable_lsn += size;
     current_segment()->size += size;
+    if (current_segment()->expected_size != current_segment()->size)
+      printf("n ");
   }
 
   if (!dirty) {
@@ -364,7 +366,7 @@ retry:
     flush = false;
   }
   tcommitter.enqueue_committed_xct(csn, &flush, &insert);
-  if (count >= 10) {
+  if (count >= 2) {
     tcommitter.extend_queue();
     tcommitter.enqueue_committed_xct(csn, &flush, &insert);
     count = 0;
