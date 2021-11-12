@@ -1,6 +1,5 @@
 #pragma once
 
-#include <liburing.h>
 #include <list>
 
 #include "../varstr.h"
@@ -48,11 +47,8 @@ class Object {
   // commit. 
   fat_ptr csn_;
 
-  // io_uring structures
-  static struct io_uring ring;
-
-public:
-  static fat_ptr Create(const varstr *tuple_value, epoch_num epoch);
+ public:
+  static fat_ptr Create(const varstr* tuple_value, epoch_num epoch);
 
   Object()
       : alloc_epoch_(0), status_(kStatusMemory), pdest_(NULL_PTR),
