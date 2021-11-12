@@ -4,6 +4,7 @@
 #include "varstr.h"
 #include "engine_internal.h"
 #include "../benchmarks/record/encoder.h"
+#include "../benchmarks/ddl-schemas.h"
 
 #if __clang__
 #include <experimental/coroutine>
@@ -40,8 +41,8 @@ extern uint64_t t3;
 
 class Engine {
 private:
-  std::unordered_map<std::string, ReaderWriterLatch*> lock_map;
-  ReaderWriterLatch *map_rw_latch = new ReaderWriterLatch(); 
+  std::unordered_map<std::string, pthread_rwlock_t*> lock_map;
+  std::mutex map_rw_latch;
 
 private:
   void LogIndexCreation(bool primary, FID table_fid, FID index_fid, const std::string &index_name);
@@ -85,31 +86,35 @@ public:
   }
 
   inline bool BuildIndexMap(std::string table_name) {
-    map_rw_latch->WLock();
+    std::unique_lock<std::mutex> lock(map_rw_latch);
     if (lock_map.find(table_name) != lock_map.end()) {
-      map_rw_latch->WUnlock();
       return false; 
     } else {
-      lock_map[table_name] = new ReaderWriterLatch();
-      map_rw_latch->WUnlock();
+      lock_map[table_name] = new pthread_rwlock_t;
+      int ret = pthread_rwlock_init(lock_map[table_name], nullptr);
+      LOG_IF(FATAL, ret);
       return true;
     }
   }
 
   inline void ReadLock(std::string table_name) {
-    lock_map[table_name]->RLock();
+    int ret = pthread_rwlock_rdlock(lock_map[table_name]);
+    LOG_IF(FATAL, ret);
   }
 
   inline void ReadUnlock(std::string table_name) {
-    lock_map[table_name]->RUnlock();
+    int ret = pthread_rwlock_unlock(lock_map[table_name]);
+    LOG_IF(FATAL, ret);
   }
 
   inline void WriteLock(std::string table_name) {
-    lock_map[table_name]->WLock();
+    int ret = pthread_rwlock_wrlock(lock_map[table_name]);
+    LOG_IF(FATAL, ret);
   }
 
   inline void WriteUnlock(std::string table_name) {
-    lock_map[table_name]->WUnlock();
+    int ret = pthread_rwlock_unlock(lock_map[table_name]);
+    LOG_IF(FATAL, ret);
   }
 };
 
