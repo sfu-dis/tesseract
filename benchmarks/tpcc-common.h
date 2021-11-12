@@ -8,7 +8,7 @@
 #include "bench.h"
 #include "tpcc.h"
 #include "../catalog_mgr.h"
-#include "ddl-schemas.h"
+#include "../schema.h"
 
 // configuration flags
 extern int g_disable_xpartition_txn;

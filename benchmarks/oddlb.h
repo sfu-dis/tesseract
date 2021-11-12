@@ -8,7 +8,7 @@
 #include "../macros.h"
 #include "../third-party/foedus/zipfian_random.hpp"
 #include "bench.h"
-#include "ddl-schemas.h"
+#include "../schema.h"
 #include "record/encoder.h"
 #include "record/inline_str.h"
 

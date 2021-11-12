@@ -4,13 +4,10 @@
 #include "varstr.h"
 #include "engine_internal.h"
 #include "../benchmarks/record/encoder.h"
-#include "../benchmarks/ddl-schemas.h"
+#include "../schema.h"
 
 #if __clang__
 #include <experimental/coroutine>
-#include "../benchmarks/ddl-schemas.h"
-#include "rwlatch.h"
-#include "../benchmarks/tpcc.h"
 using std::experimental::coroutine_handle;
 using std::experimental::noop_coroutine;
 using std::experimental::suspend_always;
