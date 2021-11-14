@@ -1,24 +1,9 @@
 #pragma once
 
 #include "../engine.h"
-#include "tpcc.h"
-
-struct Schema_base_ {
-  uint64_t v;
-};
 
 struct Schema_base {
   uint64_t v;
-  /*std::function<ermia::varstr *(
-                  const char *keyp,
-                  size_t keylen,
-                  const ermia::varstr &value,
-                  uint64_t schema_version,
-                  ermia::transaction *txn,
-                  ermia::str_arena *arena,
-                  ermia::OrderedIndex *index)> op;
-  */
-  // std::function<bool(uint64_t)> op;
 };
 
 struct Schema_record : public Schema_base {
@@ -29,21 +14,8 @@ struct Schema_record : public Schema_base {
   uint64_t old_v;
 #ifdef LAZYDDL
   ermia::OrderedIndex *old_index;
-  // ermia::TableDescriptor *old_td;
   ermia::TableDescriptor *old_tds[16];
-#elif DCOPYDDL
-  // ermia::TableDescriptor *old_td;
 #endif
-
-  /*std::function<ermia::varstr *(
-		  const char *keyp,
-		  size_t keylen,
-                  const ermia::varstr &value,
-                  uint64_t schema_version,
-		  ermia::transaction *txn,
-		  ermia::str_arena *arena,
-                  ermia::OrderedIndex *index)> op;
-  */
 };
 
 struct Schema1 : public Schema_base {
