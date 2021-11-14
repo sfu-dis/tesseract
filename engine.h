@@ -1,15 +1,13 @@
 #pragma once
 
+#include "../benchmarks/record/encoder.h"
+#include "engine_internal.h"
+#include "schema.h"
 #include "txn.h"
 #include "varstr.h"
-#include "engine_internal.h"
-#include "../benchmarks/record/encoder.h"
 
 #if __clang__
-#include "../benchmarks/oddlb-schemas.h"
-#include "../benchmarks/tpcc.h"
 #include "rwlatch.h"
-#include "schema.h"
 #include <experimental/coroutine>
 using std::experimental::coroutine_handle;
 using std::experimental::noop_coroutine;
@@ -37,7 +35,6 @@ class Table;
 
 extern TableDescriptor *schema_td;
 extern uint64_t *_cdc_last_csn;
-extern uint64_t t3;
 
 class Engine {
 private:
@@ -224,23 +221,6 @@ public:
 
   PROMISE(void) ReadSchemaTable(transaction *t, rc_t &rc, const varstr &key, varstr &value, 
 		  OID *out_oid = nullptr) override;
-
-  PROMISE(rc_t)
-  WriteNormalTable(str_arena *arena, OrderedIndex *index, transaction *t,
-                   varstr &value) override;
-
-  PROMISE(rc_t) WriteNormalTable1(str_arena *arena, OrderedIndex *old_oorder_table_index, OrderedIndex *order_line_table_index, OrderedIndex *oorder_table_secondary_index, transaction *t, varstr &value, std::function<ermia::varstr *(
-                  const char *keyp,
-                  size_t keylen,
-                  const ermia::varstr &value,
-                  uint64_t schema_version,
-                  ermia::transaction *txn,
-                  ermia::str_arena *arena,
-                  ermia::OrderedIndex *index)> op) override;
-
-  PROMISE(rc_t)
-  CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t,
-                   std::function<bool(uint64_t)> op) override;
 
   PROMISE(void)
   GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,

@@ -10,7 +10,7 @@ void schematable_loader::load() {
   k2.copy_from(str2, sizeof(str2));
 
 #ifdef COPYDDL
-  struct Schema_record order_line_schema;
+  struct ermia::Schema_record order_line_schema;
   order_line_schema.index = ermia::Catalog::GetTable("order_line")->GetPrimaryIndex();
   order_line_schema.td = ermia::Catalog::GetTable("order_line");
   order_line_schema.state = 0;
@@ -22,7 +22,7 @@ void schematable_loader::load() {
   order_line_schema.old_v = -1;
 #endif
 
-  struct Schema_record oorder_schema;
+  struct ermia::Schema_record oorder_schema;
   oorder_schema.index = ermia::Catalog::GetTable("oorder")->GetPrimaryIndex();
   oorder_schema.td = ermia::Catalog::GetTable("oorder");
   oorder_schema.state = 0;
@@ -34,10 +34,11 @@ void schematable_loader::load() {
   oorder_schema.old_v = -1;
 #endif
 
-  char str3[sizeof(Schema_record)], str4[sizeof(Schema_record)];
+  char str3[sizeof(ermia::Schema_record)], str4[sizeof(ermia::Schema_record)];
 #else
-  struct Schema_base order_line_schema, oorder_schema;
-  char str3[sizeof(Schema_base)], str4[sizeof(Schema_record)];;
+  struct ermia::Schema_base order_line_schema, oorder_schema;
+  char str3[sizeof(ermia::Schema_base)], str4[sizeof(ermia::Schema_record)];
+  ;
 #endif
   order_line_schema.v = 0;
   memcpy(str3, &order_line_schema, sizeof(str3));
@@ -69,7 +70,7 @@ void microbenchmark_schematable_loader::load() {
   k1.copy_from(str1, sizeof(str1));
 
 #ifdef COPYDDL
-  struct Schema_record usertable_schema;
+  struct ermia::Schema_record usertable_schema;
   usertable_schema.index =
       ermia::Catalog::GetTable("USERTABLE")->GetPrimaryIndex();
   usertable_schema.td = ermia::Catalog::GetTable("USERTABLE");
@@ -82,10 +83,10 @@ void microbenchmark_schematable_loader::load() {
   usertable_schema.old_v = -1;
 #endif
 
-  char str2[sizeof(Schema_record)];
+  char str2[sizeof(ermia::Schema_record)];
 #else
-  struct Schema_base usertable_schema;
-  char str2[sizeof(Schema_base)];
+  struct ermia::Schema_base usertable_schema;
+  char str2[sizeof(ermia::Schema_base)];
   // usertable_schema.op = constraint_verification;
 #endif
   usertable_schema.v = 0;

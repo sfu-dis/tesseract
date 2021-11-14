@@ -6,14 +6,14 @@
 
 extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 
+namespace ermia {
+
 volatile bool ddl_running_1 = false;
 volatile bool ddl_running_2 = false;
 volatile bool cdc_running = false;
 std::atomic<uint64_t> ddl_end(0);
 uint64_t *_tls_durable_lsn =
     (uint64_t *)malloc(sizeof(uint64_t) * ermia::config::MAX_THREADS);
-
-namespace ermia {
 
 transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     : flags(flags), log(nullptr), log_size(0), sa(&sa), coro_batch_idx(coro_batch_idx) {
@@ -574,8 +574,8 @@ std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
       str_arena *arena = new str_arena(config::arena_size_mb);
       util::fast_random r(2343352 + i);
       while (cdc_running) {
-        ddl_end_local = changed_data_capture_impl(i, ddl_thread_id, begin_log,
-                                                  end_log, arena, r);
+        ddl_end_local = ddl::changed_data_capture_impl(
+            this, i, ddl_thread_id, begin_log, end_log, arena, r);
         if (ddl_end_local && ddl_running_2)
           break;
         // usleep(10);
@@ -619,8 +619,6 @@ uint64_t transaction::get_cdc_smallest_csn() {
       min = std::min(volatile_read(_cdc_last_csn[i]), min);
     }
   }
-  if (t3 && min >= t3)
-    printf("get t3, min: %lu\n", min);
   return min;
 }
 #endif
@@ -1193,4 +1191,4 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
   return tuple->DoRead(out_v);
 }
 
-}  // namespace ermia
+} // namespace ermia

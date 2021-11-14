@@ -50,7 +50,7 @@ public:
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
-    char str1[] = "USERTABLE", str2[sizeof(Schema_record)];
+    char str1[] = "USERTABLE", str2[sizeof(ermia::Schema_record)];
     ermia::varstr &k1 = str(sizeof(str1));
     k1.copy_from(str1, sizeof(str1));
 
@@ -60,7 +60,7 @@ public:
     schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
     TryVerifyRelaxed(rc);
 
-    struct Schema_record schema;
+    struct ermia::Schema_record schema;
     memcpy(&schema, (char *)v1.data(), sizeof(schema));
     uint64_t old_schema_version = schema.v;
     ermia::ConcurrentMasstreeIndex *old_table_index =
@@ -117,7 +117,7 @@ public:
     ermia::ConcurrentMasstreeIndex *table_index =
         (ermia::ConcurrentMasstreeIndex *)schema.index;
     rc = rc_t{RC_INVALID};
-    rc = table_index->WriteNormalTable(arena, old_table_index, txn, v2);
+    rc = ermia::ddl::scan_copy(txn, arena, v2);
     TryCatch(rc);
 
 #ifdef DCOPYDDL
@@ -136,7 +136,7 @@ public:
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
-    char str1[] = "USERTABLE", str2[sizeof(Schema_base)];
+    char str1[] = "USERTABLE", str2[sizeof(ermia::Schema_base)];
     ermia::varstr &k = str(sizeof(str1));
     k.copy_from(str1, sizeof(str1));
     ermia::varstr v;
@@ -146,7 +146,7 @@ public:
     schema_index->ReadSchemaTable(txn, rc, k, v, &oid);
     TryVerifyRelaxed(rc);
 
-    struct Schema_base schema;
+    struct ermia::Schema_base schema;
     memcpy(&schema, (char *)v.data(), sizeof(schema));
 
     uint64_t schema_version = schema.v + 1;
@@ -161,8 +161,7 @@ public:
     TryCatchUnblock(rc);
 
     rc = rc_t{RC_INVALID};
-    rc = table_index->WriteNormalTable(arena, table_index, txn, v1);
-    // rc = table_index->CheckNormalTable(arena, table_index, txn);
+    rc = ermia::ddl::scan_copy(txn, arena, v1);
     TryCatchUnblock(rc);
 
     TryCatchUnblock(db->Commit(txn));
@@ -173,7 +172,7 @@ public:
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
-    char str1[] = "USERTABLE", str2[sizeof(Schema_base)];
+    char str1[] = "USERTABLE", str2[sizeof(ermia::Schema_base)];
     ermia::varstr &k = str(sizeof(str1));
     k.copy_from(str1, sizeof(str1));
 
@@ -183,7 +182,7 @@ public:
     schema_index->ReadSchemaTable(txn, rc, k, v1, &oid);
     TryVerifyRelaxed(rc);
 
-    struct Schema_base schema;
+    struct ermia::Schema_base schema;
     memcpy(&schema, (char *)v1.data(), sizeof(schema));
 
     uint64_t schema_version = schema.v + 1;
@@ -199,8 +198,7 @@ public:
     TryCatch(rc);
 
     rc = rc_t{RC_INVALID};
-    rc = table_index->WriteNormalTable(arena, table_index, txn, v);
-    // rc = table_index->CheckNormalTable(arena, table_index, txn);
+    rc = ermia::ddl::scan_copy(txn, arena, v);
     if (rc._val != RC_TRUE) {
       count++;
       db->Abort(txn);
@@ -213,7 +211,7 @@ public:
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
-    char str1[] = "USERTABLE", str2[sizeof(Schema_base)];
+    char str1[] = "USERTABLE", str2[sizeof(ermia::Schema_base)];
     ermia::varstr &k = str(sizeof(str1));
     k.copy_from(str1, sizeof(str1));
 
@@ -223,7 +221,7 @@ public:
     schema_index->ReadSchemaTable(txn, rc, k, v1, &oid);
     TryVerifyRelaxed(rc);
 
-    struct Schema_base schema;
+    struct ermia::Schema_base schema;
     memcpy(&schema, (char *)v1.data(), sizeof(schema));
 
     uint64_t schema_version = schema.v + 1;
@@ -241,11 +239,7 @@ public:
     TryCatch(db->Commit(txn));
 #endif
     printf("DDL commit OK\n");
-#if defined(COPYDDL) && !defined(LAZYDDL) && defined(MICROBENCH)
-    return {RC_DDL_TRUE};
-#else
     return {RC_TRUE};
-#endif
   }
 
   rc_t txn_read() {
@@ -277,9 +271,9 @@ public:
     TryCatch(rc);
 
 #ifdef COPYDDL
-    struct Schema_record schema;
+    struct ermia::Schema_record schema;
 #else
-    struct Schema_base schema;
+    struct ermia::Schema_base schema;
 #endif
     memcpy(&schema, (char *)v1.data(), sizeof(schema));
     uint64_t schema_version = schema.v;
@@ -316,7 +310,7 @@ public:
     if (rc._val != RC_TRUE)
       TryCatch(rc_t{RC_ABORT_USER});
 
-    struct Schema_base record_test;
+    struct ermia::Schema_base record_test;
     memcpy(&record_test, (char *)v2.data(), sizeof(record_test));
 
 #ifdef SIDDL
@@ -333,15 +327,15 @@ public:
 #endif
 
     if (schema_version == 0) {
-      struct Schema1 record1_test;
+      struct ermia::Schema1 record1_test;
       memcpy(&record1_test, (char *)v2.data(), sizeof(record1_test));
 
       ALWAYS_ASSERT(record1_test.a == a);
       ALWAYS_ASSERT(record1_test.b == a);
     } else {
-      struct Schema2 record2_test;
+      struct ermia::Schema2 record2_test;
 #ifdef NONEDDL
-      struct Schema1 record1_test;
+      struct ermia::Schema1 record1_test;
       memcpy(&record1_test, (char *)v2.data(), sizeof(record1_test));
 
       record2_test.a = a;
@@ -390,9 +384,9 @@ public:
     TryCatch(rc);
 
 #ifdef COPYDDL
-    struct Schema_record schema;
+    struct ermia::Schema_record schema;
 #else
-    struct Schema_base schema;
+    struct ermia::Schema_base schema;
 #endif
     memcpy(&schema, (char *)v.data(), sizeof(schema));
     uint64_t schema_version = schema.v;
@@ -415,7 +409,7 @@ public:
     /*table_index->GetRecord(txn, rc, k1, v1, &oid);
     TryVerifyRelaxed(rc);
 
-    struct Schema_base record_test;
+    struct ermia::Schema_base record_test;
     memcpy(&record_test, (char *)v1.data(), sizeof(record_test));
 
 #ifdef SIDDL
@@ -432,26 +426,26 @@ record_test.v;
 #endif*/
 
     if (schema_version == 0) {
-      struct Schema1 record1;
+      struct ermia::Schema1 record1;
       record1.v = schema_version;
       record1.a = a;
       record1.b = a;
 
-      char str2[sizeof(Schema1)];
+      char str2[sizeof(ermia::Schema1)];
       memcpy(str2, &record1, sizeof(str2));
       ermia::varstr &v2 = str(sizeof(str2));
       v2.copy_from(str2, sizeof(str2));
 
       TryCatch(table_index->UpdateRecord(txn, k1, v2));
     } else {
-      struct Schema2 record2;
+      struct ermia::Schema2 record2;
 
       record2.v = schema_version;
       record2.a = a;
       record2.b = schema_version;
       record2.c = schema_version;
 
-      char str2[sizeof(Schema2)];
+      char str2[sizeof(ermia::Schema2)];
       memcpy(str2, &record2, sizeof(str2));
       ermia::varstr &v2 = str(sizeof(str2));
       v2.copy_from(str2, sizeof(str2));

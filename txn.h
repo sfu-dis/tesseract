@@ -5,20 +5,23 @@
 
 #include <vector>
 
-#include "dbcore/dlog.h"
+#include "dbcore/ddl.h"
 #include "dbcore/dlog-tx.h"
-#include "dbcore/xid.h"
+#include "dbcore/dlog.h"
 #include "dbcore/sm-config.h"
-#include "dbcore/sm-oid.h"
 #include "dbcore/sm-object.h"
+#include "dbcore/sm-oid.h"
 #include "dbcore/sm-rc.h"
-#include "masstree/masstree_btree.h"
+#include "dbcore/xid.h"
 #include "macros.h"
+#include "masstree/masstree_btree.h"
 #include "str_arena.h"
 #include "tuple.h"
 
 #include <sparsehash/dense_hash_map>
 using google::dense_hash_map;
+
+namespace ermia {
 
 extern volatile bool ddl_running_1;
 extern volatile bool ddl_running_2;
@@ -27,8 +30,6 @@ extern volatile bool ddl_overlap_1;
 extern volatile bool ddl_overlap_2;
 extern std::atomic<uint64_t> ddl_end;
 extern uint64_t *_tls_durable_lsn CACHE_ALIGNED;
-
-namespace ermia {
 
 #if defined(SSN) || defined(SSI)
 #define set_tuple_xstamp(tuple, s)                                    \
@@ -150,9 +151,6 @@ protected:
 #ifdef COPYDDL
 #if !defined(LAZYDDL) && !defined(DCOPYDDL)
   std::vector<ermia::thread::Thread *> changed_data_capture();
-  bool changed_data_capture_impl(uint32_t thread_id, uint32_t ddl_thread_id,
-                                 uint32_t begin_log, uint32_t end_log,
-                                 str_arena *arena, util::fast_random &r);
   void join_changed_data_capture_threads(
       std::vector<ermia::thread::Thread *> cdc_workers);
   uint64_t get_cdc_smallest_csn();
@@ -240,6 +238,9 @@ public:
   }
 
   inline bool IsWaitForNewSchema() { return wait_for_new_schema; }
+
+  inline TableDescriptor *GetOldTd() { return old_td; }
+  inline TableDescriptor *GetNewTd() { return new_td; }
 
 #ifdef COPYDDL
   inline void set_table_descriptors(TableDescriptor *_new_td, TableDescriptor *_old_td) { new_td = _new_td, old_td = _old_td; }

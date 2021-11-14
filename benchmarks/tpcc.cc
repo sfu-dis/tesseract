@@ -73,10 +73,10 @@ rc_t tpcc_worker::txn_new_order() {
   schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
   TryVerifyRelaxed(rc);
 
-  struct Schema_record order_line_schema;
+  struct ermia::Schema_record order_line_schema;
   memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
 
-  struct Schema_record oorder_schema;
+  struct ermia::Schema_record oorder_schema;
   memcpy(&oorder_schema, (char *)v2.data(), sizeof(oorder_schema));
 
   const customer::key k_c(warehouse_id, districtID, customerID);
@@ -237,7 +237,8 @@ rc_t tpcc_worker::txn_new_order() {
                    ->InsertRecord(txn, Encode(str(Size(k_ol_1)), k_ol_1),
                                   Encode(str(order_line_sz), v_ol_1)));
 #ifdef DCOPYDDL
-      if (order_line_schema.state == 1 && ermia::volatile_read(ddl_running_1)) {
+      if (order_line_schema.state == 1 &&
+          ermia::volatile_read(ermia::ddl_running_1)) {
         ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
             (ermia::ConcurrentMasstreeIndex *)
                 order_line_schema.old_td->GetPrimaryIndex();
@@ -300,7 +301,6 @@ rc_t tpcc_worker::txn_new_order() {
 }  // new-order
 
 rc_t tpcc_worker::txn_payment() {
-  // printf("payment begin\n");
 #ifdef BLOCKDDL
   db->ReadLock("SCHEMA");
 #endif
@@ -341,7 +341,7 @@ rc_t tpcc_worker::txn_payment() {
   schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
 
-  struct Schema_record schema;
+  struct ermia::Schema_record schema;
   memcpy(&schema, (char *)v1.data(), sizeof(schema));
 
   rc = rc_t{RC_INVALID};
@@ -433,7 +433,6 @@ rc_t tpcc_worker::txn_payment() {
                           &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c));
     }
 
-    if (c.size() <= 0) printf("customer c null in payment\n");
     ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
     int index = c.size() / 2;
@@ -541,10 +540,10 @@ rc_t tpcc_worker::txn_delivery() {
   schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
   TryVerifyRelaxed(rc);
 
-  struct Schema_record order_line_schema;
+  struct ermia::Schema_record order_line_schema;
   memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
 
-  struct Schema_record oorder_schema;
+  struct ermia::Schema_record oorder_schema;
   memcpy(&oorder_schema, (char *)v2.data(), sizeof(oorder_schema));
 
   for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
@@ -616,7 +615,8 @@ rc_t tpcc_worker::txn_delivery() {
                    ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
                           &Encode(str(Size(k_oo_1)), k_oo_1), c));
     } else {
-      if (order_line_schema.state == 1 && ermia::volatile_read(ddl_running_1)) {
+      if (order_line_schema.state == 1 &&
+          ermia::volatile_read(ermia::ddl_running_1)) {
 #ifdef DCOPYDDL
         TryCatch(old_order_line_table_index->Scan(
             txn, Encode(str(Size(k_oo_0)), k_oo_0),
@@ -678,7 +678,7 @@ rc_t tpcc_worker::txn_delivery() {
       } else {
 #ifdef DCOPYDDL
         if (order_line_schema.state == 1 &&
-            ermia::volatile_read(ddl_running_1)) {
+            ermia::volatile_read(ermia::ddl_running_1)) {
           ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
               (ermia::ConcurrentMasstreeIndex *)
                   order_line_schema.old_td->GetPrimaryIndex();
@@ -709,7 +709,7 @@ rc_t tpcc_worker::txn_delivery() {
         }
 
         if (order_line_schema.old_v == 0 &&
-            ermia::volatile_read(ddl_running_1)) {
+            ermia::volatile_read(ermia::ddl_running_1)) {
           order_line::value v_ol_temp;
           const order_line::value *v_ol =
               Decode(*c.values[i].second, v_ol_temp);
@@ -864,10 +864,10 @@ rc_t tpcc_worker::txn_order_status() {
   TryVerifyRelaxed(rc);
   // TryCatch(rc);
 
-  struct Schema_record order_line_schema;
+  struct ermia::Schema_record order_line_schema;
   memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
 
-  struct Schema_record oorder_schema;
+  struct ermia::Schema_record oorder_schema;
   memcpy(&oorder_schema, (char *)v2.data(), sizeof(oorder_schema));
 
   customer::key k_c;
@@ -901,7 +901,6 @@ rc_t tpcc_worker::txn_order_status() {
                  ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
                         &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c));
     
-    if (c.size() <= 0) printf("customer c null in order status\n");
     ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
     int index = c.size() / 2;
@@ -1009,7 +1008,8 @@ rc_t tpcc_worker::txn_order_status() {
             order_line_schema.old_td->GetPrimaryIndex();
 #endif
 
-    if (order_line_schema.state == 1 && ermia::volatile_read(ddl_running_1)) {
+    if (order_line_schema.state == 1 &&
+        ermia::volatile_read(ermia::ddl_running_1)) {
 #ifdef DCOPYDDL
       TryCatch(old_order_line_table_index->Scan(
           txn, Encode(str(Size(k_ol_0)), k_ol_0),
@@ -1086,7 +1086,7 @@ rc_t tpcc_worker::txn_stock_level() {
   schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
 
-  struct Schema_record order_line_schema;
+  struct ermia::Schema_record order_line_schema;
   memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
 
   // NB: since txn_stock_level() is a RO txn, we assume that
@@ -1133,7 +1133,8 @@ rc_t tpcc_worker::txn_stock_level() {
             order_line_schema.old_td->GetPrimaryIndex();
 #endif
 
-    if (order_line_schema.state == 1 && ermia::volatile_read(ddl_running_1)) {
+    if (order_line_schema.state == 1 &&
+        ermia::volatile_read(ermia::ddl_running_1)) {
 #ifdef DCOPYDDL
       TryCatch(old_order_line_table_index->Scan(
           txn, Encode(str(Size(k_ol_0)), k_ol_0),
@@ -1256,10 +1257,10 @@ rc_t tpcc_worker::txn_credit_check() {
   schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
   TryVerifyRelaxed(rc);
 
-  struct Schema_record order_line_schema;
+  struct ermia::Schema_record order_line_schema;
   memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
 
-  struct Schema_record oorder_schema;
+  struct ermia::Schema_record oorder_schema;
   memcpy(&oorder_schema, (char *)v2.data(), sizeof(oorder_schema));
 
   // select * from customer with random C_ID
@@ -1292,7 +1293,6 @@ rc_t tpcc_worker::txn_credit_check() {
   TryCatch(tbl_new_order(warehouse_id)
                ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
                       &Encode(str(Size(k_no_1)), k_no_1), c_no));
-  if (c_no.output.size() == 0) printf("new order size null in credit\n");
   ALWAYS_ASSERT(c_no.output.size());
 
   double sum = 0;
@@ -1363,7 +1363,6 @@ rc_t tpcc_worker::txn_credit_check() {
       auto *vv = Decode(valptr, v);
       sum += vv->o_total_amount;
     }
-    printf("credit check sum end\n");
   }
 
   // c_credit update
@@ -1401,7 +1400,7 @@ rc_t tpcc_worker::txn_query2() {
   schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
 
-  struct Schema_record schema;
+  struct ermia::Schema_record schema;
   memcpy(&schema, (char *)v1.data(), sizeof(schema));
 
   static thread_local tpcc_table_scanner r_scanner(arena);
@@ -1631,13 +1630,11 @@ ermia::varstr *add_column_op(const char *keyp,
 
   order_line_1::value v_ol_1;
   v_ol_1.ol_i_id = v_ol->ol_i_id;
-  printf("v_ol->ol_i_id: %u\n", v_ol->ol_i_id);
   v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
   v_ol_1.ol_amount = v_ol->ol_amount;
   v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
   v_ol_1.ol_quantity = v_ol->ol_quantity;
   v_ol_1.v = v_ol->v;
-  printf("v_ol->v: %lu\n", v_ol->v);
   v_ol_1.ol_tax = 0.1;
 
   const size_t order_line_sz = ::Size(v_ol_1);
@@ -1718,13 +1715,13 @@ rc_t tpcc_worker::txn_ddl() {
   schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
 
-  struct Schema_base schema;
+  struct ermia::Schema_base schema;
   memcpy(&schema, (char *)v1.data(), sizeof(schema));
   
   uint64_t schema_version = schema.v + 1;
   std::cerr << "change to new schema: " << schema_version << std::endl;
   schema.v = schema_version;
-  char str2[sizeof(Schema_base)];
+  char str2[sizeof(ermia::Schema_base)];
   memcpy(str2, &schema, sizeof(str2));
   ermia::varstr &v2 = str(sizeof(str2));
   v2.copy_from(str2, sizeof(str2));
@@ -1733,108 +1730,46 @@ rc_t tpcc_worker::txn_ddl() {
   rc = schema_index->WriteSchemaTable(txn, rc, k1, v2);
   TryCatchUnblock(rc);
 
-  rc = order_line_table_index->WriteNormalTable(arena, order_line_table_index,
-                                                txn, v2);
+  rc = ermia::ddl::scan_copy(txn, arena, v2);
   TryCatchUnblock(rc);
 
   TryCatchUnblock(db->Commit(txn));
 
-  /*ermia::transaction *txn =
-  db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
-
-  // Read schema tables first
-  char str1[] = "order_line", str2[] = "oorder";
-  ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1), &k2 =
-  Encode_(str(sizeof(str2)), str2); ermia::varstr v1, v2; rc_t rc =
-  rc_t{RC_INVALID}; ermia::OID oid = ermia::INVALID_OID;
-
-  schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
-  TryVerifyRelaxed(rc);
-  // TryCatch(rc);
-
-  rc = rc_t{RC_INVALID};
-  oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
-  TryVerifyRelaxed(rc);
-  // TryCatch(rc);
-
-  struct Schema_base order_line_schema;
-  memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
-
-  struct Schema_base oorder_schema;
-  memcpy(&oorder_schema, (char *)v2.data(), sizeof(oorder_schema));
-
-  uint64_t old_oorder_schema_version = oorder_schema.v;
-
-  uint64_t schema_version = old_oorder_schema_version + 1;
-  std::cerr << "Change to a new schema, version: " << schema_version <<
-  std::endl; oorder_schema.v = schema_version;
-  // oorder_schema.op = precompute_aggregate_op;
-
-  rc = rc_t{RC_INVALID};
-
-  char str4[sizeof(Schema_base)];
-  memcpy(str4, &oorder_schema, sizeof(str4));
-  ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
-
-  schema_index->WriteSchemaTable(txn, rc, k2, v3);
-  TryCatch(rc);
-
-  rc = rc_t{RC_INVALID};
-  rc = oorder_table_index->WriteNormalTable1(arena, oorder_table_index,
-  order_line_table_index, nullptr, txn, v1, precompute_aggregate_op);
-  TryCatch(rc);
-
-  TryCatch(db->Commit(txn));
-  */
   db->WriteUnlock("SCHEMA");
 #elif COPYDDL
-  // ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
   printf("DDL txn begin: %lu\n", txn->GetXIDContext()->begin);
 
-  // Read schema tables first 
-  char str1[] = "order_line", str2[] = "oorder";
-  ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1), &k2 = Encode_(str(sizeof(str2)), str2);
-  ermia::varstr v1, v2;
+  // Read schema tables first
+  char str1[] = "order_line";
+  ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1);
+  ermia::varstr v1;
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
   schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
 
-  rc = rc_t{RC_INVALID};
-  oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
-  TryVerifyRelaxed(rc);
-
-  struct Schema_record order_line_schema;
+  struct ermia::Schema_record order_line_schema;
   memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
 
-  struct Schema_record oorder_schema;
-  memcpy(&oorder_schema, (char *)v2.data(), sizeof(oorder_schema));
-
-  ermia::ConcurrentMasstreeIndex *old_oorder_table_index = (ermia::ConcurrentMasstreeIndex *) oorder_schema.index;
-  ermia::TableDescriptor *old_oorder_td = oorder_schema.td;
   ermia::ConcurrentMasstreeIndex *old_order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
   ermia::TableDescriptor *old_order_line_td = order_line_schema.td;
   
-  //uint64_t schema_version = oorder_schema.v + 1;
   uint64_t old_schema_version = order_line_schema.v;
   uint64_t schema_version = order_line_schema.v + 1;
-  // std::cerr << "Change to a new schema, version: " << schema_version <<
-  // std::endl;
-  // oorder_schema.v = schema_version;
+  std::cerr << "Change to a new schema, version: " << schema_version
+            << std::endl;
   order_line_schema.v = schema_version;
   order_line_schema.old_v = old_schema_version;
   order_line_schema.state = 0;
+  order_line_schema.old_td = old_order_line_td;
 
   rc = rc_t{RC_INVALID};
 
   std::stringstream ss;
   ss << schema_version;
 
-  //std::string str3 = std::string(str2);
   std::string str3 = std::string(str1);
   str3 += ss.str();
   
@@ -1842,63 +1777,31 @@ rc_t tpcc_worker::txn_ddl() {
   // For create index DDL
   // db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
 
-  /*std::string secondary_index_name = std::string("oorder_c_id_idx");
-  secondary_index_name += ss.str();
-  db->CreateMasstreeSecondaryIndex(str3.c_str(), secondary_index_name);
-  */
-  
 #ifdef LAZYDDL
   order_line_schema.old_index = old_order_line_table_index;
-  order_line_schema.old_td = old_order_line_td;
-
-  //oorder_schema.old_index = oorder_schema.index;
-  //oorder_schema.old_td = oorder_schema.td;
 #elif DCOPYDDL
-  order_line_schema.old_td = old_order_line_td;
   order_line_schema.state = 1;
 #else
-  order_line_schema.old_td = old_order_line_td;
   order_line_schema.state = 2;
 #endif
-  // ermia::Catalog::GetTable(str3.c_str())->SetPrimaryIndex(oorder_schema.index,
-  // std::string(str2)); oorder_schema.index =
-  // ermia::Catalog::GetTable(str3)->GetPrimaryIndex(); oorder_schema.td =
-  // ermia::Catalog::GetTable(str3.c_str()); oorder_schema.op =
-  // precompute_aggregate_op;
   ermia::Catalog::GetTable(str3.c_str())
       ->SetPrimaryIndex(old_order_line_table_index, std::string(str1));
   order_line_schema.index =
       ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
   ALWAYS_ASSERT(old_order_line_table_index == order_line_schema.index);
   order_line_schema.td = ermia::Catalog::GetTable(str3.c_str());
-  //order_line_schema.op = add_column_op;
-  char str4[sizeof(Schema_record)];
-  ALWAYS_ASSERT(sizeof(Schema_record) == sizeof(order_line_schema));
-  //memcpy(str4, &oorder_schema, sizeof(str4));
+  char str4[sizeof(ermia::Schema_record)];
+  ALWAYS_ASSERT(sizeof(ermia::Schema_record) == sizeof(order_line_schema));
   memcpy(str4, &order_line_schema, sizeof(str4));
   ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
 
-  //txn->set_table_descriptors(oorder_schema.td, old_oorder_td);
   txn->set_table_descriptors(order_line_schema.td, old_order_line_td);
-  // ermia::new_td = order_line_schema.td;
-  // ermia::old_td = old_order_line_td;
 
-  // db->WriteUnlock(str3.c_str());
-
-  //schema_index->WriteSchemaTable(txn, rc, k2, v3);
   schema_index->WriteSchemaTable(txn, rc, k1, v3);
   TryCatch(rc);
 
 #if !defined(LAZYDDL)
-  rc = rc_t{RC_INVALID};
-  ermia::ConcurrentMasstreeIndex *new_order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
-  ALWAYS_ASSERT(new_order_line_table_index);
-  rc = new_order_line_table_index->WriteNormalTable(
-      arena, old_order_line_table_index, txn, v3);
-  //ermia::ConcurrentMasstreeIndex *oorder_table_index = (ermia::ConcurrentMasstreeIndex *) oorder_schema.index;
-  //ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index = (ermia::ConcurrentMasstreeIndex *) ermia::Catalog::GetIndex(secondary_index_name);
-  //ALWAYS_ASSERT(oorder_table_secondary_index);
-  //rc = oorder_table_index->WriteNormalTable1(arena, old_oorder_table_index, old_order_line_table_index, oorder_table_secondary_index, txn, v1, oorder_schema.op);
+  rc = ermia::ddl::scan_copy(txn, arena, v3);
   TryCatch(rc);
 
 #ifdef DCOPYDDL
