@@ -6,10 +6,11 @@
 #include "../benchmarks/record/encoder.h"
 
 #if __clang__
-#include <experimental/coroutine>
-#include "../benchmarks/ddl-schemas.h"
-#include "rwlatch.h"
+#include "../benchmarks/oddlb-schemas.h"
 #include "../benchmarks/tpcc.h"
+#include "rwlatch.h"
+#include "schema.h"
+#include <experimental/coroutine>
 using std::experimental::coroutine_handle;
 using std::experimental::noop_coroutine;
 using std::experimental::suspend_always;
