@@ -256,7 +256,6 @@ rc_t transaction::si_commit() {
     } else {
       lb = log->allocate_log_block(log_size, &lb_lsn, &segnum, xc->end);
     }
-    // log->set_dirty(true);
   }
 
 #ifdef COPYDDL
@@ -309,8 +308,6 @@ rc_t transaction::si_commit() {
   }
 #endif
 
-  // volatile_write(xc->state, TXN::TXN_CMMTD);
-
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   if (is_ddl()) {
     // Fix new table file's marks
@@ -329,9 +326,6 @@ rc_t transaction::si_commit() {
     this->new_td->GetPrimaryIndex()->SetArrays(true);
     ALWAYS_ASSERT(this->new_td->GetPrimaryIndex()->GetTableDescriptor() ==
                   this->new_td);
-
-    // himark = alloc->head.hiwater_mark;
-    // printf("old td sz 2: %d\n", himark);
 
     // Start the second round of CDC
     printf("Second CDC begins\n");
@@ -388,82 +382,10 @@ rc_t transaction::si_commit() {
 
   volatile_write(xc->state, TXN::TXN_CMMTD);
 
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   if (is_ddl()) {
     ddl_running_1 = false;
-    // printf("DDL backfill begins\n");
-    /*auto *alloc = oidmgr->get_allocator(this->old_td->GetTupleFid());
-    uint32_t himark = alloc->head.hiwater_mark;
-    auto *new_tuple_array = this->new_td->GetTupleArray();
-    FID new_tuple_fid = this->new_td->GetTupleFid();
-    */
-    // Post-commit for DDL normal table(s)
-    /*for (uint32_t oid = 0; oid <= himark; oid++) {
-      fat_ptr *entry = new_tuple_array->get(oid);
-      if (entry && *entry != NULL_PTR) {
-        Object *object = (Object *)entry->offset();
-        fat_ptr csn = object->GetCSN();
-        if (csn == NULL_PTR) {
-          printf("enter ");
-          continue;
-        } else if (csn.asi_type() == fat_ptr::ASI_XID) {
-          auto holder_xid = XID::from_ptr(csn);
-          TXN::xid_context *holder = TXN::xid_get_context(holder_xid);
-          if (holder && volatile_read(holder->owner) == holder_xid &&
-              volatile_read(holder->begin) >= xc->end) {
-            // printf("enter ");
-            continue;
-          }
-        } else if (CSN::from_ptr(csn).offset() > xc->end) {
-          // printf("enter ");
-          continue;
-        }
-        dbtuple *tuple = (dbtuple *)object->GetPayload();
-
-        uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
-        if (lb->payload_size +
-                align_up(log_tuple_size + sizeof(dlog::log_record)) >
-            lb->capacity) {
-          lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
-        }
-
-        // Populate log block and obtain persistent address
-        uint32_t off = lb->payload_size;
-        auto ret_off = dlog::log_insert(lb, new_tuple_fid, oid, (char *)tuple,
-                                        log_tuple_size);
-        ALWAYS_ASSERT(ret_off == off);
-        ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
-
-        // This aligned_size should match what was calculated during
-        // add_to_write_set, and the size_code calculated based on this aligned
-        // size will be part of the persistent address, which a read can
-        // directly use to load the log record from the log (i.e., knowing how
-        // many bytes to read to obtain the log record header + dbtuple header +
-        // record data).
-        auto aligned_size = align_up(log_tuple_size + sizeof(dlog::log_record));
-        auto size_code = encode_size_aligned(aligned_size);
-
-        // lb_lsn points to the start of the log block which has a header,
-        // followed by individual log records, so the log record's direct
-        // address would be lb_lsn + sizeof(log_block) + off
-        fat_ptr pdest =
-            LSN::make(log->get_id(), lb_lsn + sizeof(dlog::log_block) + off,
-                      segnum, size_code)
-                .to_ptr();
-        object->SetPersistentAddress(pdest);
-        ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
-
-        // Set CSN
-        fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
-        object->SetCSN(csn_ptr);
-        ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
-      }
-    }*/
-
-    // printf("DDL backfill ends\n");
     goto exit;
   }
-#endif
 
   // Normally, we'd generate each version's persitent address along the way or
   // here first before toggling the CSN's "committed" bit. But we can actually
@@ -521,9 +443,6 @@ rc_t transaction::si_commit() {
   }
   // ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
 
-  // if (write_set.size())
-  //   log->set_dirty(false);
-
 exit:
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!
@@ -574,7 +493,7 @@ std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
       str_arena *arena = new str_arena(config::arena_size_mb);
       util::fast_random r(2343352 + i);
       while (cdc_running) {
-        ddl_end_local = ddl::changed_data_capture_impl(
+        ddl_end_local = ddl_exe->changed_data_capture_impl(
             this, i, ddl_thread_id, begin_log, end_log, arena, r);
         if (ddl_end_local && ddl_running_2)
           break;

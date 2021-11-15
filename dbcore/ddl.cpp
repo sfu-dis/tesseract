@@ -7,19 +7,11 @@ namespace ermia {
 
 namespace ddl {
 
-rc_t scan_copy(transaction *t, str_arena *arena, varstr &value) {
-  rc_t r;
-#ifdef COPYDDL
-  struct Schema_record schema;
-#else
-  struct Schema_base schema;
-#endif
-  memcpy(&schema, (char *)value.data(), sizeof(schema));
-  uint64_t schema_version = schema.v;
+std::vector<Reformat> reformats;
 
+rc_t ddl_executor::scan_copy(transaction *t, str_arena *arena, varstr &value) {
+  rc_t r;
   TXN::xid_context *xc = t->GetXIDContext();
-  TableDescriptor *old_td = t->GetOldTd();
-  TableDescriptor *new_td = t->GetNewTd();
 
   // printf("DDL scan begins\n");
   uint64_t count = 0;
@@ -29,83 +21,11 @@ rc_t scan_copy(transaction *t, str_arena *arena, varstr &value) {
   // printf("himark: %d\n", himark);
   auto *new_tuple_array = new_td->GetTupleArray();
   new_tuple_array->ensure_size(new_tuple_array->alloc_size(himark));
-  // oidmgr->recreate_allocator(new_td->GetTupleFid(), himark);
-
-  uint32_t scan_threads =
-      (thread::cpu_cores.size() / 2) * config::numa_nodes - config::threads;
-  printf("scan_threads: %d\n", scan_threads);
-  uint32_t num_per_scan_thread = himark / (scan_threads + 1);
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   printf("First CDC begins\n");
   std::vector<ermia::thread::Thread *> cdc_workers = t->changed_data_capture();
 #endif
-
-  /*std::vector<ermia::thread::Thread *> scan_workers;
-  for (uint32_t i = 1; i <= scan_threads; i++) {
-    uint32_t begin = i * num_per_scan_thread;
-    uint32_t end = (i + 1) * num_per_scan_thread;
-    if (i == scan_threads)
-      end = himark;
-    // printf("%d, %d\n", begin, end);
-    thread::Thread *thread =
-        thread::GetThread(config::cdc_physical_workers_only);
-    ALWAYS_ASSERT(thread);
-    scan_workers.push_back(thread);
-    auto parallel_scan = [=](char *) {
-      for (uint32_t oid = begin; oid <= end; oid++) {
-        fat_ptr *entry = old_tuple_array->get(oid);
-        if (*entry != NULL_PTR) {
-          dbtuple *tuple =
-              AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
-          // Object *object = (Object *)entry->offset();
-          // dbtuple *tuple = (dbtuple *)object->GetPayload();
-          varstr tuple_value;
-          if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
-            arena->reset();
-            varstr *d_v = nullptr;
-#ifdef MICROBENCH
-            uint64_t a = 0;
-            if (schema_version == 1) {
-              struct Schema1 record;
-              memcpy(&record, (char *)tuple_value.data(), sizeof(record));
-              a = record.a;
-            } else {
-              struct Schema2 record;
-              memcpy(&record, (char *)tuple_value.data(), sizeof(record));
-              a = record.a;
-            }
-            char str2[sizeof(Schema2)];
-            struct Schema2 record2;
-            record2.v = schema_version;
-            record2.a = a;
-            record2.b = schema_version;
-            record2.c = schema_version;
-            memcpy(str2, &record2, sizeof(str2));
-            d_v = arena->next(sizeof(str2));
-            d_v->copy_from(str2, sizeof(str2));
-#else
-            order_line::value v_ol_temp;
-            const order_line::value *v_ol = Decode(tuple_value, v_ol_temp);
-            order_line_1::value v_ol_1;
-            v_ol_1.ol_i_id = v_ol->ol_i_id;
-            v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
-            v_ol_1.ol_amount = v_ol->ol_amount;
-            v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
-            v_ol_1.ol_quantity = v_ol->ol_quantity;
-            v_ol_1.v = schema_version;
-            v_ol_1.ol_tax = 0.1;
-            const size_t order_line_sz = ::Size(v_ol_1);
-            d_v = arena->next(order_line_sz);
-            d_v = &Encode(*d_v, v_ol_1);
-#endif
-            t->DDLCDCInsert(new_td, oid, d_v, t->GetXIDContext()->begin);
-          }
-        }
-      }
-    };
-    thread->StartTask(parallel_scan);
-  }*/
 
   for (OID oid = 0; oid <= himark; oid++) {
     fat_ptr *entry = old_tuple_array->get(oid);
@@ -116,57 +36,13 @@ rc_t scan_copy(transaction *t, str_arena *arena, varstr &value) {
       varstr tuple_value;
       if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
         arena->reset();
-        varstr *d_v = nullptr;
-#ifdef MICROBENCH
-        uint64_t a = 0;
-        if (schema_version == 1) {
-          struct Schema1 record;
-          memcpy(&record, (char *)tuple_value.data(), sizeof(record));
-          a = record.a;
-        } else {
-          struct Schema2 record;
-          memcpy(&record, (char *)tuple_value.data(), sizeof(record));
-          a = record.a;
-        }
+        varstr *new_tuple_value =
+            reformats[reformat_idx](tuple_value, arena, new_v);
 
-        char str2[sizeof(Schema2)];
-        struct Schema2 record2;
-        record2.v = schema_version;
-        record2.a = a;
-        record2.b = schema_version;
-        record2.c = schema_version;
-        memcpy(str2, &record2, sizeof(str2));
-        d_v = arena->next(sizeof(str2));
-        d_v->copy_from(str2, sizeof(str2));
-#else
-        order_line::value v_ol_temp;
-        const order_line::value *v_ol = Decode(tuple_value, v_ol_temp);
-
-        order_line_1::value v_ol_1;
-        v_ol_1.ol_i_id = v_ol->ol_i_id;
-        v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
-        v_ol_1.ol_amount = v_ol->ol_amount;
-        v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
-        v_ol_1.ol_quantity = v_ol->ol_quantity;
-        v_ol_1.v = schema_version;
-        v_ol_1.ol_tax = 0.1;
-
-        const size_t order_line_sz = ::Size(v_ol_1);
-        d_v = arena->next(order_line_sz);
-        d_v = &Encode(*d_v, v_ol_1);
-#endif
-
-        t->DDLCDCInsert(new_td, oid, d_v, t->GetXIDContext()->begin);
+        t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin);
       }
     }
   }
-
-  /*for (std::vector<ermia::thread::Thread *>::const_iterator it =
-           scan_workers.begin();
-       it != scan_workers.end(); ++it) {
-    (*it)->Join();
-    ermia::thread::PutThread(*it);
-  }*/
 
   uint64_t current_csn = dlog::current_csn.load(std::memory_order_relaxed);
   uint64_t rough_t3 = current_csn - 100000;
@@ -184,13 +60,12 @@ rc_t scan_copy(transaction *t, str_arena *arena, varstr &value) {
   return rc_t{RC_TRUE};
 }
 
-bool changed_data_capture_impl(transaction *t, uint32_t thread_id,
-                               uint32_t ddl_thread_id, uint32_t begin_log,
-                               uint32_t end_log, str_arena *arena,
-                               util::fast_random &r) {
+bool ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
+                                             uint32_t ddl_thread_id,
+                                             uint32_t begin_log,
+                                             uint32_t end_log, str_arena *arena,
+                                             util::fast_random &r) {
   RCU::rcu_enter();
-  TableDescriptor *old_td = t->GetOldTd();
-  TableDescriptor *new_td = t->GetNewTd();
   TXN::xid_context *xc = t->GetXIDContext();
   uint64_t begin_csn = xc->begin;
   uint64_t end_csn = xc->end;
@@ -214,8 +89,6 @@ bool changed_data_capture_impl(transaction *t, uint32_t thread_id,
     dlog::tls_log *tlog = dlog::tlogs[i];
     uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
     if (tlog && csn && tlog != GetLog() && i != ddl_thread_id) {
-      // printf("log %d cdc\n", i);
-    process:
       std::vector<dlog::segment> *segments = tlog->get_segments();
       bool stop_scan = false;
       uint64_t offset_in_seg = volatile_read(_tls_durable_lsn[i]);
@@ -268,24 +141,11 @@ bool changed_data_capture_impl(transaction *t, uint32_t thread_id,
                 dbtuple *tuple = (dbtuple *)(logrec->data);
                 varstr value(tuple->get_value_start(), tuple->size);
 
-                order_line::value v_ol_temp;
-                const order_line::value *v_ol = Decode(value, v_ol_temp);
-
-                order_line_1::value v_ol_1;
-                v_ol_1.ol_i_id = v_ol->ol_i_id;
-                v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
-                v_ol_1.ol_amount = v_ol->ol_amount;
-                v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
-                v_ol_1.ol_quantity = v_ol->ol_quantity;
-                v_ol_1.v = v_ol->v + 1;
-                v_ol_1.ol_tax = 0.1;
-
-                const size_t order_line_sz = ::Size(v_ol_1);
-                varstr *d_v = arena->next(order_line_sz);
-                d_v = &Encode(*d_v, v_ol_1);
+                varstr *new_value =
+                    reformats[reformat_idx](value, arena, new_v);
 
                 insert_total++;
-                if (t->DDLCDCInsert(new_td, o, d_v, logrec->csn)._val !=
+                if (t->DDLCDCInsert(new_td, o, new_value, logrec->csn)._val !=
                     RC_TRUE) {
                   insert_fail++;
                 }
@@ -298,54 +158,11 @@ bool changed_data_capture_impl(transaction *t, uint32_t thread_id,
                 dbtuple *tuple = (dbtuple *)(logrec->data);
                 varstr value(tuple->get_value_start(), tuple->size);
 
-                varstr *d_v = nullptr;
-#ifdef MICROBENCH
-                struct Schema_base record_test;
-                memcpy(&record_test, (char *)value.data(), sizeof(record_test));
-                uint64_t version = record_test.v;
-                uint64_t a = 0;
-                if (version == 0) {
-                  struct Schema1 record;
-                  memcpy(&record, (char *)value.data(), sizeof(record));
-                  a = record.a;
-                } else {
-                  struct Schema2 record;
-                  memcpy(&record, (char *)value.data(), sizeof(record));
-                  a = record.a;
-                }
-
-                version++;
-                ALWAYS_ASSERT(version != 0);
-
-                char str2[sizeof(Schema2)];
-                struct Schema2 record2;
-                record2.v = version;
-                record2.a = a;
-                record2.b = version;
-                record2.c = version;
-                memcpy(str2, &record2, sizeof(str2));
-                d_v = arena->next(sizeof(str2));
-                d_v->copy_from(str2, sizeof(str2));
-#else
-                order_line::value v_ol_temp;
-                const order_line::value *v_ol = Decode(value, v_ol_temp);
-
-                order_line_1::value v_ol_1;
-                v_ol_1.ol_i_id = v_ol->ol_i_id;
-                v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
-                v_ol_1.ol_amount = v_ol->ol_amount;
-                v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
-                v_ol_1.ol_quantity = v_ol->ol_quantity;
-                v_ol_1.v = v_ol->v + 1;
-                v_ol_1.ol_tax = 0.1;
-
-                const size_t order_line_sz = ::Size(v_ol_1);
-                d_v = arena->next(order_line_sz);
-                d_v = &Encode(*d_v, v_ol_1);
-#endif
+                varstr *new_value =
+                    reformats[reformat_idx](value, arena, new_v);
 
                 update_total++;
-                if (t->DDLCDCUpdate(new_td, o, d_v, logrec->csn)._val !=
+                if (t->DDLCDCUpdate(new_td, o, new_value, logrec->csn)._val !=
                     RC_TRUE) {
                   update_fail++;
                 }

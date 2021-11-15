@@ -244,6 +244,10 @@ public:
 
 #ifdef COPYDDL
   inline void set_table_descriptors(TableDescriptor *_new_td, TableDescriptor *_old_td) { new_td = _new_td, old_td = _old_td; }
+
+  inline void set_ddl_executor(ddl::ddl_executor *_ddl_exe) {
+    ddl_exe = _ddl_exe;
+  }
 #endif
 
  protected:
@@ -258,6 +262,7 @@ public:
   TableDescriptor *new_td;
   TableDescriptor *old_td;
   bool wait_for_new_schema;
+  ddl::ddl_executor *ddl_exe;
   util::timer timer;
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)

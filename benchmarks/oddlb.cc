@@ -113,11 +113,17 @@ public:
     schema_index->WriteSchemaTable(txn, rc, k1, v2);
     TryCatch(rc);
 
+    // New a ddl executor
+    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
+        schema.v, schema.old_v, schema.reformat_idx, schema.td, schema.old_td,
+        schema.index, schema.state);
+    txn->set_ddl_executor(ddl_exe);
+
 #if !defined(LAZYDDL)
     ermia::ConcurrentMasstreeIndex *table_index =
         (ermia::ConcurrentMasstreeIndex *)schema.index;
     rc = rc_t{RC_INVALID};
-    rc = ermia::ddl::scan_copy(txn, arena, v2);
+    rc = ddl_exe->scan_copy(txn, arena, v2);
     TryCatch(rc);
 
 #ifdef DCOPYDDL
@@ -160,8 +166,12 @@ public:
     rc = schema_index->WriteSchemaTable(txn, rc, k, v1);
     TryCatchUnblock(rc);
 
+    // New a ddl executor
+    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
+        schema.v, -1, schema.reformat_idx, nullptr, nullptr, nullptr, -1);
+
     rc = rc_t{RC_INVALID};
-    rc = ermia::ddl::scan_copy(txn, arena, v1);
+    rc = ddl_exe->scan_copy(txn, arena, v1);
     TryCatchUnblock(rc);
 
     TryCatchUnblock(db->Commit(txn));
@@ -197,8 +207,12 @@ public:
     rc = schema_index->WriteSchemaTable(txn, rc, k, v);
     TryCatch(rc);
 
+    // New a ddl executor
+    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
+        schema.v, -1, schema.reformat_idx, nullptr, nullptr, nullptr, -1);
+
     rc = rc_t{RC_INVALID};
-    rc = ermia::ddl::scan_copy(txn, arena, v);
+    rc = ddl_exe->scan_copy(txn, arena, v);
     if (rc._val != RC_TRUE) {
       count++;
       db->Abort(txn);

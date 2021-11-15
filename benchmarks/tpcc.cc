@@ -1618,36 +1618,6 @@ rc_t tpcc_worker::txn_microbench_random() {
   return {RC_TRUE};
 }
 
-ermia::varstr *add_column_op(const char *keyp,
-		             size_t keylen, 
-		             const ermia::varstr &value,
-		             uint64_t schema_version,
-                             ermia::transaction *txn,
-		             ermia::str_arena *arena,
-		             ermia::OrderedIndex *index) {
-  order_line::value v_ol_temp;
-  const order_line::value *v_ol = Decode(value, v_ol_temp);
-
-  order_line_1::value v_ol_1;
-  v_ol_1.ol_i_id = v_ol->ol_i_id;
-  v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
-  v_ol_1.ol_amount = v_ol->ol_amount;
-  v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
-  v_ol_1.ol_quantity = v_ol->ol_quantity;
-  v_ol_1.v = v_ol->v;
-  v_ol_1.ol_tax = 0.1;
-
-  const size_t order_line_sz = ::Size(v_ol_1);
-  ermia::varstr *d_v = arena->next(order_line_sz);
-
-  if (!d_v) {
-    arena = new ermia::str_arena(ermia::config::arena_size_mb);
-    d_v = arena->next(order_line_sz);
-  }
-  d_v = &Encode(*d_v, v_ol_1);
-  return d_v;
-}
-
 ermia::varstr *precompute_aggregate_op(const char *keyp,
                                        size_t keylen,
 			               const ermia::varstr &value,
@@ -1730,7 +1700,11 @@ rc_t tpcc_worker::txn_ddl() {
   rc = schema_index->WriteSchemaTable(txn, rc, k1, v2);
   TryCatchUnblock(rc);
 
-  rc = ermia::ddl::scan_copy(txn, arena, v2);
+  // New a ddl executor
+  ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
+      schema.v, -1, schema.reformat_idx, nullptr, nullptr, nullptr, -1);
+
+  rc = ddl_exe->scan_copy(txn, arena, v2);
   TryCatchUnblock(rc);
 
   TryCatchUnblock(db->Commit(txn));
@@ -1800,8 +1774,16 @@ rc_t tpcc_worker::txn_ddl() {
   schema_index->WriteSchemaTable(txn, rc, k1, v3);
   TryCatch(rc);
 
+  // New a ddl executor
+  ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
+      order_line_schema.v, order_line_schema.old_v,
+      order_line_schema.reformat_idx, order_line_schema.td,
+      order_line_schema.old_td, order_line_schema.index,
+      order_line_schema.state);
+  txn->set_ddl_executor(ddl_exe);
+
 #if !defined(LAZYDDL)
-  rc = ermia::ddl::scan_copy(txn, arena, v3);
+  rc = ddl_exe->scan_copy(txn, arena, v3);
   TryCatch(rc);
 
 #ifdef DCOPYDDL

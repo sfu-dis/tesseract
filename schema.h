@@ -7,6 +7,7 @@ namespace ermia {
 
 struct Schema_base {
   uint64_t v;
+  uint64_t reformat_idx;
 };
 
 struct Schema_record : public Schema_base {
