@@ -34,8 +34,6 @@ void schematable_loader::load() {
 
 #ifdef COPYDDL
   struct ermia::Schema_record order_line_schema;
-  order_line_schema.index = ermia::Catalog::GetTable("order_line")->GetPrimaryIndex();
-  order_line_schema.td = ermia::Catalog::GetTable("order_line");
   order_line_schema.state = 0;
   order_line_schema.old_td = nullptr;
 #ifdef LAZYDDL
@@ -45,8 +43,6 @@ void schematable_loader::load() {
 #endif
 
   struct ermia::Schema_record oorder_schema;
-  oorder_schema.index = ermia::Catalog::GetTable("oorder")->GetPrimaryIndex();
-  oorder_schema.td = ermia::Catalog::GetTable("oorder");
   oorder_schema.state = 0;
   oorder_schema.old_td = nullptr;
 #ifdef LAZYDDL
@@ -63,11 +59,16 @@ void schematable_loader::load() {
   order_line_schema.v = 0;
   order_line_schema.reformat_idx = ermia::ddl::reformats.size();
   ermia::ddl::reformats.push_back(add_column);
+  order_line_schema.index =
+      ermia::Catalog::GetTable("order_line")->GetPrimaryIndex();
+  order_line_schema.td = ermia::Catalog::GetTable("order_line");
   memcpy(str3, &order_line_schema, sizeof(str3));
   ermia::varstr &v1 = str(sizeof(str3));
   v1.copy_from(str3, sizeof(str3));
 
   oorder_schema.v = 0;
+  oorder_schema.index = ermia::Catalog::GetTable("oorder")->GetPrimaryIndex();
+  oorder_schema.td = ermia::Catalog::GetTable("oorder");
   memcpy(str4, &oorder_schema, sizeof(str4));
   ermia::varstr &v2 = str(sizeof(str4));
   v2.copy_from(str4, sizeof(str4));
@@ -116,9 +117,6 @@ void microbenchmark_schematable_loader::load() {
 
 #ifdef COPYDDL
   struct ermia::Schema_record usertable_schema;
-  usertable_schema.index =
-      ermia::Catalog::GetTable("USERTABLE")->GetPrimaryIndex();
-  usertable_schema.td = ermia::Catalog::GetTable("USERTABLE");
   usertable_schema.state = 0;
   usertable_schema.old_td = nullptr;
 #ifdef LAZYDDL
@@ -135,6 +133,9 @@ void microbenchmark_schematable_loader::load() {
   usertable_schema.v = 0;
   usertable_schema.reformat_idx = ermia::ddl::reformats.size();
   ermia::ddl::reformats.push_back(add_column);
+  usertable_schema.index =
+      ermia::Catalog::GetTable("USERTABLE")->GetPrimaryIndex();
+  usertable_schema.td = ermia::Catalog::GetTable("USERTABLE");
   memcpy(str2, &usertable_schema, sizeof(str2));
   ermia::varstr &v1 = str(sizeof(str2));
   v1.copy_from(str2, sizeof(str2));
@@ -154,9 +155,7 @@ void create_schema_table(ermia::Engine *db, const char *name) {
   auto create_table = [=](char *) {
     db->CreateTable(name);
     db->CreateMasstreePrimaryIndex(name, std::string(name));
-#ifdef COPYDDL
     ermia::schema_td = ermia::Catalog::GetTable(name);
-#endif
     db->BuildIndexMap(std::string(name));
   };
 

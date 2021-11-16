@@ -338,22 +338,6 @@ rc_t transaction::si_commit() {
     //}
     printf("Second CDC ends\n");
 
-    /*auto *old_tuple_array = this->old_td->GetTupleArray();
-    uint32_t old_count = 0, new_count = 0;
-    for (uint32_t oid = 0; oid <= himark; oid++) {
-      fat_ptr *entry = new_tuple_array->get(oid);
-      if (*entry != NULL_PTR) {
-        new_count++;
-        Object *object = (Object *)entry->offset();
-        object->SetCSN(xid.to_ptr());
-      }
-      // entry = old_tuple_array->get(oid);
-      // if (*entry != NULL_PTR) {
-      //  old_count++;
-      //}
-    }*/
-    // printf("DDL test with size %d, old size %d\n", new_count, old_count);
-
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       write_record_t w = write_set.get(i);
       Object *object = w.get_object();
@@ -380,11 +364,11 @@ rc_t transaction::si_commit() {
   }
 #endif
 
-  volatile_write(xc->state, TXN::TXN_CMMTD);
-
   if (is_ddl()) {
     ddl_running_1 = false;
+#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
     goto exit;
+#endif
   }
 
   // Normally, we'd generate each version's persitent address along the way or
@@ -447,6 +431,7 @@ exit:
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!
   // This is when (committed) tuple data are made visible to readers
+  volatile_write(xc->state, TXN::TXN_CMMTD);
   return rc_t{RC_TRUE};
 }
 #endif
@@ -698,9 +683,15 @@ transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v) {
       ASSERT(XID::from_ptr(prev->sstamp) == xc->owner);
       ASSERT(tuple->NextVolatile() == prev);
 #endif
+
+#if defined(SIDDL)
+      add_to_write_set(true, tuple_array->get(oid), tuple_fid, oid, tuple->size,
+                       dlog::log_record::logrec_type::UPDATE);
+#else
       add_to_write_set(tuple_fid == schema_td->GetTupleFid(),
                        tuple_array->get(oid), tuple_fid, oid, tuple->size,
                        dlog::log_record::logrec_type::UPDATE);
+#endif
       prev_persistent_ptr = prev_obj->GetPersistentAddress();
     }
 
@@ -732,9 +723,14 @@ OID transaction::Insert(TableDescriptor *td, varstr *value,
   oidmgr->oid_put_new(tuple_array, oid, new_head);
 
   ASSERT(tuple->size == value->size());
+#if defined(SIDDL)
+  add_to_write_set(true, tuple_array->get(oid), tuple_fid, oid, tuple->size,
+                   dlog::log_record::logrec_type::INSERT);
+#else
   add_to_write_set(tuple_fid == schema_td->GetTupleFid(), tuple_array->get(oid),
                    tuple_fid, oid, tuple->size,
                    dlog::log_record::logrec_type::INSERT);
+#endif
 
   if (out_tuple) {
     *out_tuple = tuple;
@@ -814,6 +810,30 @@ void transaction::DDLScanInsert(TableDescriptor *td, OID oid, varstr *value) {
   // new_tuple->GetObject()->SetCSN(xid.to_ptr());
   new_tuple->GetObject()->SetCSN(
       new_tuple->GetObject()->GenerateCsnPtr(xc->begin));
+  oidmgr->oid_put_new(tuple_array, oid, new_head);
+
+  ASSERT(new_tuple->size == value->size());
+  add_to_write_set(tuple_fid == schema_td->GetTupleFid(), tuple_array->get(oid),
+                   tuple_fid, oid, new_tuple->size,
+                   dlog::log_record::logrec_type::INSERT);
+}
+
+void transaction::DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value) {
+  auto *tuple_array = td->GetTupleArray();
+  FID tuple_fid = td->GetTupleFid();
+  tuple_array->ensure_size(oid);
+
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
+  ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
+  ASSERT(new_head.asi_type() == 0);
+  auto *new_tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
+  Object *new_object = (Object *)new_head.offset();
+  new_object->SetCSN(new_object->GenerateCsnPtr(xc->begin));
+
+  fat_ptr *entry_ptr = tuple_array->get(oid);
+  fat_ptr expected = *entry_ptr;
+  new_object->SetNextVolatile(expected);
+
   oidmgr->oid_put_new(tuple_array, oid, new_head);
 
   ASSERT(new_tuple->size == value->size());

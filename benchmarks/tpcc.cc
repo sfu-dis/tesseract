@@ -1701,8 +1701,9 @@ rc_t tpcc_worker::txn_ddl() {
   TryCatchUnblock(rc);
 
   // New a ddl executor
-  ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
-      schema.v, -1, schema.reformat_idx, nullptr, nullptr, nullptr, -1);
+  ermia::ddl::ddl_executor *ddl_exe =
+      new ermia::ddl::ddl_executor(schema.v, -1, schema.reformat_idx, schema.td,
+                                   schema.td, schema.index, -1);
 
   rc = ddl_exe->scan_copy(txn, arena, v2);
   TryCatchUnblock(rc);

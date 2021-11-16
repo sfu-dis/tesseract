@@ -167,8 +167,9 @@ public:
     TryCatchUnblock(rc);
 
     // New a ddl executor
-    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
-        schema.v, -1, schema.reformat_idx, nullptr, nullptr, nullptr, -1);
+    ermia::ddl::ddl_executor *ddl_exe =
+        new ermia::ddl::ddl_executor(schema.v, -1, schema.reformat_idx,
+                                     schema.td, schema.td, schema.index, -1);
 
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan_copy(txn, arena, v1);
@@ -177,8 +178,9 @@ public:
     TryCatchUnblock(db->Commit(txn));
     db->WriteUnlock(std::string("SCHEMA"));
 #elif SIDDL
-    int count = 0;
-  retry:
+    std::cerr << "SI DDL begins" << std::endl;
+    // int count = 0;
+    // retry:
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
@@ -196,31 +198,35 @@ public:
     memcpy(&schema, (char *)v1.data(), sizeof(schema));
 
     uint64_t schema_version = schema.v + 1;
-    std::cerr << "Change to a new schema, version: " << schema_version
-              << std::endl;
+    std::cerr << "change to new schema: " << schema_version << std::endl;
     schema.v = schema_version;
     memcpy(str2, &schema, sizeof(str2));
     ermia::varstr &v = str(sizeof(str2));
     v.copy_from(str2, sizeof(str2));
+
+    txn->set_table_descriptors(schema.td, schema.td);
 
     rc = rc_t{RC_INVALID};
     rc = schema_index->WriteSchemaTable(txn, rc, k, v);
     TryCatch(rc);
 
     // New a ddl executor
-    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
-        schema.v, -1, schema.reformat_idx, nullptr, nullptr, nullptr, -1);
+    ermia::ddl::ddl_executor *ddl_exe =
+        new ermia::ddl::ddl_executor(schema.v, -1, schema.reformat_idx,
+                                     schema.td, schema.td, schema.index, -1);
 
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan_copy(txn, arena, v);
     if (rc._val != RC_TRUE) {
-      count++;
-      db->Abort(txn);
-      goto retry;
+      std::cerr << "SI DDL aborts" << std::endl;
+      // count++;
+      // db->Abort(txn);
+      // goto retry;
     }
+    TryCatch(rc);
 
     TryCatch(db->Commit(txn));
-    printf("%d attempts\n", count);
+    // printf("%d attempts\n", count);
 #else
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());

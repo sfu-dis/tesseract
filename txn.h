@@ -168,6 +168,9 @@ protected:
   // DDL scan insert
   void DDLScanInsert(TableDescriptor *td, OID oid, varstr *value);
 
+  // DDL scan update
+  void DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value);
+
   // DDL CDC insert
   PROMISE(rc_t)
   DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn);
@@ -242,13 +245,11 @@ public:
   inline TableDescriptor *GetOldTd() { return old_td; }
   inline TableDescriptor *GetNewTd() { return new_td; }
 
-#ifdef COPYDDL
   inline void set_table_descriptors(TableDescriptor *_new_td, TableDescriptor *_old_td) { new_td = _new_td, old_td = _old_td; }
 
   inline void set_ddl_executor(ddl::ddl_executor *_ddl_exe) {
     ddl_exe = _ddl_exe;
   }
-#endif
 
  protected:
   const uint64_t flags;

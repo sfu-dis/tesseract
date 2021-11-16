@@ -38,16 +38,23 @@ rc_t ddl_executor::scan_copy(transaction *t, str_arena *arena, varstr &value) {
         arena->reset();
         varstr *new_tuple_value =
             reformats[reformat_idx](tuple_value, arena, new_v);
-
+#ifdef COPYDDL
         t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin);
+#elif BLOCKDDL
+        t->DDLScanUpdate(new_td, oid, new_tuple_value);
+#elif SIDDL
+        r = t->Update(new_td, oid, nullptr, new_tuple_value);
+        if (r._val != RC_TRUE) {
+          return r;
+        }
+#endif
       }
     }
   }
 
   uint64_t current_csn = dlog::current_csn.load(std::memory_order_relaxed);
   uint64_t rough_t3 = current_csn - 100000;
-  printf("DDL scan ends, current csn: %lu, rough t3: %lu\n", current_csn,
-         rough_t3);
+  printf("DDL scan ends, current csn: %lu\n", current_csn);
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   while (t->get_cdc_smallest_csn() < rough_t3) {
