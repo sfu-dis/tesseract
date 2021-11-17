@@ -63,6 +63,9 @@ private:
   // New schema fat ptr
   fat_ptr new_schema_fat_ptr;
 
+  // CDC workers
+  std::vector<ermia::thread::Thread *> cdc_workers;
+
 public:
   // Constructor and destructor
   ddl_executor(uint64_t _new_v, uint64_t _old_v, ddl_type _type,
@@ -88,6 +91,15 @@ public:
   }
 
   inline fat_ptr get_new_schema_fat_ptr() { return new_schema_fat_ptr; }
+
+  inline void
+  set_cdc_workers(std::vector<ermia::thread::Thread *> _cdc_workers) {
+    cdc_workers = _cdc_workers;
+  }
+
+  inline std::vector<ermia::thread::Thread *> get_cdc_workers() {
+    return cdc_workers;
+  }
 
   // Scan and do operations (copy, verfication)
   rc_t scan(transaction *t, str_arena *arena, varstr &value);

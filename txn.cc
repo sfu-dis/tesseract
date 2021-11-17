@@ -225,10 +225,16 @@ rc_t transaction::si_commit() {
   // Precommit: obtain a CSN
   xc->end = write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;
 
+  /*#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+    if (is_ddl()) {
+      join_changed_data_capture_threads(ddl_exe->get_cdc_workers());
+    }
+  #endif*/
+
 #if defined(COPYDDL)
   if (is_dml() && DMLConsistencyHandler()) {
     // printf("DML failed with begin: %lu, end: %lu\n", xc->begin, xc->end);
-    std::cerr << "DML failed" << std::endl;
+    // std::cerr << "DML failed" << std::endl;
     return rc_t{RC_ABORT_SI_CONFLICT};
   }
 #endif
@@ -333,9 +339,6 @@ rc_t transaction::si_commit() {
       index->SetArrays(true);
       this->new_td->GetTupleArray()->destroy(this->new_td->GetTupleArray());
       return rc_t{RC_ABORT_INTERNAL};
-    } else {
-      printf("cdc largest csn: %lu\n", get_cdc_largest_csn());
-      ALWAYS_ASSERT(get_cdc_largest_csn() == xc->end - 1);
     }
 
     for (uint32_t i = 0; i < write_set.size(); ++i) {

@@ -1716,6 +1716,11 @@ rc_t tpcc_worker::txn_ddl() {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
   printf("DDL txn begin: %lu\n", txn->GetXIDContext()->begin);
 
+  std::vector<ermia::thread::Thread *> cdc_workers;
+#if !defined(LAZYDDL) && !defined(DCOPYDDL)
+  cdc_workers = txn->changed_data_capture();
+#endif
+
   // Read schema tables first
   char str1[] = "order_line";
   ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1);
@@ -1783,6 +1788,7 @@ rc_t tpcc_worker::txn_ddl() {
       order_line_schema.reformat_idx, order_line_schema.constraint_idx,
       order_line_schema.td, order_line_schema.old_td, order_line_schema.index,
       order_line_schema.state);
+  ddl_exe->set_cdc_workers(cdc_workers);
   txn->set_ddl_executor(ddl_exe);
 
 #if !defined(LAZYDDL)

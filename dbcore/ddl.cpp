@@ -38,11 +38,6 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   auto *new_tuple_array = new_td->GetTupleArray();
   new_tuple_array->ensure_size(new_tuple_array->alloc_size(himark));
 
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  printf("First CDC begins\n");
-  std::vector<ermia::thread::Thread *> cdc_workers = t->changed_data_capture();
-#endif
-
   for (OID oid = 0; oid <= himark; oid++) {
     fat_ptr *entry = old_tuple_array->get(oid);
     if (*entry != NULL_PTR) {
@@ -81,8 +76,8 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   printf("DDL scan ends, current csn: %lu\n", current_csn);
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  while (t->get_cdc_smallest_csn() < rough_t3 && !cdc_failed) {
-  }
+  // while (t->get_cdc_smallest_csn() < rough_t3 && !cdc_failed) {
+  //}
   t->join_changed_data_capture_threads(cdc_workers);
   if (cdc_failed) {
     printf("DDL failed\n");
@@ -161,8 +156,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                                 offset_in_seg + offset_increment);
             uint64_t offset_in_block = 0;
             varstr *insert_key, *update_key, *insert_key_idx;
-            while (offset_in_block < header->payload_size &&
-                   (cdc_running || ddl_running_2) && !cdc_failed) {
+            while (offset_in_block < header->payload_size && !cdc_failed) {
               dlog::log_record *logrec =
                   (dlog::log_record *)(data_buf + block_sz + offset_in_block);
 
