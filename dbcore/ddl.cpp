@@ -146,7 +146,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
 
         while (offset_increment <
                    (data_sz = volatile_read(seg->size)) - offset_in_seg &&
-               (cdc_running || ddl_running_2)) {
+               (cdc_running || ddl_running_2) && !cdc_failed) {
           char *header_buf = (char *)RCU::rcu_alloc(block_sz);
           size_t m = os_pread(seg->fd, (char *)header_buf, block_sz,
                               offset_in_seg + offset_increment);
@@ -162,7 +162,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
             uint64_t offset_in_block = 0;
             varstr *insert_key, *update_key, *insert_key_idx;
             while (offset_in_block < header->payload_size &&
-                   (cdc_running || ddl_running_2)) {
+                   (cdc_running || ddl_running_2) && !cdc_failed) {
               dlog::log_record *logrec =
                   (dlog::log_record *)(data_buf + block_sz + offset_in_block);
 
