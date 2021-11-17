@@ -62,6 +62,18 @@ public:
 
     struct ermia::Schema_record schema;
     memcpy(&schema, (char *)v1.data(), sizeof(schema));
+
+    /*if (ermia::config::ddl_type == 2 || ermia::config::ddl_type == 3) {
+      schema.state = 2;
+      memcpy(str2, &schema, sizeof(str2));
+      ermia::varstr &v2 = str(sizeof(str2));
+      v2.copy_from(str2, sizeof(str2));
+
+      rc = rc_t{RC_INVALID};
+      schema_index->WriteSchemaTable(txn, rc, k1, v2);
+      TryCatch(rc);
+    }*/
+
     uint64_t old_schema_version = schema.v;
     ermia::ConcurrentMasstreeIndex *old_table_index =
         (ermia::ConcurrentMasstreeIndex *)schema.index;
@@ -91,17 +103,18 @@ public:
     schema.index = ermia::Catalog::GetTable(str1)->GetPrimaryIndex();
 #endif
     schema.td = ermia::Catalog::GetTable(str3.c_str());
+    schema.old_td = old_td;
+    schema.ddl_type = ermia::ddl::ddl_type_map(ermia::config::ddl_type);
     schema.state = 0;
 #ifdef LAZYDDL
     schema.old_index = old_table_index;
-    schema.old_td = old_td;
     schema.old_tds[old_schema_version] = old_td;
 #elif DCOPYDDL
-    schema.old_td = old_td;
     schema.state = 1;
 #else
-    schema.old_td = old_td;
+    // if (ermia::config::ddl_type == 1) {
     schema.state = 2;
+    //}
 #endif
     memcpy(str2, &schema, sizeof(str2));
     ermia::varstr &v2 = str(sizeof(str2));
@@ -109,21 +122,27 @@ public:
 
     txn->set_table_descriptors(schema.td, old_td);
 
+    // if (ermia::config::ddl_type == 1 || ermia::config::ddl_type == 4) {
     rc = rc_t{RC_INVALID};
     schema_index->WriteSchemaTable(txn, rc, k1, v2);
     TryCatch(rc);
+    //}
 
     // New a ddl executor
     ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
-        schema.v, schema.old_v, schema.reformat_idx, schema.td, schema.old_td,
-        schema.index, schema.state);
+        schema.v, schema.old_v, schema.ddl_type, schema.reformat_idx,
+        schema.constraint_idx, schema.td, schema.old_td, schema.index,
+        schema.state);
+    if (ermia::config::ddl_type == 2 || ermia::config::ddl_type == 3) {
+      ddl_exe->store_new_schema(&v2, txn->GetXIDContext());
+    }
     txn->set_ddl_executor(ddl_exe);
 
 #if !defined(LAZYDDL)
     ermia::ConcurrentMasstreeIndex *table_index =
         (ermia::ConcurrentMasstreeIndex *)schema.index;
     rc = rc_t{RC_INVALID};
-    rc = ddl_exe->scan_copy(txn, arena, v2);
+    rc = ddl_exe->scan(txn, arena, v2);
     TryCatch(rc);
 
 #ifdef DCOPYDDL
@@ -167,12 +186,12 @@ public:
     TryCatchUnblock(rc);
 
     // New a ddl executor
-    ermia::ddl::ddl_executor *ddl_exe =
-        new ermia::ddl::ddl_executor(schema.v, -1, schema.reformat_idx,
-                                     schema.td, schema.td, schema.index, -1);
+    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
+        schema.v, -1, schema.ddl_type, schema.reformat_idx,
+        schema.constraint_idx, schema.td, schema.td, schema.index, -1);
 
     rc = rc_t{RC_INVALID};
-    rc = ddl_exe->scan_copy(txn, arena, v1);
+    rc = ddl_exe->scan(txn, arena, v1);
     TryCatchUnblock(rc);
 
     TryCatchUnblock(db->Commit(txn));
@@ -211,12 +230,12 @@ public:
     TryCatch(rc);
 
     // New a ddl executor
-    ermia::ddl::ddl_executor *ddl_exe =
-        new ermia::ddl::ddl_executor(schema.v, -1, schema.reformat_idx,
-                                     schema.td, schema.td, schema.index, -1);
+    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
+        schema.v, -1, schema.ddl_type, schema.reformat_idx,
+        schema.constraint_idx, schema.td, schema.td, schema.index, -1);
 
     rc = rc_t{RC_INVALID};
-    rc = ddl_exe->scan_copy(txn, arena, v);
+    rc = ddl_exe->scan(txn, arena, v);
     if (rc._val != RC_TRUE) {
       std::cerr << "SI DDL aborts" << std::endl;
       // count++;
@@ -351,7 +370,7 @@ public:
       memcpy(&record1_test, (char *)v2.data(), sizeof(record1_test));
 
       ALWAYS_ASSERT(record1_test.a == a);
-      ALWAYS_ASSERT(record1_test.b == a);
+      ALWAYS_ASSERT(record1_test.b == a || record1_test.b == 20000000);
     } else {
       struct ermia::Schema2 record2_test;
 #ifdef NONEDDL
@@ -449,7 +468,11 @@ record_test.v;
       struct ermia::Schema1 record1;
       record1.v = schema_version;
       record1.a = a;
-      record1.b = a;
+      if (ermia::cdc_test) {
+        record1.b = 20000000;
+      } else {
+        record1.b = a;
+      }
 
       char str2[sizeof(ermia::Schema1)];
       memcpy(str2, &record1, sizeof(str2));

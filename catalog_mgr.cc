@@ -59,6 +59,7 @@ void schematable_loader::load() {
   order_line_schema.v = 0;
   order_line_schema.reformat_idx = ermia::ddl::reformats.size();
   ermia::ddl::reformats.push_back(add_column);
+  order_line_schema.constraint_idx = -1;
   order_line_schema.index =
       ermia::Catalog::GetTable("order_line")->GetPrimaryIndex();
   order_line_schema.td = ermia::Catalog::GetTable("order_line");
@@ -111,6 +112,19 @@ void microbenchmark_schematable_loader::load() {
     return new_value;
   };
 
+  auto column_verification = [=](ermia::varstr &value,
+                                 uint64_t schema_version) {
+    if (schema_version == 1) {
+      struct ermia::Schema1 record;
+      memcpy(&record, (char *)value.data(), sizeof(record));
+      return record.b < 10000000;
+    } else {
+      struct ermia::Schema2 record;
+      memcpy(&record, (char *)value.data(), sizeof(record));
+      return record.b < 10000000;
+    }
+  };
+
   char str1[] = "USERTABLE";
   ermia::varstr &k1 = str(sizeof(str1));
   k1.copy_from(str1, sizeof(str1));
@@ -133,6 +147,8 @@ void microbenchmark_schematable_loader::load() {
   usertable_schema.v = 0;
   usertable_schema.reformat_idx = ermia::ddl::reformats.size();
   ermia::ddl::reformats.push_back(add_column);
+  usertable_schema.constraint_idx = ermia::ddl::constraints.size();
+  ermia::ddl::constraints.push_back(column_verification);
   usertable_schema.index =
       ermia::Catalog::GetTable("USERTABLE")->GetPrimaryIndex();
   usertable_schema.td = ermia::Catalog::GetTable("USERTABLE");

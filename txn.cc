@@ -11,6 +11,8 @@ namespace ermia {
 volatile bool ddl_running_1 = false;
 volatile bool ddl_running_2 = false;
 volatile bool cdc_running = false;
+volatile bool cdc_failed = false;
+volatile bool cdc_test = false;
 std::atomic<uint64_t> ddl_end(0);
 uint64_t *_tls_durable_lsn =
     (uint64_t *)malloc(sizeof(uint64_t) * ermia::config::MAX_THREADS);
@@ -163,20 +165,6 @@ void transaction::Abort() {
 }
 
 rc_t transaction::commit() {
-  /*#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-    if (is_ddl()) {
-      printf("First CDC begins\n");
-      std::vector<ermia::thread::Thread *> cdc_workers = changed_data_capture();
-      //while (ddl_end.load() != ermia::config::cdc_threads) {
-      //}
-      while (get_cdc_smallest_csn() < volatile_read(t3)) {
-      }
-      printf("Now go to grab a t4\n");
-      join_changed_data_capture_threads(cdc_workers);
-      printf("First CDC ends\n");
-    }
-  #endif*/
-
   ALWAYS_ASSERT(state() == TXN::TXN_ACTIVE || state() == TXN::TXN_DDL);
   volatile_write(xc->state, TXN::TXN_COMMITTING);
   rc_t ret;
@@ -305,6 +293,9 @@ rc_t transaction::si_commit() {
       ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
       printf("DDL schema commit with size %d\n", write_set.size());
     }
+    if (config::enable_cdc_verification_test) {
+      cdc_test = false;
+    }
   }
 #endif
 
@@ -322,21 +313,30 @@ rc_t transaction::si_commit() {
     // printf("new td sz: %d\n", himark);
 
     // Switch table descriptor for index
-    this->new_td->GetPrimaryIndex()->SetTableDescriptor(this->new_td);
-    this->new_td->GetPrimaryIndex()->SetArrays(true);
-    ALWAYS_ASSERT(this->new_td->GetPrimaryIndex()->GetTableDescriptor() ==
-                  this->new_td);
+    OrderedIndex *index = this->new_td->GetPrimaryIndex();
+    index->SetTableDescriptor(this->new_td);
+    index->SetArrays(true);
 
     // Start the second round of CDC
     printf("Second CDC begins\n");
     ddl_running_2 = true;
     ddl_end.store(0);
     std::vector<ermia::thread::Thread *> cdc_workers = changed_data_capture();
-    while (ddl_end.load() != ermia::config::cdc_threads) {
+    while (ddl_end.load() != ermia::config::cdc_threads && !cdc_failed) {
     }
-    // while (get_cdc_largest_csn() != xc->end - 1) {
-    //}
+    join_changed_data_capture_threads(cdc_workers);
+    ddl_running_2 = false;
     printf("Second CDC ends\n");
+    if (cdc_failed) {
+      printf("DDL failed\n");
+      index->SetTableDescriptor(this->old_td);
+      index->SetArrays(true);
+      this->new_td->GetTupleArray()->destroy(this->new_td->GetTupleArray());
+      return rc_t{RC_ABORT_INTERNAL};
+    } else {
+      printf("cdc largest csn: %lu\n", get_cdc_largest_csn());
+      ALWAYS_ASSERT(get_cdc_largest_csn() == xc->end - 1);
+    }
 
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       write_record_t w = write_set.get(i);
@@ -354,13 +354,27 @@ rc_t transaction::si_commit() {
       varstr *new_value = string_allocator().next(sizeof(schema_str));
       new_value->copy_from(schema_str, sizeof(schema_str));
 
+      /*if (ddl_exe->get_ddl_type() == ddl::ddl_type::VERIFICATION_ONLY
+        || ddl_exe->get_ddl_type() == ddl::ddl_type::COPY_VERIFICATION) {
+        fat_ptr new_head = ddl_exe->get_new_schema_fat_ptr();
+        Object *new_object = (Object *)new_head.offset();
+        ALWAYS_ASSERT(new_object != nullptr);
+        new_object->SetCSN(new_object->GenerateCsnPtr(xc->end));
+        fat_ptr *entry_ptr = schema_td->GetTupleArray()->get(w.oid);
+        fat_ptr expected = *entry_ptr;
+        new_object->SetNextVolatile(expected);
+      retry:
+        if (!__sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr,
+                                          new_head._ptr)) {
+          goto retry;
+        }
+        printf("Commit new schema\n");
+      } else {*/
       ALWAYS_ASSERT(
           DDLSchemaUnblock(schema_td, w.oid, new_value, xc->end)._val ==
           RC_TRUE);
+      //}
     }
-
-    join_changed_data_capture_threads(cdc_workers);
-    ddl_running_2 = false;
   }
 #endif
 
@@ -439,6 +453,7 @@ exit:
 #ifdef COPYDDL
 #if !defined(LAZYDDL) && !defined(DCOPYDDL)
 std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
+  cdc_failed = false;
   cdc_running = true;
   transaction *txn = this;
   uint32_t cdc_threads = ermia::config::cdc_threads;
@@ -476,12 +491,17 @@ std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
     auto parallel_changed_data_capture = [=](char *) {
       bool ddl_end_local = false;
       str_arena *arena = new str_arena(config::arena_size_mb);
-      util::fast_random r(2343352 + i);
+      rc_t rc;
       while (cdc_running) {
-        ddl_end_local = ddl_exe->changed_data_capture_impl(
-            this, i, ddl_thread_id, begin_log, end_log, arena, r);
-        if (ddl_end_local && ddl_running_2)
+        rc = ddl_exe->changed_data_capture_impl(
+            this, i, ddl_thread_id, begin_log, end_log, arena, &ddl_end_local);
+        if (rc._val != RC_TRUE) {
+          cdc_failed = true;
+          cdc_running = false;
+        }
+        if (ddl_end_local && ddl_running_2) {
           break;
+        }
         // usleep(10);
       }
       ddl_end.fetch_add(1);

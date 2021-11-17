@@ -8,6 +8,8 @@ namespace ermia {
 struct Schema_base {
   uint64_t v;
   uint64_t reformat_idx;
+  uint64_t constraint_idx;
+  ddl::ddl_type ddl_type;
   OrderedIndex *index;
   TableDescriptor *td;
 };

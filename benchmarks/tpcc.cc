@@ -1691,6 +1691,7 @@ rc_t tpcc_worker::txn_ddl() {
   uint64_t schema_version = schema.v + 1;
   std::cerr << "change to new schema: " << schema_version << std::endl;
   schema.v = schema_version;
+  schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
   char str2[sizeof(ermia::Schema_base)];
   memcpy(str2, &schema, sizeof(str2));
   ermia::varstr &v2 = str(sizeof(str2));
@@ -1701,11 +1702,11 @@ rc_t tpcc_worker::txn_ddl() {
   TryCatchUnblock(rc);
 
   // New a ddl executor
-  ermia::ddl::ddl_executor *ddl_exe =
-      new ermia::ddl::ddl_executor(schema.v, -1, schema.reformat_idx, schema.td,
-                                   schema.td, schema.index, -1);
+  ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
+      schema.v, -1, schema.ddl_type, schema.reformat_idx, schema.constraint_idx,
+      schema.td, schema.td, schema.index, -1);
 
-  rc = ddl_exe->scan_copy(txn, arena, v2);
+  rc = ddl_exe->scan(txn, arena, v2);
   TryCatchUnblock(rc);
 
   TryCatchUnblock(db->Commit(txn));
@@ -1763,6 +1764,7 @@ rc_t tpcc_worker::txn_ddl() {
       ->SetPrimaryIndex(old_order_line_table_index, std::string(str1));
   order_line_schema.index =
       ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
+  order_line_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
   ALWAYS_ASSERT(old_order_line_table_index == order_line_schema.index);
   order_line_schema.td = ermia::Catalog::GetTable(str3.c_str());
   char str4[sizeof(ermia::Schema_record)];
@@ -1777,14 +1779,14 @@ rc_t tpcc_worker::txn_ddl() {
 
   // New a ddl executor
   ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
-      order_line_schema.v, order_line_schema.old_v,
-      order_line_schema.reformat_idx, order_line_schema.td,
-      order_line_schema.old_td, order_line_schema.index,
+      order_line_schema.v, order_line_schema.old_v, order_line_schema.ddl_type,
+      order_line_schema.reformat_idx, order_line_schema.constraint_idx,
+      order_line_schema.td, order_line_schema.old_td, order_line_schema.index,
       order_line_schema.state);
   txn->set_ddl_executor(ddl_exe);
 
 #if !defined(LAZYDDL)
-  rc = ddl_exe->scan_copy(txn, arena, v3);
+  rc = ddl_exe->scan(txn, arena, v3);
   TryCatch(rc);
 
 #ifdef DCOPYDDL

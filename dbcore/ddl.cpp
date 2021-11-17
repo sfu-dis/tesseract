@@ -8,8 +8,24 @@ namespace ermia {
 namespace ddl {
 
 std::vector<Reformat> reformats;
+std::vector<Constraint> constraints;
 
-rc_t ddl_executor::scan_copy(transaction *t, str_arena *arena, varstr &value) {
+ddl_type ddl_type_map(uint32_t type) {
+  switch (type) {
+  case 1:
+    return COPY_ONLY;
+  case 2:
+    return VERIFICATION_ONLY;
+  case 3:
+    return COPY_VERIFICATION;
+  case 4:
+    return NO_COPY_VERIFICATION;
+  default:
+    LOG(FATAL) << "Not supported";
+  }
+}
+
+rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   rc_t r;
   TXN::xid_context *xc = t->GetXIDContext();
 
@@ -35,43 +51,60 @@ rc_t ddl_executor::scan_copy(transaction *t, str_arena *arena, varstr &value) {
       // dbtuple *tuple = (dbtuple *)object->GetPayload();
       varstr tuple_value;
       if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
-        arena->reset();
-        varstr *new_tuple_value =
-            reformats[reformat_idx](tuple_value, arena, new_v);
-#ifdef COPYDDL
-        t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin);
-#elif BLOCKDDL
-        t->DDLScanUpdate(new_td, oid, new_tuple_value);
-#elif SIDDL
-        r = t->Update(new_td, oid, nullptr, new_tuple_value);
-        if (r._val != RC_TRUE) {
-          return r;
+        if (type == VERIFICATION_ONLY || type == COPY_VERIFICATION) {
+          if (!constraints[constraint_idx](tuple_value, new_v)) {
+            printf("DDL failed\n");
+            return rc_t{RC_ABORT_INTERNAL};
+          }
         }
+        if (type == COPY_ONLY || type == COPY_VERIFICATION) {
+          arena->reset();
+          varstr *new_tuple_value =
+              reformats[reformat_idx](tuple_value, arena, new_v);
+#ifdef COPYDDL
+          t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin);
+#elif BLOCKDDL
+          t->DDLScanUpdate(new_td, oid, new_tuple_value);
+#elif SIDDL
+          r = t->Update(new_td, oid, nullptr, new_tuple_value);
+          if (r._val != RC_TRUE) {
+            return r;
+          }
 #endif
+        }
       }
     }
   }
 
   uint64_t current_csn = dlog::current_csn.load(std::memory_order_relaxed);
-  uint64_t rough_t3 = current_csn - 100000;
+  uint64_t rough_t3 = current_csn - 3000000;
   printf("DDL scan ends, current csn: %lu\n", current_csn);
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  while (t->get_cdc_smallest_csn() < rough_t3) {
+  while (t->get_cdc_smallest_csn() < rough_t3 && !cdc_failed) {
   }
   t->join_changed_data_capture_threads(cdc_workers);
+  if (cdc_failed) {
+    printf("DDL failed\n");
+    new_td->GetTupleArray()->destroy(new_td->GetTupleArray());
+    return rc_t{RC_ABORT_INTERNAL};
+  }
   printf("First CDC ends\n");
   printf("Now go to grab a t4\n");
+  if (config::enable_cdc_verification_test) {
+    cdc_test = true;
+    usleep(10);
+  }
 #endif
 
   return rc_t{RC_TRUE};
 }
 
-bool ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
+rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                                              uint32_t ddl_thread_id,
                                              uint32_t begin_log,
                                              uint32_t end_log, str_arena *arena,
-                                             util::fast_random &r) {
+                                             bool *ddl_end) {
   RCU::rcu_enter();
   TXN::xid_context *xc = t->GetXIDContext();
   uint64_t begin_csn = xc->begin;
@@ -146,32 +179,47 @@ bool ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
 
               if (logrec->type == dlog::log_record::logrec_type::INSERT) {
                 dbtuple *tuple = (dbtuple *)(logrec->data);
-                varstr value(tuple->get_value_start(), tuple->size);
+                varstr tuple_value(tuple->get_value_start(), tuple->size);
 
-                varstr *new_value =
-                    reformats[reformat_idx](value, arena, new_v);
-
-                insert_total++;
-                if (t->DDLCDCInsert(new_td, o, new_value, logrec->csn)._val !=
-                    RC_TRUE) {
-                  insert_fail++;
+                if (type == VERIFICATION_ONLY || type == COPY_VERIFICATION) {
+                  if (!constraints[constraint_idx](tuple_value, new_v)) {
+                    return rc_t{RC_ABORT_INTERNAL};
+                  }
                 }
-                if (table_secondary_index) {
-                  //   table_secondary_index->InsertOID(t, *insert_key_idx,
-                  //   oid);
+                if (type == COPY_ONLY || type == COPY_VERIFICATION) {
+
+                  varstr *new_value =
+                      reformats[reformat_idx](tuple_value, arena, new_v);
+
+                  insert_total++;
+                  if (t->DDLCDCInsert(new_td, o, new_value, logrec->csn)._val !=
+                      RC_TRUE) {
+                    insert_fail++;
+                  }
+                  if (table_secondary_index) {
+                    //   table_secondary_index->InsertOID(t, *insert_key_idx,
+                    //   oid);
+                  }
                 }
               } else if (logrec->type ==
                          dlog::log_record::logrec_type::UPDATE) {
                 dbtuple *tuple = (dbtuple *)(logrec->data);
-                varstr value(tuple->get_value_start(), tuple->size);
+                varstr tuple_value(tuple->get_value_start(), tuple->size);
 
-                varstr *new_value =
-                    reformats[reformat_idx](value, arena, new_v);
+                if (type == VERIFICATION_ONLY || type == COPY_VERIFICATION) {
+                  if (!constraints[constraint_idx](tuple_value, new_v)) {
+                    return rc_t{RC_ABORT_INTERNAL};
+                  }
+                }
+                if (type == COPY_ONLY || type == COPY_VERIFICATION) {
+                  varstr *new_value =
+                      reformats[reformat_idx](tuple_value, arena, new_v);
 
-                update_total++;
-                if (t->DDLCDCUpdate(new_td, o, new_value, logrec->csn)._val !=
-                    RC_TRUE) {
-                  update_fail++;
+                  update_total++;
+                  if (t->DDLCDCUpdate(new_td, o, new_value, logrec->csn)._val !=
+                      RC_TRUE) {
+                    update_fail++;
+                  }
                 }
               }
 
@@ -212,7 +260,8 @@ bool ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
     }
   }
   RCU::rcu_exit();
-  return count == 0;
+  *ddl_end = (count == 0);
+  return rc_t{RC_TRUE};
 }
 
 } // namespace ddl

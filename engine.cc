@@ -65,10 +65,10 @@ retry:
     struct Schema_record schema;
     memcpy(&schema, (char *)value.data(), sizeof(schema));
     ALWAYS_ASSERT(schema.td != schema.old_td);
-    if (schema.td->GetTupleArray() != schema.index->GetTupleArray()) {
-      goto retry;
-    }
     if (schema.state == 2) {
+      if (schema.td->GetTupleArray() != schema.index->GetTupleArray()) {
+        goto retry;
+      }
       if (config::cdc_schema_lock) {
         goto retry;
       } else {
