@@ -38,29 +38,22 @@ retry:
 }
 
 uint32_t bench_worker::fetch_workload() {
-  /*#if defined(COPYDDL) && !defined(LAZYDDL) && defined(MICROBENCH)
-    int thread_id = ermia::thread::MyId();;
-    if (ddling && thread_id < ermia::config::cdc_threads) {
-      printf("thread %u wait\n", ermia::thread::MyId());
-      while (ddling) {}
-    }
-  #endif*/
   double d = r.next_uniform();
   for (size_t i = 0; i < workload.size(); i++) {
     if ((i + 1) == workload.size() || d < workload[i].frequency) {
       if (i == workload.size() - 1) {
         ddl_num.fetch_add(1);
         int ddl_num_local = ddl_num.load();
-#if defined(COPYDDL) && defined(MICROBENCH)
-        if (ddl_num_local != 30)
+#if defined(COPYDDL)
+        if (ddl_num_local != 7) {
+          for (uint32_t i = 0; i < ermia::thread::cpu_cores.size(); ++i) {
+            auto &c = ermia::thread::cpu_cores[i];
+            if (c.node == me->node && c.physical_thread == me->sys_cpu) {
+              ermia::ddl::ddl_worker_logical_threads = c.logical_threads;
+            }
+          }
           continue;
-#if !defined(LAZYDDL)
-        ddl_worker_id = worker_id;
-        ddling = true;
-#endif
-#elif defined(COPYDDL)
-        if (ddl_num_local != 2)
-          continue;
+        }
 #if !defined(LAZYDDL)
         ddl_worker_id = worker_id;
         ddling = true;

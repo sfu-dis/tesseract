@@ -50,12 +50,12 @@ public:
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
-    std::vector<ermia::thread::Thread *> cdc_workers;
-#if !defined(LAZYDDL) && !defined(DCOPYDDL)
-    printf("First CDC begins\n");
-    cdc_workers = txn->changed_data_capture();
-#endif
-
+    /*    std::vector<ermia::thread::Thread *> cdc_workers;
+    #if !defined(LAZYDDL) && !defined(DCOPYDDL)
+        printf("First CDC begins\n");
+        cdc_workers = txn->changed_data_capture();
+    #endif
+    */
     char str1[] = "USERTABLE", str2[sizeof(ermia::Schema_record)];
     ermia::varstr &k1 = str(sizeof(str1));
     k1.copy_from(str1, sizeof(str1));
@@ -142,7 +142,7 @@ public:
     if (ermia::config::ddl_type == 2 || ermia::config::ddl_type == 3) {
       ddl_exe->store_new_schema(&v2, txn->GetXIDContext());
     }
-    ddl_exe->set_cdc_workers(cdc_workers);
+    // ddl_exe->set_cdc_workers(cdc_workers);
     txn->set_ddl_executor(ddl_exe);
 
 #if !defined(LAZYDDL)
@@ -367,8 +367,9 @@ public:
 
 #if !defined(NONEDDL)
     if (record_test.v != schema_version) {
-      LOG(FATAL) << "Read: It should get " << schema_version << " ,but get "
-                 << record_test.v;
+      // LOG(FATAL) << "Read: It should get " << schema_version << " ,but get "
+      //           << record_test.v;
+      TryCatch(rc_t{RC_ABORT_USER});
     }
 #endif
 

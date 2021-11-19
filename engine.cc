@@ -69,7 +69,7 @@ retry:
       if (schema.td->GetTupleArray() != schema.index->GetTupleArray()) {
         goto retry;
       }
-      if (config::cdc_schema_lock) {
+      if (config::enable_cdc_schema_lock) {
         goto retry;
       } else {
         t->SetWaitForNewSchema(true);

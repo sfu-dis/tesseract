@@ -72,9 +72,10 @@ extern bool scan_with_it;
 // DDL & CDC settings
 extern uint32_t cdc_threads;
 extern bool cdc_physical_workers_only;
-extern bool cdc_schema_lock;
+extern bool enable_cdc_schema_lock;
 extern uint32_t ddl_type;
 extern bool enable_cdc_verification_test;
+extern bool enable_dml_slow_down;
 
 // Create an object for each version and install directly on the main
 // indirection arrays only; for experimental purpose only to see the

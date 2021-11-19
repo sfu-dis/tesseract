@@ -113,6 +113,7 @@ public:
 
 extern std::vector<Reformat> reformats;
 extern std::vector<Constraint> constraints;
+extern std::vector<uint32_t> ddl_worker_logical_threads;
 
 } // namespace ddl
 

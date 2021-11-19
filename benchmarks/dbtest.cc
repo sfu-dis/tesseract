@@ -100,10 +100,12 @@ DEFINE_bool(iouring_read_log, false,
 DEFINE_bool(cdc_physical_workers_only, true,
             "Whether to use physical workers for CDC");
 DEFINE_uint64(cdc_threads, 3, "Number of CDC threads");
-DEFINE_bool(cdc_schema_lock, true, "Whether to lock schema records when CDC");
+DEFINE_bool(enable_cdc_schema_lock, true,
+            "Whether to lock schema records when CDC");
 DEFINE_uint64(ddl_type, 1, "DDL type");
 DEFINE_bool(enable_cdc_verification_test, false,
             "Whether enable CDC test for verification related DDL");
+DEFINE_bool(enable_dml_slow_down, true, "Whether make DMLs slow down when DDL");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -136,10 +138,11 @@ int main(int argc, char **argv) {
   ermia::config::replay_threads = 0;
   ermia::config::worker_threads = FLAGS_threads;
   ermia::config::cdc_threads = FLAGS_cdc_threads;
-  ermia::config::cdc_schema_lock = FLAGS_cdc_schema_lock;
+  ermia::config::enable_cdc_schema_lock = FLAGS_enable_cdc_schema_lock;
   ermia::config::ddl_type = FLAGS_ddl_type;
   ermia::config::enable_cdc_verification_test =
       FLAGS_enable_cdc_verification_test;
+  ermia::config::enable_dml_slow_down = FLAGS_enable_dml_slow_down;
 
   if (ermia::config::physical_workers_only)
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)

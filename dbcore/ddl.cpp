@@ -9,6 +9,7 @@ namespace ddl {
 
 std::vector<Reformat> reformats;
 std::vector<Constraint> constraints;
+std::vector<uint32_t> ddl_worker_logical_threads;
 
 ddl_type ddl_type_map(uint32_t type) {
   switch (type) {
@@ -29,6 +30,11 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   rc_t r;
   TXN::xid_context *xc = t->GetXIDContext();
 
+#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+  printf("First CDC begins\n");
+  cdc_workers = t->changed_data_capture();
+#endif
+
   // printf("DDL scan begins\n");
   uint64_t count = 0;
   auto *alloc = oidmgr->get_allocator(old_td->GetTupleFid());
@@ -38,7 +44,74 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   auto *new_tuple_array = new_td->GetTupleArray();
   new_tuple_array->ensure_size(new_tuple_array->alloc_size(himark));
 
-  for (OID oid = 0; oid <= himark; oid++) {
+  // uint32_t scan_threads =
+  //    (thread::cpu_cores.size() / 2) * config::numa_nodes -
+  //    config::cdc_threads - config::worker_threads;
+  uint32_t scan_threads = config::worker_threads - 1;
+  // uint32_t scan_threads = 0;
+  // uint32_t scan_threads = config::cdc_threads;
+  uint32_t num_per_scan_thread = himark / (scan_threads + 1);
+  printf("scan_threads: %d, num_per_scan_thread: %d\n", scan_threads + 1,
+         num_per_scan_thread);
+
+  std::vector<thread::Thread *> scan_workers;
+  for (uint32_t i = 1; i <= scan_threads; i++) {
+    uint32_t begin = i * num_per_scan_thread;
+    uint32_t end = (i + 1) * num_per_scan_thread;
+    if (i == scan_threads)
+      end = himark;
+    // printf("%d, %d\n", begin, end);
+  retry:
+    thread::Thread *thread = thread::GetThread(false);
+    ALWAYS_ASSERT(thread);
+    for (auto &sib : ddl_worker_logical_threads) {
+      if (thread->sys_cpu == sib) {
+        thread::PutThread(thread);
+        goto retry;
+      }
+    }
+    scan_workers.push_back(thread);
+    auto parallel_scan = [=](char *) {
+      str_arena *arena = new str_arena(config::arena_size_mb);
+      for (uint32_t oid = begin + 1; oid <= end; oid++) {
+        fat_ptr *entry = old_tuple_array->get(oid);
+        if (*entry != NULL_PTR) {
+          dbtuple *tuple =
+              AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
+          // Object *object = (Object *)entry->offset();
+          // dbtuple *tuple = (dbtuple *)object->GetPayload();
+          varstr tuple_value;
+          if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
+            if (type == VERIFICATION_ONLY || type == COPY_VERIFICATION) {
+              if (!constraints[constraint_idx](tuple_value, new_v)) {
+                printf("DDL failed\n");
+                return rc_t{RC_ABORT_INTERNAL};
+              }
+            }
+            if (type == COPY_ONLY || type == COPY_VERIFICATION) {
+              arena->reset();
+              varstr *new_tuple_value =
+                  reformats[reformat_idx](tuple_value, arena, new_v);
+#ifdef COPYDDL
+              t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin);
+              // t->DDLScanInsert(new_td, oid, new_tuple_value);
+#elif BLOCKDDL
+              t->DDLScanUpdate(new_td, oid, new_tuple_value);
+#elif SIDDL
+              rc_t r = t->Update(new_td, oid, nullptr, new_tuple_value);
+              if (r._val != RC_TRUE) {
+                return r;
+              }
+#endif
+            }
+          }
+        }
+      }
+    };
+    thread->StartTask(parallel_scan);
+  }
+
+  for (OID oid = 0; oid <= num_per_scan_thread; oid++) {
     fat_ptr *entry = old_tuple_array->get(oid);
     if (*entry != NULL_PTR) {
       dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
@@ -58,6 +131,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
               reformats[reformat_idx](tuple_value, arena, new_v);
 #ifdef COPYDDL
           t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin);
+          // t->DDLScanInsert(new_td, oid, new_tuple_value);
 #elif BLOCKDDL
           t->DDLScanUpdate(new_td, oid, new_tuple_value);
 #elif SIDDL
@@ -71,13 +145,27 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
     }
   }
 
+  for (std::vector<thread::Thread *>::const_iterator it = scan_workers.begin();
+       it != scan_workers.end(); ++it) {
+    (*it)->Join();
+    thread::PutThread(*it);
+  }
+
+  /*#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+    printf("First CDC begins\n");
+    cdc_workers = t->changed_data_capture();
+  #endif
+  */
   uint64_t current_csn = dlog::current_csn.load(std::memory_order_relaxed);
-  uint64_t rough_t3 = current_csn - 3000000;
   printf("DDL scan ends, current csn: %lu\n", current_csn);
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  // while (t->get_cdc_smallest_csn() < rough_t3 && !cdc_failed) {
-  //}
+  printf("t->get_cdc_smallest_csn(): %lu\n", t->get_cdc_smallest_csn());
+  // uint64_t rough_t3 = (current_csn + t->get_cdc_smallest_csn()) / 3;
+  // uint64_t rough_t3 = current_csn - 1000000;
+  uint64_t rough_t3 = t->get_cdc_smallest_csn();
+  while (t->get_cdc_smallest_csn() < rough_t3 && !cdc_failed) {
+  }
   t->join_changed_data_capture_threads(cdc_workers);
   if (cdc_failed) {
     printf("DDL failed\n");
@@ -250,7 +338,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
           break;
       }
     }
-    if (!cdc_running) {
+    if ((!cdc_running && !ddl_running_2) || cdc_failed) {
       break;
     }
   }

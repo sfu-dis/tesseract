@@ -15,7 +15,7 @@ volatile bool cdc_failed = false;
 volatile bool cdc_test = false;
 std::atomic<uint64_t> ddl_end(0);
 uint64_t *_tls_durable_lsn =
-    (uint64_t *)malloc(sizeof(uint64_t) * ermia::config::MAX_THREADS);
+    (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
 
 transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     : flags(flags), log(nullptr), log_size(0), sa(&sa), coro_batch_idx(coro_batch_idx) {
@@ -99,6 +99,12 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
 #endif
 
   xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
+  if (config::enable_dml_slow_down && ddl_running_1 && is_dml()) {
+    util::fast_random r(xc->begin);
+    if (r.next_uniform() >= 0.9) {
+      usleep(1);
+    }
+  }
 #endif
 }
 
@@ -327,8 +333,8 @@ rc_t transaction::si_commit() {
     printf("Second CDC begins\n");
     ddl_running_2 = true;
     ddl_end.store(0);
-    std::vector<ermia::thread::Thread *> cdc_workers = changed_data_capture();
-    while (ddl_end.load() != ermia::config::cdc_threads && !cdc_failed) {
+    std::vector<thread::Thread *> cdc_workers = changed_data_capture();
+    while (ddl_end.load() != config::cdc_threads && !cdc_failed) {
     }
     join_changed_data_capture_threads(cdc_workers);
     ddl_running_2 = false;
@@ -455,18 +461,24 @@ exit:
 
 #ifdef COPYDDL
 #if !defined(LAZYDDL) && !defined(DCOPYDDL)
-std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
+std::vector<thread::Thread *> transaction::changed_data_capture() {
   cdc_failed = false;
   cdc_running = true;
   transaction *txn = this;
-  uint32_t cdc_threads = ermia::config::cdc_threads;
-  uint32_t logs_per_cdc_thread =
-      (ermia::config::worker_threads - 1) / cdc_threads;
+  uint32_t cdc_threads = 0;
+  bool cdc_physical_workers_only = false;
+  // if (ddl_running_2) {
+  cdc_threads = config::cdc_threads;
+  cdc_physical_workers_only = true;
+  //} else {
+  //  cdc_threads = config::worker_threads - 1;
+  //}
+  uint32_t logs_per_cdc_thread = (config::worker_threads - 1) / cdc_threads;
 
-  uint32_t normal_workers[ermia::config::worker_threads - 1];
+  uint32_t normal_workers[config::worker_threads - 1];
   uint32_t j = 0;
   uint32_t ddl_thread_id = -1;
-  for (uint32_t i = 0; i < ermia::dlog::tlogs.size(); i++) {
+  for (uint32_t i = 0; i < dlog::tlogs.size(); i++) {
     dlog::tls_log *tlog = dlog::tlogs[i];
     if (tlog && tlog != log && volatile_read(pcommit::_tls_durable_csn[i])) {
       // printf("normal_workers[%d]: %d\n", j, i);
@@ -478,7 +490,7 @@ std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
   }
   // printf("ddl_thread_id: %d\n", ddl_thread_id);
 
-  std::vector<ermia::thread::Thread *> cdc_workers;
+  std::vector<thread::Thread *> cdc_workers;
   for (uint32_t i = 0; i < cdc_threads; i++) {
     uint32_t begin_log = normal_workers[i * logs_per_cdc_thread];
     uint32_t end_log = normal_workers[(i + 1) * logs_per_cdc_thread - 1];
@@ -486,9 +498,17 @@ std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
       end_log = normal_workers[--j];
     // printf("%d, %d\n", begin_log, end_log);
 
-    thread::Thread *thread =
-        thread::GetThread(config::cdc_physical_workers_only);
+  retry:
+    thread::Thread *thread = thread::GetThread(cdc_physical_workers_only);
     ALWAYS_ASSERT(thread);
+    if (!cdc_physical_workers_only) {
+      for (auto &sib : ddl::ddl_worker_logical_threads) {
+        if (thread->sys_cpu == sib) {
+          thread::PutThread(thread);
+          goto retry;
+        }
+      }
+    }
     cdc_workers.push_back(thread);
 
     auto parallel_changed_data_capture = [=](char *) {
@@ -517,13 +537,12 @@ std::vector<ermia::thread::Thread *> transaction::changed_data_capture() {
 }
 
 void transaction::join_changed_data_capture_threads(
-    std::vector<ermia::thread::Thread *> cdc_workers) {
+    std::vector<thread::Thread *> cdc_workers) {
   cdc_running = false;
-  for (std::vector<ermia::thread::Thread *>::const_iterator it =
-           cdc_workers.begin();
+  for (std::vector<thread::Thread *>::const_iterator it = cdc_workers.begin();
        it != cdc_workers.end(); ++it) {
     (*it)->Join();
-    ermia::thread::PutThread(*it);
+    thread::PutThread(*it);
   }
 }
 
