@@ -108,7 +108,7 @@ public:
   rc_t changed_data_capture_impl(transaction *t, uint32_t thread_id,
                                  uint32_t ddl_thread_id, uint32_t begin_log,
                                  uint32_t end_log, str_arena *arena,
-                                 bool *ddl_end);
+                                 str_arena *arena1, bool *ddl_end);
 };
 
 extern std::vector<Reformat> reformats;

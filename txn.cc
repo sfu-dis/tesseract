@@ -101,7 +101,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
   if (config::enable_dml_slow_down && ddl_running_1 && is_dml()) {
     util::fast_random r(xc->begin);
-    if (r.next_uniform() >= 0.9) {
+    if (r.next_uniform() >= 0.8) {
       usleep(1);
     }
   }
@@ -316,13 +316,13 @@ rc_t transaction::si_commit() {
     // Fix new table file's marks
     auto *alloc = oidmgr->get_allocator(this->old_td->GetTupleFid());
     uint32_t himark = alloc->head.hiwater_mark;
-    // printf("old td sz: %d\n", himark);
+    printf("old td sz: %d\n", himark);
     auto *new_tuple_array = this->new_td->GetTupleArray();
     new_tuple_array->ensure_size(new_tuple_array->alloc_size(himark - 64));
     oidmgr->recreate_allocator(this->new_td->GetTupleFid(), himark - 64);
     auto *new_alloc = oidmgr->get_allocator(this->new_td->GetTupleFid());
     himark = new_alloc->head.hiwater_mark;
-    // printf("new td sz: %d\n", himark);
+    printf("new td sz: %d\n", himark);
 
     // Switch table descriptor for index
     OrderedIndex *index = this->new_td->GetPrimaryIndex();
@@ -514,10 +514,12 @@ std::vector<thread::Thread *> transaction::changed_data_capture() {
     auto parallel_changed_data_capture = [=](char *) {
       bool ddl_end_local = false;
       str_arena *arena = new str_arena(config::arena_size_mb);
+      str_arena *arena1 = new str_arena(config::arena_size_mb);
       rc_t rc;
       while (cdc_running) {
-        rc = ddl_exe->changed_data_capture_impl(
-            this, i, ddl_thread_id, begin_log, end_log, arena, &ddl_end_local);
+        rc = ddl_exe->changed_data_capture_impl(this, i, ddl_thread_id,
+                                                begin_log, end_log, arena,
+                                                arena1, &ddl_end_local);
         if (rc._val != RC_TRUE) {
           cdc_failed = true;
           cdc_running = false;
