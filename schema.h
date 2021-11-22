@@ -18,10 +18,8 @@ struct Schema_record : public Schema_base {
   TableDescriptor *old_td;
   uint64_t state;
   uint64_t old_v;
-#ifdef LAZYDDL
   OrderedIndex *old_index;
   TableDescriptor *old_tds[16];
-#endif
 };
 
 } // namespace ermia

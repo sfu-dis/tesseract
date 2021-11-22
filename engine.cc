@@ -65,10 +65,10 @@ retry:
     struct Schema_record schema;
     memcpy(&schema, (char *)value.data(), sizeof(schema));
     ALWAYS_ASSERT(schema.td != schema.old_td);
+    if (schema.td->GetTupleArray() != schema.index->GetTupleArray()) {
+      goto retry;
+    }
     if (schema.state == 2) {
-      if (schema.td->GetTupleArray() != schema.index->GetTupleArray()) {
-        goto retry;
-      }
       if (config::enable_cdc_schema_lock) {
         goto retry;
       } else {
@@ -233,60 +233,44 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
     }
 
 #ifdef LAZYDDL
-    /*if (!found && old_table_descriptor) {
-      int total = version;
+    if (!found && schema) {
+      int total = schema->v;
     retry:
-      rc = {RC_INVALID};
-      oid = INVALID_OID;
-      // old_table_descriptor = old_table_descriptors[total - 1];
-      AWAIT old_table_descriptor->GetPrimaryIndex()->GetOID(key, rc, t->xc,
-    oid);
+      TableDescriptor *old_table_descriptor = schema->old_tds[total - 1];
+      if (old_table_descriptor == nullptr) {
+        goto exit;
+      }
+      tuple = AWAIT oidmgr->oid_get_version(
+          old_table_descriptor->GetTupleArray(), oid, t->xc);
 
-      if (rc._val == RC_TRUE) {
-        tuple = AWAIT
-    oidmgr->oid_get_version(old_table_descriptor->GetTupleArray(), oid, t->xc);
-      } else {
+      if (!tuple) {
         total--;
         if (total > 0) {
-          old_table_descriptor = old_table_descriptors[total - 1];
+          old_table_descriptor = schema->old_tds[total - 1];
           ALWAYS_ASSERT(old_table_descriptor != nullptr);
           goto retry;
         }
-        volatile_write(rc._val, RC_FALSE);
-        RETURN;
       }
 
       if (!tuple) {
         found = false;
       } else {
         if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
-          varstr *v2 = nullptr;
-          rc = InsertRecord(t, key, *v2);
-          if (rc._val != RC_TRUE) {
-            volatile_write(rc._val, RC_ABORT_INTERNAL);
-            RETURN;
-          } else {
-            found = true;
-            // memcpy(&value, v2, sizeof(str2));
-
-            if (found) {
-              volatile_write(rc._val, RC_TRUE);
-            } else if (config::phantom_prot) {
-              volatile_write(rc._val,
-                             DoNodeRead(t, sinfo.first, sinfo.second)._val);
-            }
-
-            if (out_oid) {
-              *out_oid = oid;
-            }
-
-            RETURN;
+          varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
+              value, &(t->string_allocator()), schema->v);
+          t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
+          found = true;
+          tuple = AWAIT oidmgr->oid_get_version(
+              table_descriptor->GetTupleArray(), oid, t->xc);
+          if (!tuple) {
+            found = false;
           }
         }
       }
-    }*/
+    }
 #endif
 
+  exit:
     if (found) {
       volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
     } else if (config::phantom_prot) {
@@ -443,35 +427,29 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   }
 #endif
 
-#if defined(LAZYDDL) || defined(DCOPYDDL)
-#ifdef DCOPYDDL
-  if (!ddl_running_1) {
-    goto exit;
-  }
-#endif
-
-  /*if (rc._val != RC_TRUE && old_table_descriptor) {
-    int total = version;
+#ifdef LAZYDDL
+  if (rc._val == RC_TRUE && schema &&
+      *(table_descriptor->GetTupleArray()->get(oid)) == NULL_PTR) {
+    int total = schema->v;
   retry:
-    oid = 0;
-    rc = {RC_INVALID};
-    AWAIT old_table_descriptor->GetPrimaryIndex()->GetOID(key, rc, t->xc, oid);
-    if (rc._val == RC_TRUE) {
-      RETURN InsertRecord(t, key, value);
-    } else {
+    TableDescriptor *old_table_descriptor = schema->old_tds[total - 1];
+    dbtuple *tuple = AWAIT oidmgr->oid_get_version(
+        old_table_descriptor->GetTupleArray(), oid, t->xc);
+
+    if (!tuple) {
       total--;
       if (total > 0) {
-        old_table_descriptor = old_table_descriptors[total - 1];
+        old_table_descriptor = schema->old_tds[total - 1];
         ALWAYS_ASSERT(old_table_descriptor != nullptr);
         goto retry;
       }
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
-  }*/
-
+    t->DDLCDCInsert(schema->td, oid, &value, 0);
+    RETURN rc_t{RC_TRUE};
+  }
 #endif
 
-exit:
   if (rc._val == RC_TRUE) {
     rc_t rc = rc_t{RC_INVALID};
     if (t->IsWaitForNewSchema()) {
@@ -505,9 +483,9 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
 #endif
 
 #ifdef LAZYDDL
-  /*if (rc._val != RC_TRUE && old_table_descriptor) {
+  if (rc._val != RC_TRUE && schema->old_td) {
     return rc_t{RC_TRUE};
-  }*/
+  }
 #endif
 
   if (rc._val == RC_TRUE) {

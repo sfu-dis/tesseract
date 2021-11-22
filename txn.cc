@@ -305,14 +305,7 @@ rc_t transaction::si_commit() {
       ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
       printf("DDL schema commit with size %d\n", write_set.size());
     }
-    if (config::enable_cdc_verification_test) {
-      cdc_test = false;
-    }
-  }
-#endif
 
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  if (is_ddl()) {
     // Fix new table file's marks
     auto *alloc = oidmgr->get_allocator(this->old_td->GetTupleFid());
     uint32_t himark = alloc->head.hiwater_mark;
@@ -329,6 +322,14 @@ rc_t transaction::si_commit() {
     index->SetTableDescriptor(this->new_td);
     index->SetArrays(true);
 
+    if (config::enable_cdc_verification_test) {
+      cdc_test = false;
+    }
+  }
+#endif
+
+#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+  if (is_ddl()) {
     // Start the second round of CDC
     printf("Second CDC begins\n");
     ddl_running_2 = true;
@@ -341,6 +342,7 @@ rc_t transaction::si_commit() {
     printf("Second CDC ends\n");
     if (cdc_failed) {
       printf("DDL failed\n");
+      OrderedIndex *index = this->new_td->GetPrimaryIndex();
       index->SetTableDescriptor(this->old_td);
       index->SetArrays(true);
       this->new_td->GetTupleArray()->destroy(this->new_td->GetTupleArray());

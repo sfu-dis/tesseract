@@ -28,6 +28,8 @@
 
 namespace ermia {
 
+struct Schema_record;
+
 class simple_threadinfo {
 public:
   simple_threadinfo(epoch_num e) : ts_(0), epoch_(e) {}
@@ -204,6 +206,7 @@ public:
   inline Masstree::basic_table<P> *get_table() { return &table_; }
   inline TableDescriptor *get_table_descriptor() { return table_descriptor_; }
   inline bool is_primary_idx() { return is_primary_idx_; }
+  inline void set_schema(Schema_record *schema) { schema_ = schema; }
 
   /**
    * NOT THREAD SAFE
@@ -434,6 +437,7 @@ private:
   oid_array *tuple_array_;
   bool is_primary_idx_;
   TableDescriptor *table_descriptor_;
+  Schema_record *schema_;
 
   static leaf_type *leftmost_descend_layer(node_base_type *n);
   class size_walk_callback;

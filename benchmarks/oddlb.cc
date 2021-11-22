@@ -99,15 +99,13 @@ public:
     str3 += ss.str();
 
     db->CreateTable(str3.c_str());
-#ifdef LAZYDDL
     // For create index DDL
-    db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
-    schema.index = ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
-#else
+    // db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
+    // schema.index = ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
+
     ermia::Catalog::GetTable(str3.c_str())
         ->SetPrimaryIndex(old_table_index, std::string(str1));
     schema.index = ermia::Catalog::GetTable(str1)->GetPrimaryIndex();
-#endif
     schema.td = ermia::Catalog::GetTable(str3.c_str());
     schema.old_td = old_td;
     schema.ddl_type = ermia::ddl::ddl_type_map(ermia::config::ddl_type);
@@ -134,6 +132,7 @@ public:
     TryCatch(rc);
     //}
 
+#if !defined(LAZYDDL)
     // New a ddl executor
     ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
         schema.v, schema.old_v, schema.ddl_type, schema.reformat_idx,
@@ -145,7 +144,6 @@ public:
     // ddl_exe->set_cdc_workers(cdc_workers);
     txn->set_ddl_executor(ddl_exe);
 
-#if !defined(LAZYDDL)
     ermia::ConcurrentMasstreeIndex *table_index =
         (ermia::ConcurrentMasstreeIndex *)schema.index;
     rc = rc_t{RC_INVALID};
@@ -339,7 +337,11 @@ public:
         (ermia::ConcurrentMasstreeIndex *)schema.index;
 #endif
 
+#ifdef LAZYDDL
+    table_index->GetRecord(txn, rc, k2, v2, &oid, &schema);
+#else
     table_index->GetRecord(txn, rc, k2, v2, &oid);
+#endif
     if (rc._val != RC_TRUE)
       TryCatch(rc_t{RC_ABORT_USER});
 
@@ -355,7 +357,7 @@ public:
 #if !defined(NONEDDL)
     if (record_test.v != schema_version) {
       // LOG(FATAL) << "Read: It should get " << schema_version << " ,but get "
-      //           << record_test.v;
+      //            << record_test.v;
       TryCatch(rc_t{RC_ABORT_USER});
     }
 #endif
@@ -488,7 +490,11 @@ record_test.v;
       ermia::varstr &v2 = str(sizeof(str2));
       v2.copy_from(str2, sizeof(str2));
 
+#ifdef LAZYDDL
+      TryCatch(table_index->UpdateRecord(txn, k1, v2, &schema));
+#else
       TryCatch(table_index->UpdateRecord(txn, k1, v2));
+#endif
     }
 
     TryCatch(db->Commit(txn));
