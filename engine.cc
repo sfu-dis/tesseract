@@ -1,5 +1,5 @@
 #include "engine.h"
-#include "benchmarks/tpcc-common.h"
+#include "dbcore/rcu.h"
 #include "dbcore/sm-thread.h"
 #include "txn.h"
 
@@ -209,9 +209,7 @@ std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
 PROMISE(void)
 ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
                                    varstr &value, OID *out_oid,
-                                   TableDescriptor *old_table_descriptor,
-                                   TableDescriptor *old_table_descriptors[],
-                                   uint64_t version) {
+                                   Schema_record *schema) {
   OID oid = INVALID_OID;
   rc = {RC_INVALID};
   ConcurrentMasstree::versioned_node_t sinfo;
@@ -235,23 +233,18 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
     }
 
 #ifdef LAZYDDL
-    if (!found && old_table_descriptor) {
+    /*if (!found && old_table_descriptor) {
       int total = version;
-      /*for (uint i = 0; i < 16; i++) {
-        total++;
-        if (old_table_descriptors[i] == old_table_descriptor) {
-          break;
-        }
-      }*/
     retry:
       rc = {RC_INVALID};
       oid = INVALID_OID;
       // old_table_descriptor = old_table_descriptors[total - 1];
-      AWAIT old_table_descriptor->GetPrimaryIndex()->GetOID(key, rc, t->xc, oid);
+      AWAIT old_table_descriptor->GetPrimaryIndex()->GetOID(key, rc, t->xc,
+    oid);
 
       if (rc._val == RC_TRUE) {
-        tuple = AWAIT oidmgr->oid_get_version(old_table_descriptor->GetTupleArray(),
-                                              oid, t->xc);
+        tuple = AWAIT
+    oidmgr->oid_get_version(old_table_descriptor->GetTupleArray(), oid, t->xc);
       } else {
         total--;
         if (total > 0) {
@@ -267,48 +260,6 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
         found = false;
       } else {
         if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
-          struct Schema_base record_test;
-          memcpy(&record_test, value.data(), sizeof(record_test));
-
-          /*struct Schema2 record2;
-
-          if (record_test.v == 0) {
-            struct Schema1 record;
-            memcpy(&record, value.data(), sizeof(record));
-
-            if (version == record_test.v + 1) {
-              record2.v = record.v + 1;
-              record2.a = record.a;
-              record2.b = record.v + 1;
-              record2.c = record.v + 1;
-            } else {
-              record2.v = version;
-              record2.a = record.a;
-              record2.b = version;
-              record2.c = version;
-            }
-          } else {
-            struct Schema2 record;
-            memcpy(&record, value.data(), sizeof(record));
-
-            if (version == record_test.v + 1) {
-              record2.v = record.v + 1;
-              record2.a = record.a;
-              record2.b = record.v + 1;
-              record2.c = record.v + 1;
-            } else {
-              record2.v = version;
-              record2.a = record.a;
-              record2.b = version;
-              record2.c = version;
-            }
-          }
-
-          char str2[sizeof(Schema2)];
-          memcpy(str2, &record2, sizeof(str2));
-          varstr *v2 = t->string_allocator().next(sizeof(str2));
-          v2->copy_from(str2, sizeof(str2));
-          */
           varstr *v2 = nullptr;
           rc = InsertRecord(t, key, *v2);
           if (rc._val != RC_TRUE) {
@@ -333,7 +284,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
           }
         }
       }
-    }
+    }*/
 #endif
 
     if (found) {
@@ -424,20 +375,6 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
 
   OID oid = 0;
 
-#ifdef LAZYDDL
-  // Search for OID
-  /*rc_t rc = {RC_INVALID};
-  AWAIT GetOID(key, rc, t->xc, oid);
-
-  if (rc._val == RC_TRUE) {
-    if (out_oid) {
-      *out_oid = oid;
-    }
-
-    RETURN rc_t{RC_TRUE};
-  }*/
-#endif
-
   // Insert to the table first
   dbtuple *tuple = nullptr;
   TableDescriptor *td = nullptr;
@@ -485,10 +422,7 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
 
 PROMISE(rc_t)
 ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
-                                      varstr &value,
-                                      TableDescriptor *old_table_descriptor,
-                                      TableDescriptor *old_table_descriptors[],
-                                      uint64_t version) {
+                                      varstr &value, Schema_record *schema) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
@@ -516,7 +450,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   }
 #endif
 
-  if (rc._val != RC_TRUE && old_table_descriptor) {
+  /*if (rc._val != RC_TRUE && old_table_descriptor) {
     int total = version;
   retry:
     oid = 0;
@@ -533,7 +467,8 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
       }
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
-  }
+  }*/
+
 #endif
 
 exit:
@@ -552,7 +487,7 @@ exit:
 
 PROMISE(rc_t)
 ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
-                                      TableDescriptor *old_table_descriptor) {
+                                      Schema_record *schema) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
@@ -570,9 +505,9 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
 #endif
 
 #ifdef LAZYDDL
-  if (rc._val != RC_TRUE && old_table_descriptor) {
+  /*if (rc._val != RC_TRUE && old_table_descriptor) {
     return rc_t{RC_TRUE};
-  }
+  }*/
 #endif
 
   if (rc._val == RC_TRUE) {

@@ -339,20 +339,7 @@ public:
         (ermia::ConcurrentMasstreeIndex *)schema.index;
 #endif
 
-#ifdef LAZYDDL
-    if (schema_version == 0) {
-      table_index->GetRecord(txn, rc, k2, v2, &oid);
-    } else {
-      table_index->GetRecord(txn, rc, k2, v2, &oid);
-      if (rc._val != RC_TRUE) {
-        ALWAYS_ASSERT(schema.old_td != nullptr);
-        table_index->GetRecord(txn, rc, k2, v2, &oid, schema.old_td,
-                               schema.old_tds, schema_version);
-      }
-    }
-#else
     table_index->GetRecord(txn, rc, k2, v2, &oid);
-#endif
     if (rc._val != RC_TRUE)
       TryCatch(rc_t{RC_ABORT_USER});
 
@@ -501,15 +488,7 @@ record_test.v;
       ermia::varstr &v2 = str(sizeof(str2));
       v2.copy_from(str2, sizeof(str2));
 
-#ifdef LAZYDDL
-      if (table_index->UpdateRecord(txn, k1, v2)._val != RC_TRUE) {
-        ALWAYS_ASSERT(schema.old_td != nullptr);
-        TryCatch(table_index->UpdateRecord(txn, k1, v2, schema.old_td,
-                                           schema.old_tds, schema_version));
-      }
-#else
       TryCatch(table_index->UpdateRecord(txn, k1, v2));
-#endif
     }
 
     TryCatch(db->Commit(txn));

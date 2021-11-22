@@ -224,17 +224,14 @@ public:
 
   PROMISE(void)
   GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-            OID *out_oid = nullptr,
-            TableDescriptor *old_table_descriptor = nullptr,
-            TableDescriptor *old_table_descriptors[] = nullptr,
-            uint64_t version = 0) override;
+            OID *out_oid = nullptr, Schema_record *schema = nullptr) override;
   PROMISE(rc_t)
   UpdateRecord(transaction *t, const varstr &key, varstr &value,
-               TableDescriptor *old_table_descriptor = nullptr,
-               TableDescriptor *old_table_descriptors[] = nullptr,
-               uint64_t version = 0) override;
+               Schema_record *schema = nullptr) override;
   PROMISE(rc_t) InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
-  PROMISE(rc_t) RemoveRecord(transaction *t, const varstr &key, TableDescriptor *old_table_descriptor = nullptr) override;
+  PROMISE(rc_t)
+  RemoveRecord(transaction *t, const varstr &key,
+               Schema_record *schema = nullptr) override;
   PROMISE(bool) InsertOID(transaction *t, const varstr &key, OID oid) override;
 
   PROMISE(rc_t) Scan(transaction *t, const varstr &start_key, const varstr *end_key,

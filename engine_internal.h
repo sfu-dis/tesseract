@@ -4,6 +4,8 @@
 
 namespace ermia {
 
+struct Schema_record;
+
 // Base class for user-facing index implementations
 class OrderedIndex {
   friend class transaction;
@@ -41,10 +43,7 @@ public:
   // the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
   virtual PROMISE(void)
       GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-                OID *out_oid = nullptr,
-                TableDescriptor *old_table_descriptor = nullptr,
-                TableDescriptor *old_table_descriptors[] = nullptr,
-                uint64_t version = 0) = 0;
+                OID *out_oid = nullptr, Schema_record *schema = nullptr) = 0;
 
   // Return the OID that corresponds the given key
   virtual PROMISE(void)
@@ -58,9 +57,7 @@ public:
   // If the does not already exist and config::upsert is set to true, insert.
   virtual PROMISE(rc_t)
       UpdateRecord(transaction *t, const varstr &key, varstr &value,
-                   TableDescriptor *old_table_descriptor = nullptr,
-                   TableDescriptor *old_table_descriptors[] = nullptr,
-                   uint64_t version = 0) = 0;
+                   Schema_record *schema = nullptr) = 0;
 
   // Insert a record with a key of length keylen.
   virtual PROMISE(rc_t) InsertRecord(transaction *t, const varstr &key, varstr &value,
@@ -81,7 +78,7 @@ public:
 
   // Default implementation calls put() with NULL (zero-length) value
   virtual PROMISE(rc_t) RemoveRecord(transaction *t, const varstr &key,
-		                     TableDescriptor *old_table_descriptor = nullptr) = 0;
+                                     Schema_record *schema = nullptr) = 0;
 
   virtual size_t Size() = 0;
   virtual std::map<std::string, uint64_t> Clear() = 0;

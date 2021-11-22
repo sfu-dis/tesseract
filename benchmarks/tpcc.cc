@@ -236,34 +236,6 @@ rc_t tpcc_worker::txn_new_order() {
       TryCatch(order_line_table_index
                    ->InsertRecord(txn, Encode(str(Size(k_ol_1)), k_ol_1),
                                   Encode(str(order_line_sz), v_ol_1)));
-#ifdef DCOPYDDL
-      if (order_line_schema.state == 1 &&
-          ermia::volatile_read(ermia::ddl_running_1)) {
-        ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
-            (ermia::ConcurrentMasstreeIndex *)
-                order_line_schema.old_td->GetPrimaryIndex();
-        if (order_line_schema.old_v == 0) {
-          const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id,
-                                     ol_number);
-          order_line::value v_ol;
-          v_ol.ol_i_id = int32_t(ol_i_id);
-          v_ol.ol_delivery_d = 0; // not delivered yet
-          v_ol.ol_amount = float(ol_quantity) * v_i->i_price;
-          v_ol.ol_supply_w_id = int32_t(ol_supply_w_id);
-          v_ol.ol_quantity = int8_t(ol_quantity);
-          v_ol.v = order_line_schema.old_v;
-
-          TryCatch(tbl_order_line(warehouse_id)
-                       ->InsertRecord(txn, Encode(str(Size(k_ol)), k_ol),
-                                      Encode(str(order_line_sz), v_ol)));
-        } else {
-          v_ol_1.v = order_line_schema.old_v;
-          TryCatch(old_order_line_table_index->InsertRecord(
-              txn, Encode(str(Size(k_ol_1)), k_ol_1),
-              Encode(str(order_line_sz), v_ol_1)));
-        }
-      }
-#endif
     }
   }
 
@@ -603,54 +575,39 @@ rc_t tpcc_worker::txn_delivery() {
     ermia::ConcurrentMasstreeIndex *order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
 #endif
 
-#ifdef DCOPYDDL
-    ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
-        (ermia::ConcurrentMasstreeIndex *)
-            order_line_schema.old_td->GetPrimaryIndex();
-#endif
-
     if (order_line_schema.v == 0) {
       // XXX(stephentu): mutable scans would help here
       TryCatch(tbl_order_line(warehouse_id)
                    ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
                           &Encode(str(Size(k_oo_1)), k_oo_1), c));
     } else {
-      if (order_line_schema.state == 1 &&
-          ermia::volatile_read(ermia::ddl_running_1)) {
-#ifdef DCOPYDDL
+      /*static_limit_callback<15> c1(s_arena.get(), false);
+      TryCatch(tbl_order_line(warehouse_id)
+                   ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
+                          &Encode(str(Size(k_oo_1)), k_oo_1), c1));
+      */
+
+      TryCatch(
+          order_line_table_index->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
+                                       &Encode(str(Size(k_oo_1)), k_oo_1), c));
+
+      if (c.size() == 0) {
+#ifdef LAZYDDL
+        ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
+            (ermia::ConcurrentMasstreeIndex *)order_line_schema.old_index;
+
+        order_line_nop_callback c_order_line_1(order_line_schema.v - 1, true,
+                                               txn, s_arena.get(),
+                                               order_line_table_index);
+
         TryCatch(old_order_line_table_index->Scan(
             txn, Encode(str(Size(k_oo_0)), k_oo_0),
-            &Encode(str(Size(k_oo_1)), k_oo_1), c));
-#endif
-      } else {
-        /*static_limit_callback<15> c1(s_arena.get(), false);
-        TryCatch(tbl_order_line(warehouse_id)
-                     ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
-                            &Encode(str(Size(k_oo_1)), k_oo_1), c1));
-        */
+            &Encode(str(Size(k_oo_1)), k_oo_1), c_order_line_1));
 
-        TryCatch(order_line_table_index->Scan(
-            txn, Encode(str(Size(k_oo_0)), k_oo_0),
-            &Encode(str(Size(k_oo_1)), k_oo_1), c));
-
-        if (c.size() == 0) {
-#ifdef LAZYDDL
-          ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
-              (ermia::ConcurrentMasstreeIndex *)order_line_schema.old_index;
-
-          order_line_nop_callback c_order_line_1(order_line_schema.v - 1, true,
-                                                 txn, s_arena.get(),
-                                                 order_line_table_index);
-
-          TryCatch(old_order_line_table_index->Scan(
-              txn, Encode(str(Size(k_oo_0)), k_oo_0),
-              &Encode(str(Size(k_oo_1)), k_oo_1), c_order_line_1));
-
-          TryCatch(c_order_line_1.invoke_status);
+        TryCatch(c_order_line_1.invoke_status);
 #else
-          TryCatch({RC_ABORT_USER});
+        TryCatch({RC_ABORT_USER});
 #endif
-        }
       }
     }
 
@@ -676,63 +633,6 @@ rc_t tpcc_worker::txn_delivery() {
                      ->UpdateRecord(txn, *c.values[i].first,
                                     Encode(str(Size(v_ol_new)), v_ol_new)));
       } else {
-#ifdef DCOPYDDL
-        if (order_line_schema.state == 1 &&
-            ermia::volatile_read(ermia::ddl_running_1)) {
-          ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
-              (ermia::ConcurrentMasstreeIndex *)
-                  order_line_schema.old_td->GetPrimaryIndex();
-          if (order_line_schema.old_v == 0) {
-            order_line::value v_ol_temp;
-            const order_line::value *v_ol =
-                Decode(*c.values[i].second, v_ol_temp);
-
-            order_line::value v_ol_new(*v_ol);
-            v_ol_new.ol_delivery_d = ts;
-            v_ol_new.v = order_line_schema.old_v;
-            ASSERT(s_arena.get()->manages(c.values[i].first));
-            TryCatch(tbl_order_line(warehouse_id)
-                         ->UpdateRecord(txn, *c.values[i].first,
-                                        Encode(str(Size(v_ol_new)), v_ol_new)));
-          } else {
-            order_line_1::value v_ol_temp;
-            const order_line_1::value *v_ol =
-                Decode(*c.values[i].second, v_ol_temp);
-            order_line_1::value v_ol_new(*v_ol);
-            v_ol_new.ol_delivery_d = ts;
-            v_ol_new.v = order_line_schema.old_v;
-            v_ol_new.ol_tax = 0.1;
-            TryCatch(old_order_line_table_index->UpdateRecord(
-                txn, *c.values[i].first,
-                Encode(str(Size(v_ol_new)), v_ol_new)));
-          }
-        }
-
-        if (order_line_schema.old_v == 0 &&
-            ermia::volatile_read(ermia::ddl_running_1)) {
-          order_line::value v_ol_temp;
-          const order_line::value *v_ol =
-              Decode(*c.values[i].second, v_ol_temp);
-
-          sum += v_ol->ol_amount;
-
-          order_line_1::value v_ol_new;
-          v_ol_new.ol_i_id = v_ol->ol_i_id;
-          v_ol_new.ol_delivery_d = ts;
-          v_ol_new.ol_amount = v_ol->ol_amount;
-          v_ol_new.ol_supply_w_id = v_ol->ol_supply_w_id;
-          v_ol_new.ol_quantity = v_ol->ol_quantity;
-          v_ol_new.v = order_line_schema.v;
-          v_ol_new.ol_tax = 0.1;
-
-          TryCatch(order_line_table_index->UpdateRecord(
-              txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new)));
-          // order_line_schema.old_td));
-
-          continue;
-        }
-#endif
-
         order_line_1::value v_ol_temp;
         const order_line_1::value *v_ol =
             Decode(*c.values[i].second, v_ol_temp);
@@ -753,7 +653,7 @@ rc_t tpcc_worker::txn_delivery() {
 #if defined(LAZYDDL)
         TryCatch(order_line_table_index->UpdateRecord(
             txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new),
-            order_line_schema.old_td));
+            &order_line_schema));
 #else
         TryCatch(order_line_table_index->UpdateRecord(
             txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new)));
@@ -779,10 +679,9 @@ rc_t tpcc_worker::txn_delivery() {
       ermia::ConcurrentMasstreeIndex *oorder_table_index = (ermia::ConcurrentMasstreeIndex *) oorder_schema.index;
 #endif
 #ifdef LAZYDDL
-      TryCatch(oorder_table_index
-                    ->UpdateRecord(txn, Encode(str(Size(k_oo)), k_oo),
-                          Encode(str(Size(v_oo_pa_new)), v_oo_pa_new),
-				  oorder_schema.old_td));
+      TryCatch(oorder_table_index->UpdateRecord(
+          txn, Encode(str(Size(k_oo)), k_oo),
+          Encode(str(Size(v_oo_pa_new)), v_oo_pa_new), &oorder_schema));
 #else
       TryCatch(oorder_table_index
                    ->UpdateRecord(txn, Encode(str(Size(k_oo)), k_oo),
@@ -1002,24 +901,9 @@ rc_t tpcc_worker::txn_order_status() {
     ermia::ConcurrentMasstreeIndex *order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
 #endif
 
-#ifdef DCOPYDDL
-    ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
-        (ermia::ConcurrentMasstreeIndex *)
-            order_line_schema.old_td->GetPrimaryIndex();
-#endif
-
-    if (order_line_schema.state == 1 &&
-        ermia::volatile_read(ermia::ddl_running_1)) {
-#ifdef DCOPYDDL
-      TryCatch(old_order_line_table_index->Scan(
-          txn, Encode(str(Size(k_ol_0)), k_ol_0),
-          &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line));
-#endif
-    } else {
-      TryCatch(order_line_table_index->Scan(
-          txn, Encode(str(Size(k_ol_0)), k_ol_0),
-          &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line));
-    }
+    TryCatch(order_line_table_index->Scan(
+        txn, Encode(str(Size(k_ol_0)), k_ol_0),
+        &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line));
 
     if (c_order_line.n < 5 || c_order_line.n > 15) {
 #ifdef LAZYDDL
@@ -1127,47 +1011,32 @@ rc_t tpcc_worker::txn_stock_level() {
     ermia::ConcurrentMasstreeIndex *order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
 #endif
 
-#ifdef DCOPYDDL
-    ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
-        (ermia::ConcurrentMasstreeIndex *)
-            order_line_schema.old_td->GetPrimaryIndex();
-#endif
-
-    if (order_line_schema.state == 1 &&
-        ermia::volatile_read(ermia::ddl_running_1)) {
-#ifdef DCOPYDDL
-      TryCatch(old_order_line_table_index->Scan(
-          txn, Encode(str(Size(k_ol_0)), k_ol_0),
-          &Encode(str(Size(k_ol_1)), k_ol_1), c));
-#endif
-    } else {
-      /*order_line_scan_callback c1(order_line_schema.v - 1, false, txn,
+    /*order_line_scan_callback c1(order_line_schema.v - 1, false, txn,
                                   s_arena.get(), nullptr);
 
-      TryCatch(tbl_order_line(warehouse_id)
-                   ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                          &Encode(str(Size(k_ol_1)), k_ol_1), c1));
-      */
+    TryCatch(tbl_order_line(warehouse_id)
+                 ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
+                        &Encode(str(Size(k_ol_1)), k_ol_1), c1));
+    */
 
-      TryCatch(
-          order_line_table_index->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                                       &Encode(str(Size(k_ol_1)), k_ol_1), c));
+    TryCatch(
+        order_line_table_index->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
+                                     &Encode(str(Size(k_ol_1)), k_ol_1), c));
 
-      if (c.n == 0) {
+    if (c.n == 0) {
 #ifdef LAZYDDL
-        ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
-            (ermia::ConcurrentMasstreeIndex *)order_line_schema.old_index;
+      ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
+          (ermia::ConcurrentMasstreeIndex *)order_line_schema.old_index;
 
-        order_line_scan_callback c2(order_line_schema.v - 1, true, txn,
-                                    s_arena.get(), order_line_table_index);
+      order_line_scan_callback c2(order_line_schema.v - 1, true, txn,
+                                  s_arena.get(), order_line_table_index);
 
-        TryCatch(old_order_line_table_index->Scan(
-            txn, Encode(str(Size(k_ol_0)), k_ol_0),
-            &Encode(str(Size(k_ol_1)), k_ol_1), c2));
+      TryCatch(old_order_line_table_index->Scan(
+          txn, Encode(str(Size(k_ol_0)), k_ol_0),
+          &Encode(str(Size(k_ol_1)), k_ol_1), c2));
 #else
-        TryCatch({RC_ABORT_USER});
+      TryCatch({RC_ABORT_USER});
 #endif
-      }
     }
   }
   {
@@ -1354,8 +1223,8 @@ rc_t tpcc_worker::txn_credit_check() {
       ermia::ConcurrentMasstreeIndex *oorder_table_index = (ermia::ConcurrentMasstreeIndex *) oorder_schema.index;
 #endif
 #ifdef LAZYDDL
-      oorder_table_index->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo), valptr,
-		                    nullptr, oorder_schema.old_td);
+      oorder_table_index->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo),
+                                    valptr, nullptr, &oorder_schema);
 #else
       oorder_table_index->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo), valptr);
 #endif
