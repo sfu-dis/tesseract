@@ -381,7 +381,8 @@ public:
       memcpy(&record2_test, (char *)v2.data(), sizeof(record2_test));
 #endif
 
-      if (record2_test.a != a)
+      if (record2_test.a != a || record2_test.b != schema_version ||
+          record2_test.c != schema_version)
         printf("here 1, real a: %lu, a: %lu, b: %lu, c: %lu\n", a,
                record2_test.a, record2_test.b, record2_test.c);
       ALWAYS_ASSERT(record2_test.a == a);

@@ -83,37 +83,37 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
       str_arena *arena = new str_arena(config::arena_size_mb);
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
         fat_ptr *entry = old_tuple_array->get(oid);
-        if (*entry != NULL_PTR) {
-          dbtuple *tuple =
-              AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
-          // Object *object = (Object *)entry->offset();
-          // dbtuple *tuple = (dbtuple *)object->GetPayload();
-          varstr tuple_value;
-          if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
-            if (type == VERIFICATION_ONLY || type == COPY_VERIFICATION) {
-              if (!constraints[constraint_idx](tuple_value, new_v)) {
-                printf("DDL failed\n");
-                return;
-              }
-            }
-            if (type == COPY_ONLY || type == COPY_VERIFICATION) {
-              arena->reset();
-              varstr *new_tuple_value =
-                  reformats[reformat_idx](tuple_value, arena, new_v);
-#ifdef COPYDDL
-              t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin);
-              // t->DDLScanInsert(tmp_td, oid, new_tuple_value);
-#elif BLOCKDDL
-              t->DDLScanUpdate(new_td, oid, new_tuple_value);
-#elif SIDDL
-              rc_t r = t->Update(new_td, oid, nullptr, new_tuple_value);
-              if (r._val != RC_TRUE) {
-                return;
-              }
-#endif
+        // if (*entry != NULL_PTR) {
+        dbtuple *tuple =
+            AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
+        // Object *object = (Object *)entry->offset();
+        // dbtuple *tuple = (dbtuple *)object->GetPayload();
+        varstr tuple_value;
+        if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
+          if (type == VERIFICATION_ONLY || type == COPY_VERIFICATION) {
+            if (!constraints[constraint_idx](tuple_value, new_v)) {
+              printf("DDL failed\n");
+              return;
             }
           }
-        }
+          if (type == COPY_ONLY || type == COPY_VERIFICATION) {
+            arena->reset();
+            varstr *new_tuple_value =
+                reformats[reformat_idx](tuple_value, arena, new_v);
+#ifdef COPYDDL
+            t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin);
+              // t->DDLScanInsert(tmp_td, oid, new_tuple_value);
+#elif BLOCKDDL
+            t->DDLScanUpdate(new_td, oid, new_tuple_value);
+#elif SIDDL
+            rc_t r = t->Update(new_td, oid, nullptr, new_tuple_value);
+            if (r._val != RC_TRUE) {
+              return;
+            }
+#endif
+          }
+          }
+          //}
       }
     };
     thread->StartTask(parallel_scan);
@@ -133,22 +133,22 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
           cdc_workers = t->changed_data_capture();
     #endif
         }*/
-    if (*entry != NULL_PTR) {
-      dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
-      // Object *object = (Object *)entry->offset();
-      // dbtuple *tuple = (dbtuple *)object->GetPayload();
-      varstr tuple_value;
-      if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
-        if (type == VERIFICATION_ONLY || type == COPY_VERIFICATION) {
-          if (!constraints[constraint_idx](tuple_value, new_v)) {
-            printf("DDL failed\n");
-            return rc_t{RC_ABORT_INTERNAL};
-          }
+    // if (*entry != NULL_PTR) {
+    dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
+    // Object *object = (Object *)entry->offset();
+    // dbtuple *tuple = (dbtuple *)object->GetPayload();
+    varstr tuple_value;
+    if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
+      if (type == VERIFICATION_ONLY || type == COPY_VERIFICATION) {
+        if (!constraints[constraint_idx](tuple_value, new_v)) {
+          printf("DDL failed\n");
+          return rc_t{RC_ABORT_INTERNAL};
         }
-        if (type == COPY_ONLY || type == COPY_VERIFICATION) {
-          arena->reset();
-          varstr *new_tuple_value =
-              reformats[reformat_idx](tuple_value, arena, new_v);
+      }
+      if (type == COPY_ONLY || type == COPY_VERIFICATION) {
+        arena->reset();
+        varstr *new_tuple_value =
+            reformats[reformat_idx](tuple_value, arena, new_v);
 #ifdef COPYDDL
           t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin);
           // t->DDLScanInsert(tmp_td, oid, new_tuple_value);
@@ -162,16 +162,16 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
 #endif
         }
       }
-    }
+      //}
   }
 
   printf("DDL main thread scan ends\n");
 
-  /*for (std::vector<thread::Thread *>::const_iterator it =
-  scan_workers.begin(); it != scan_workers.end(); ++it) {
+  for (std::vector<thread::Thread *>::const_iterator it = scan_workers.begin();
+       it != scan_workers.end(); ++it) {
     (*it)->Join();
     thread::PutThread(*it);
-  }*/
+  }
   /*
   #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
     printf("First CDC begins\n");
@@ -376,12 +376,12 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
           count--;
         }
 
-        if (update_fail > 0) {
+        /*if (update_fail > 0) {
           printf("CDC update fail, %d\n", update_fail);
         }
         if (insert_fail > 0) {
           printf("CDC insert fail, %d\n", insert_fail);
-        }
+        }*/
 
         // printf("%d, %d\n", update_total, insert_total);
 
