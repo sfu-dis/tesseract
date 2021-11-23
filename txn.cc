@@ -312,7 +312,8 @@ rc_t transaction::si_commit() {
       uint32_t himark = alloc->head.hiwater_mark;
       printf("old td sz: %d\n", himark);
       auto *new_tuple_array = this->new_td->GetTupleArray();
-      new_tuple_array->ensure_size(new_tuple_array->alloc_size(himark - 64));
+      // new_tuple_array->ensure_size(new_tuple_array->alloc_size(himark - 64));
+      new_tuple_array->ensure_size(himark - 64);
       oidmgr->recreate_allocator(this->new_td->GetTupleFid(), himark - 64);
       auto *new_alloc = oidmgr->get_allocator(this->new_td->GetTupleFid());
       himark = new_alloc->head.hiwater_mark;
@@ -330,8 +331,9 @@ rc_t transaction::si_commit() {
   }
 #endif
 
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+#ifdef COPYDDL
   if (is_ddl() && config::ddl_type != 4) {
+#if !defined(LAZYDDL) && !defined(DCOPYDDL)
     // Start the second round of CDC
     printf("Second CDC begins\n");
     ddl_running_2 = true;
@@ -350,6 +352,7 @@ rc_t transaction::si_commit() {
       this->new_td->GetTupleArray()->destroy(this->new_td->GetTupleArray());
       return rc_t{RC_ABORT_INTERNAL};
     }
+#endif
 
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       write_record_t w = write_set.get(i);
@@ -393,9 +396,7 @@ rc_t transaction::si_commit() {
 
   if (is_ddl()) {
     ddl_running_1 = false;
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
     goto exit;
-#endif
   }
 
   // Normally, we'd generate each version's persitent address along the way or

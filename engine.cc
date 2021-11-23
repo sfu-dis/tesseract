@@ -152,7 +152,7 @@ void Engine::CreateIndex(const char *table_name, const std::string &index_name,
 PROMISE(rc_t)
 ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
                               const varstr *end_key, ScanCallback &callback,
-                              str_arena *arena) {
+                              Schema_record *schema) {
   /*if (t->IsWaitForNewSchema()) {
     RETURN rc_t{RC_ABORT_INTERNAL};
   }*/
@@ -171,7 +171,7 @@ ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
   }
 
   if (!unlikely(end_key && *end_key <= start_key)) {
-    XctSearchRangeCallback cb(t, &c);
+    XctSearchRangeCallback cb(t, &c, schema);
     AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
                                       cb, t->xc);
   }
@@ -181,13 +181,14 @@ ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
 PROMISE(rc_t)
 ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
                                      const varstr *end_key,
-                                     ScanCallback &callback, str_arena *arena) {
+                                     ScanCallback &callback,
+                                     Schema_record *schema) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 
   t->ensure_active();
   if (!unlikely(end_key && start_key <= *end_key)) {
-    XctSearchRangeCallback cb(t, &c);
+    XctSearchRangeCallback cb(t, &c, schema);
 
     varstr lowervk;
     if (end_key) {
@@ -240,6 +241,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
       if (old_table_descriptor == nullptr) {
         goto exit;
       }
+      old_table_descriptor->GetTupleArray()->ensure_size(oid);
       tuple = AWAIT oidmgr->oid_get_version(
           old_table_descriptor->GetTupleArray(), oid, t->xc);
 
@@ -247,7 +249,6 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
         total--;
         if (total > 0) {
           old_table_descriptor = schema->old_tds[total - 1];
-          ALWAYS_ASSERT(old_table_descriptor != nullptr);
           goto retry;
         }
       }
@@ -445,7 +446,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
       }
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
-    t->DDLCDCInsert(schema->td, oid, &value, 0);
+    t->DDLCDCInsert(table_descriptor, oid, &value, 0);
     RETURN rc_t{RC_TRUE};
   }
 #endif
@@ -538,7 +539,8 @@ void ConcurrentMasstreeIndex::XctSearchRangeCallback::on_resp_node(
 bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     const ConcurrentMasstree *btr_ptr,
     const typename ConcurrentMasstree::string_type &k, dbtuple *v,
-    const typename ConcurrentMasstree::node_opaque_t *n, uint64_t version) {
+    const typename ConcurrentMasstree::node_opaque_t *n, uint64_t version,
+    OID oid) {
   MARK_REFERENCED(btr_ptr);
   MARK_REFERENCED(n);
   MARK_REFERENCED(version);
@@ -548,10 +550,55 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
                     << std::endl
                     << "  " << *((dbtuple *)v) << std::endl);
   varstr vv;
+#ifdef LAZYDDL
+  if (v) {
+    caller_callback->return_code = t->DoTupleRead(v, &vv);
+  } else {
+    caller_callback->return_code = rc_t{RC_ABORT_INTERNAL};
+  }
+#else
   caller_callback->return_code = t->DoTupleRead(v, &vv);
+#endif
   if (caller_callback->return_code._val == RC_TRUE) {
     return caller_callback->Invoke(k, vv);
   } else if (caller_callback->return_code.IsAbort()) {
+#ifdef LAZYDDL
+    if (schema) {
+      int total = schema->v;
+    retry:
+      TableDescriptor *old_table_descriptor = schema->old_tds[total - 1];
+      if (old_table_descriptor == nullptr) {
+        return false;
+      }
+      old_table_descriptor->GetTupleArray()->ensure_size(oid);
+      dbtuple *tuple = AWAIT oidmgr->oid_get_version(
+          old_table_descriptor->GetTupleArray(), oid, t->xc);
+
+      if (!tuple) {
+        total--;
+        if (total > 0) {
+          old_table_descriptor = schema->old_tds[total - 1];
+          goto retry;
+        }
+      }
+
+      if (!tuple) {
+        return false;
+      } else {
+        if (t->DoTupleRead(tuple, &vv)._val == RC_TRUE) {
+          varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
+              vv, &(t->string_allocator()), schema->v);
+          t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
+          tuple = AWAIT oidmgr->oid_get_version(schema->td->GetTupleArray(),
+                                                oid, t->xc);
+          if (tuple && t->DoTupleRead(tuple, &vv)._val == RC_TRUE) {
+            caller_callback->return_code = rc_t{RC_TRUE};
+            return caller_callback->Invoke(k, vv);
+          }
+        }
+      }
+    }
+#endif
     // don't continue the read if the tx should abort
     // ^^^^^ note: see masstree_scan.hh, whose scan() calls
     // visit_value(), which calls this function to determine

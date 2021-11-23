@@ -1107,66 +1107,19 @@ class credit_check_order_scan_callback : public ermia::OrderedIndex::ScanCallbac
 
 class order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
  public:
-  order_line_nop_callback(uint64_t v, bool lazy, ermia::transaction *t, 
-		          ermia::str_arena *arena, ermia::OrderedIndex *index) 
-	  : n(0), schema_v(v), _lazy(lazy), _txn(t), _arena(arena), _index(index) {
-	    if (lazy) {
-              // printf("lazy scan, version: %lu\n", v);
-	      // _arena = new ermia::str_arena(ermia::config::arena_size_mb);
-	    }
-	  }
-  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
-    MARK_REFERENCED(keylen);
-    MARK_REFERENCED(keyp);
-    if (schema_v == 0) {
-      ASSERT(keylen == sizeof(order_line::key));
-      order_line::value v_ol_temp;
-      const order_line::value *v_ol = Decode(value, v_ol_temp);
-#ifdef LAZYDDL
-      if (_lazy) {
-	ermia::varstr *k = _arena->next(keylen);
-        if (!k) {
-          _arena = new ermia::str_arena(ermia::config::arena_size_mb);
-          k = _arena->next(keylen);
-        }
-        ASSERT(k);
-        k->copy_from(keyp, keylen);
-	      
-	order_line_1::value v_ol_1;
-        v_ol_1.ol_i_id = v_ol->ol_i_id;
-        v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
-        v_ol_1.ol_amount = v_ol->ol_amount;
-        v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
-        v_ol_1.ol_quantity = v_ol->ol_quantity;
-        v_ol_1.v = schema_v + 1;
-        v_ol_1.ol_tax = 0;
-
-        const size_t order_line_sz = Size(v_ol_1);
-	ermia::varstr *d_v = _arena->next(order_line_sz);
-
-        if (!d_v) {
-          _arena = new ermia::str_arena(ermia::config::arena_size_mb);
-          d_v = _arena->next(order_line_sz);
-        }
-        d_v = &Encode(*d_v, v_ol_1);
-
-	ermia::OID oid = 0;
-        rc_t rc = {RC_INVALID};
-        AWAIT _index->GetOID(*k, rc, _txn->GetXIDContext(), oid);
-
-	if (rc._val != RC_TRUE) {
-	  invoke_status = _index->InsertRecord(_txn, *k, *d_v);
-          if (invoke_status._val != RC_TRUE) {
-            printf("DDL normal record insert false\n");
-            return false;
-          }
-        }
-      }
-#endif
+   order_line_nop_callback(uint64_t v) : n(0), schema_v(v) {}
+   virtual bool Invoke(const char *keyp, size_t keylen,
+                       const ermia::varstr &value) {
+     MARK_REFERENCED(keylen);
+     MARK_REFERENCED(keyp);
+     if (schema_v == 0) {
+       ASSERT(keylen == sizeof(order_line::key));
+       order_line::value v_ol_temp;
+       const order_line::value *v_ol = Decode(value, v_ol_temp);
 #ifndef NDEBUG
-    order_line::key k_ol_temp;
-    const order_line::key *k_ol = Decode(keyp, k_ol_temp);
-    checker::SanityCheckOrderLine(k_ol, v_ol);
+       order_line::key k_ol_temp;
+       const order_line::key *k_ol = Decode(keyp, k_ol_temp);
+       checker::SanityCheckOrderLine(k_ol, v_ol);
 #endif
     } else {
       ASSERT(keylen == sizeof(order_line_1::key));
@@ -1178,11 +1131,6 @@ class order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
   }
   size_t n;
   uint64_t schema_v;
-  bool _lazy;
-  ermia::transaction *_txn;
-  ermia::str_arena *_arena;
-  ermia::OrderedIndex *_index;
-  rc_t invoke_status = rc_t{RC_TRUE};
 };
 
 class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
@@ -1212,10 +1160,7 @@ class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
 
 class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
  public:
-   order_line_scan_callback(uint64_t v, bool lazy, ermia::transaction *t,
-                            ermia::str_arena *arena, ermia::OrderedIndex *index)
-       : n(0), schema_v(v), _lazy(lazy), _txn(t), _arena(arena), _index(index) {
-   }
+   order_line_scan_callback(uint64_t v) : n(0), schema_v(v) {}
    virtual bool Invoke(const char *keyp, size_t keylen,
                        const ermia::varstr &value) {
      MARK_REFERENCED(keyp);
@@ -1229,48 +1174,6 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
        const order_line::key *k_ol = Decode(keyp, k_ol_temp);
        checker::SanityCheckOrderLine(k_ol, v_ol);
 #endif
-
-#ifdef LAZYDDL
-       if (_lazy) {
-         ermia::varstr *k = _arena->next(keylen);
-         if (!k) {
-           _arena = new ermia::str_arena(ermia::config::arena_size_mb);
-           k = _arena->next(keylen);
-         }
-         ASSERT(k);
-         k->copy_from(keyp, keylen);
-
-         order_line_1::value v_ol_1;
-         v_ol_1.ol_i_id = v_ol->ol_i_id;
-         v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
-         v_ol_1.ol_amount = v_ol->ol_amount;
-         v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
-         v_ol_1.ol_quantity = v_ol->ol_quantity;
-         v_ol_1.v = schema_v + 1;
-         v_ol_1.ol_tax = 0;
-
-         const size_t order_line_sz = Size(v_ol_1);
-         ermia::varstr *d_v = _arena->next(order_line_sz);
-
-         if (!d_v) {
-           _arena = new ermia::str_arena(ermia::config::arena_size_mb);
-           d_v = _arena->next(order_line_sz);
-         }
-         d_v = &Encode(*d_v, v_ol_1);
-
-         ermia::OID oid = 0;
-         rc_t rc = {RC_INVALID};
-         AWAIT _index->GetOID(*k, rc, _txn->GetXIDContext(), oid);
-
-         if (rc._val != RC_TRUE) {
-           invoke_status = _index->InsertRecord(_txn, *k, *d_v);
-           if (invoke_status._val != RC_TRUE) {
-             printf("DDL normal record insert false\n");
-             return false;
-           }
-         }
-       }
-#endif
        s_i_ids[v_ol->ol_i_id] = 1;
      } else {
        ASSERT(keylen == sizeof(order_line_1::key));
@@ -1278,7 +1181,6 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
        const order_line_1::value *v_ol = Decode(value, v_ol_temp);
        if (v_ol->v == 0) {
          // printf("v_ol->v == 0\n");
-         invoke_status = rc_t{RC_ABORT_SI_CONFLICT};
          return false;
        }
        ALWAYS_ASSERT(v_ol->v != 0);
@@ -1290,11 +1192,6 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
    size_t n;
    uint64_t schema_v;
    std::unordered_map<uint, bool> s_i_ids;
-   bool _lazy;
-   ermia::transaction *_txn;
-   ermia::str_arena *_arena;
-   ermia::OrderedIndex *_index;
-   rc_t invoke_status = rc_t{RC_TRUE};
 };
 
 class new_order_scan_callback : public ermia::OrderedIndex::ScanCallback {

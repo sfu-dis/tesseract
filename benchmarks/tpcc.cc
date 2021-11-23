@@ -581,33 +581,12 @@ rc_t tpcc_worker::txn_delivery() {
                    ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
                           &Encode(str(Size(k_oo_1)), k_oo_1), c));
     } else {
-      /*static_limit_callback<15> c1(s_arena.get(), false);
-      TryCatch(tbl_order_line(warehouse_id)
-                   ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
-                          &Encode(str(Size(k_oo_1)), k_oo_1), c1));
-      */
-
-      TryCatch(
-          order_line_table_index->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
-                                       &Encode(str(Size(k_oo_1)), k_oo_1), c));
+      TryCatch(order_line_table_index->Scan(
+          txn, Encode(str(Size(k_oo_0)), k_oo_0),
+          &Encode(str(Size(k_oo_1)), k_oo_1), c, &order_line_schema));
 
       if (c.size() == 0) {
-#ifdef LAZYDDL
-        ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
-            (ermia::ConcurrentMasstreeIndex *)order_line_schema.old_index;
-
-        order_line_nop_callback c_order_line_1(order_line_schema.v - 1, true,
-                                               txn, s_arena.get(),
-                                               order_line_table_index);
-
-        TryCatch(old_order_line_table_index->Scan(
-            txn, Encode(str(Size(k_oo_0)), k_oo_0),
-            &Encode(str(Size(k_oo_1)), k_oo_1), c_order_line_1));
-
-        TryCatch(c_order_line_1.invoke_status);
-#else
         TryCatch({RC_ABORT_USER});
-#endif
       }
     }
 
@@ -885,8 +864,7 @@ rc_t tpcc_worker::txn_order_status() {
 
   order_line_nop_callback c_order_line(order_line_schema.state == 1
                                            ? order_line_schema.old_v
-                                           : order_line_schema.v,
-                                       false, txn, s_arena.get(), nullptr);
+                                           : order_line_schema.v);
   const order_line::key k_ol_0(warehouse_id, districtID, o_id, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, o_id,
                                std::numeric_limits<int32_t>::max());
@@ -903,27 +881,10 @@ rc_t tpcc_worker::txn_order_status() {
 
     TryCatch(order_line_table_index->Scan(
         txn, Encode(str(Size(k_ol_0)), k_ol_0),
-        &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line));
+        &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line, &order_line_schema));
 
     if (c_order_line.n < 5 || c_order_line.n > 15) {
-#ifdef LAZYDDL
-      ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
-          (ermia::ConcurrentMasstreeIndex *)order_line_schema.old_index;
-
-      order_line_nop_callback c_order_line_1(order_line_schema.v - 1, true, txn,
-                                             s_arena.get(),
-                                             order_line_table_index);
-
-      TryCatch(old_order_line_table_index->Scan(
-          txn, Encode(str(Size(k_ol_0)), k_ol_0),
-          &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line_1));
-
-      TryCatch(c_order_line_1.invoke_status);
-
-      ALWAYS_ASSERT(c_order_line_1.n >= 5 && c_order_line_1.n <= 15);
-#else
       TryCatch({RC_ABORT_USER});
-#endif
     }
   }
 
@@ -997,8 +958,7 @@ rc_t tpcc_worker::txn_stock_level() {
   // manual joins are fun!
   order_line_scan_callback c(order_line_schema.state == 1
                                  ? order_line_schema.old_v
-                                 : order_line_schema.v,
-                             false, txn, s_arena.get(), nullptr);
+                                 : order_line_schema.v);
   const int32_t lower = cur_next_o_id >= 20 ? (cur_next_o_id - 20) : 0;
   const order_line::key k_ol_0(warehouse_id, districtID, lower, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, cur_next_o_id, 0);
@@ -1011,32 +971,12 @@ rc_t tpcc_worker::txn_stock_level() {
     ermia::ConcurrentMasstreeIndex *order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
 #endif
 
-    /*order_line_scan_callback c1(order_line_schema.v - 1, false, txn,
-                                  s_arena.get(), nullptr);
-
-    TryCatch(tbl_order_line(warehouse_id)
-                 ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                        &Encode(str(Size(k_ol_1)), k_ol_1), c1));
-    */
-
-    TryCatch(
-        order_line_table_index->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                                     &Encode(str(Size(k_ol_1)), k_ol_1), c));
+    TryCatch(order_line_table_index->Scan(
+        txn, Encode(str(Size(k_ol_0)), k_ol_0),
+        &Encode(str(Size(k_ol_1)), k_ol_1), c, &order_line_schema));
 
     if (c.n == 0) {
-#ifdef LAZYDDL
-      ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
-          (ermia::ConcurrentMasstreeIndex *)order_line_schema.old_index;
-
-      order_line_scan_callback c2(order_line_schema.v - 1, true, txn,
-                                  s_arena.get(), order_line_table_index);
-
-      TryCatch(old_order_line_table_index->Scan(
-          txn, Encode(str(Size(k_ol_0)), k_ol_0),
-          &Encode(str(Size(k_ol_1)), k_ol_1), c2));
-#else
       TryCatch({RC_ABORT_USER});
-#endif
     }
   }
   {
@@ -1195,9 +1135,9 @@ rc_t tpcc_worker::txn_credit_check() {
 #ifdef COPYDDL
         ermia::ConcurrentMasstreeIndex *order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
 #endif
-        TryCatch(order_line_table_index
-                     ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                            &Encode(str(Size(k_ol_1)), k_ol_1), c_ol));
+        TryCatch(order_line_table_index->Scan(
+            txn, Encode(str(Size(k_ol_0)), k_ol_0),
+            &Encode(str(Size(k_ol_1)), k_ol_1), c_ol, &order_line_schema));
       }
 
       /* XXX(tzwang): moved to the callback to avoid storing keys
@@ -1585,11 +1525,6 @@ rc_t tpcc_worker::txn_ddl() {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
   printf("DDL txn begin: %lu\n", txn->GetXIDContext()->begin);
 
-  /*  std::vector<ermia::thread::Thread *> cdc_workers;
-  #if !defined(LAZYDDL) && !defined(DCOPYDDL)
-    cdc_workers = txn->changed_data_capture();
-  #endif
-  */
   // Read schema tables first
   char str1[] = "order_line";
   ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1);
@@ -1629,6 +1564,8 @@ rc_t tpcc_worker::txn_ddl() {
 
 #ifdef LAZYDDL
   order_line_schema.old_index = old_order_line_table_index;
+  order_line_schema.old_tds[old_schema_version] = old_order_line_td;
+  order_line_schema.state = 2;
 #elif DCOPYDDL
   order_line_schema.state = 1;
 #else

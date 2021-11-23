@@ -147,8 +147,9 @@ private:
 
   struct XctSearchRangeCallback
       : public ConcurrentMasstree::low_level_search_range_callback {
-    XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback)
-        : t(t), caller_callback(caller_callback) {}
+    XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback,
+                           Schema_record *schema)
+        : t(t), caller_callback(caller_callback), schema(schema) {}
 
     virtual void
     on_resp_node(const typename ConcurrentMasstree::node_opaque_t *n,
@@ -157,11 +158,12 @@ private:
                         const typename ConcurrentMasstree::string_type &k,
                         dbtuple *v,
                         const typename ConcurrentMasstree::node_opaque_t *n,
-                        uint64_t version);
+                        uint64_t version, OID oid);
 
   private:
     transaction *const t;
     SearchRangeCallback *const caller_callback;
+    Schema_record *schema;
   };
 
   struct PurgeTreeWalker : public ConcurrentMasstree::tree_walk_callback {
@@ -234,10 +236,12 @@ public:
                Schema_record *schema = nullptr) override;
   PROMISE(bool) InsertOID(transaction *t, const varstr &key, OID oid) override;
 
-  PROMISE(rc_t) Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-                     ScanCallback &callback, str_arena *arena = nullptr) override;
-  PROMISE(rc_t) ReverseScan(transaction *t, const varstr &start_key,
-                            const varstr *end_key, ScanCallback &callback, str_arena *arena = nullptr) override;
+  PROMISE(rc_t)
+  Scan(transaction *t, const varstr &start_key, const varstr *end_key,
+       ScanCallback &callback, Schema_record *schema = nullptr) override;
+  PROMISE(rc_t)
+  ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
+              ScanCallback &callback, Schema_record *schema = nullptr) override;
 
   inline size_t Size() override { return masstree_.size(); }
   std::map<std::string, uint64_t> Clear() override;

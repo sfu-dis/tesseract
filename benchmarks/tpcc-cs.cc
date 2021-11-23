@@ -695,8 +695,7 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermi
   const oorder_c_id_idx::key *k_oo_idx = Decode(*newest_o_c_id, k_oo_idx_temp);
   const uint o_id = k_oo_idx->o_o_id;
 
-  order_line_nop_callback c_order_line(0, false, txn,
-                                       nullptr, nullptr);
+  order_line_nop_callback c_order_line(0);
   const order_line::key k_ol_0(warehouse_id, districtID, o_id, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, o_id,
                                std::numeric_limits<int32_t>::max());
@@ -756,7 +755,7 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia
           : v_d->d_next_o_id;
 
   // manual joins are fun!
-  order_line_scan_callback c(0, false, txn, nullptr, nullptr);
+  order_line_scan_callback c(0);
   const int32_t lower = cur_next_o_id >= 20 ? (cur_next_o_id - 20) : 0;
   const order_line::key k_ol_0(warehouse_id, districtID, lower, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, cur_next_o_id, 0);
