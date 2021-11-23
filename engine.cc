@@ -239,6 +239,9 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
     retry:
       TableDescriptor *old_table_descriptor = schema->old_tds[total - 1];
       if (old_table_descriptor == nullptr) {
+        if (--total > 0) {
+          goto retry;
+        }
         goto exit;
       }
       old_table_descriptor->GetTupleArray()->ensure_size(oid);
@@ -246,9 +249,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
           old_table_descriptor->GetTupleArray(), oid, t->xc);
 
       if (!tuple) {
-        total--;
-        if (total > 0) {
-          old_table_descriptor = schema->old_tds[total - 1];
+        if (--total > 0) {
           goto retry;
         }
       }
@@ -568,6 +569,9 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     retry:
       TableDescriptor *old_table_descriptor = schema->old_tds[total - 1];
       if (old_table_descriptor == nullptr) {
+        if (--total > 0) {
+          goto retry;
+        }
         return false;
       }
       old_table_descriptor->GetTupleArray()->ensure_size(oid);
@@ -575,9 +579,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
           old_table_descriptor->GetTupleArray(), oid, t->xc);
 
       if (!tuple) {
-        total--;
-        if (total > 0) {
-          old_table_descriptor = schema->old_tds[total - 1];
+        if (--total > 0) {
           goto retry;
         }
       }
