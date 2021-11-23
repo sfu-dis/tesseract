@@ -245,9 +245,6 @@ public:
   inline oid_array *GetTupleArray() override {
     return masstree_.get_table()->tuple_array_;
   }
-  inline void SetSchema(Schema_record *schema) override {
-    masstree_.set_schema(schema);
-  }
 
   inline PROMISE(void)
   GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
