@@ -22,10 +22,6 @@ public:
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
 
-    // w.push_back(workload_desc("DDL", 0.0000015, TxnDDL));
-    // w.push_back(workload_desc("Read", 0.9499985, TxnRead));
-    // w.push_back(workload_desc("RMW", 0.05, TxnRMW));
-
     w.push_back(workload_desc("Read", read_ratio, TxnRead));
     w.push_back(workload_desc("RMW", write_ratio, TxnRMW));
     w.push_back(workload_desc("DDL", 0.0000015, TxnDDL));
@@ -43,7 +39,16 @@ public:
     return static_cast<oddlb_sequential_worker *>(w)->txn_rmw();
   }
 
-  static bool constraint_verification(uint64_t x) { return x < 0; }
+  void no_copy_verification_op(ermia::Schema_record *schema,
+                               ermia::varstr &value, ermia::str_arena *arena) {
+    uint64_t latest_version = schema->v;
+    uint64_t current_version = 1;
+    for (; current_version <= latest_version; current_version++) {
+      ermia::varstr *new_value =
+          ermia::ddl::reformats[schema->reformats[current_version - 1]](
+              value, arena, current_version);
+    }
+  }
 
   rc_t txn_ddl() {
 #ifdef COPYDDL
@@ -92,39 +97,43 @@ public:
 
     rc = rc_t{RC_INVALID};
 
-    std::stringstream ss;
-    ss << schema_version;
+    if (ermia::config::ddl_type != 4) {
+      std::stringstream ss;
+      ss << schema_version;
 
-    std::string str3 = std::string(str1);
-    str3 += ss.str();
+      std::string str3 = std::string(str1);
+      str3 += ss.str();
 
-    db->CreateTable(str3.c_str());
-    // For create index DDL
-    // db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
-    // schema.index = ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
+      db->CreateTable(str3.c_str());
+      // For create index DDL
+      // db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
+      // schema.index =
+      // ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
 
-    ermia::Catalog::GetTable(str3.c_str())
-        ->SetPrimaryIndex(old_table_index, std::string(str1));
-    schema.index = ermia::Catalog::GetTable(str1)->GetPrimaryIndex();
-    schema.td = ermia::Catalog::GetTable(str3.c_str());
-    schema.old_td = old_td;
-    schema.ddl_type = ermia::ddl::ddl_type_map(ermia::config::ddl_type);
-    schema.state = 0;
+      ermia::Catalog::GetTable(str3.c_str())
+          ->SetPrimaryIndex(old_table_index, std::string(str1));
+      schema.index = ermia::Catalog::GetTable(str1)->GetPrimaryIndex();
+      schema.td = ermia::Catalog::GetTable(str3.c_str());
+      schema.old_td = old_td;
+      schema.ddl_type = ermia::ddl::ddl_type_map(ermia::config::ddl_type);
+      schema.state = 0;
 #ifdef LAZYDDL
-    schema.old_index = old_table_index;
-    schema.old_tds[old_schema_version] = old_td;
+      schema.old_index = old_table_index;
+      schema.old_tds[old_schema_version] = old_td;
 #elif DCOPYDDL
-    schema.state = 1;
+      schema.state = 1;
 #else
-    // if (ermia::config::ddl_type == 1) {
-    schema.state = 2;
-    //}
+      schema.state = 2;
 #endif
+    } else {
+      schema_version = old_schema_version + 5;
+      schema.v = schema_version;
+      schema.ddl_type = ermia::ddl::ddl_type_map(ermia::config::ddl_type);
+      schema.state = 0;
+    }
     memcpy(str2, &schema, sizeof(str2));
     ermia::varstr &v2 = str(sizeof(str2));
     v2.copy_from(str2, sizeof(str2));
-
-    txn->set_table_descriptors(schema.td, old_td);
 
     // if (ermia::config::ddl_type == 1 || ermia::config::ddl_type == 4) {
     rc = rc_t{RC_INVALID};
@@ -132,33 +141,35 @@ public:
     TryCatch(rc);
     //}
 
+    if (ermia::config::ddl_type != 4) {
+      txn->set_table_descriptors(schema.td, old_td);
 #if !defined(LAZYDDL)
-    // New a ddl executor
-    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
-        schema.v, schema.old_v, schema.ddl_type, schema.reformat_idx,
-        schema.constraint_idx, schema.td, schema.old_td, schema.index,
-        schema.state);
-    if (ermia::config::ddl_type == 2 || ermia::config::ddl_type == 3) {
-      ddl_exe->store_new_schema(&v2, txn->GetXIDContext());
-    }
-    // ddl_exe->set_cdc_workers(cdc_workers);
-    txn->set_ddl_executor(ddl_exe);
+      // New a ddl executor
+      ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
+          schema.v, schema.old_v, schema.ddl_type, schema.reformat_idx,
+          schema.constraint_idx, schema.td, schema.old_td, schema.index,
+          schema.state);
+      if (ermia::config::ddl_type == 2 || ermia::config::ddl_type == 3) {
+        ddl_exe->store_new_schema(&v2, txn->GetXIDContext());
+      }
+      // ddl_exe->set_cdc_workers(cdc_workers);
+      txn->set_ddl_executor(ddl_exe);
 
-    ermia::ConcurrentMasstreeIndex *table_index =
-        (ermia::ConcurrentMasstreeIndex *)schema.index;
-    rc = rc_t{RC_INVALID};
-    rc = ddl_exe->scan(txn, arena, v2);
-    TryCatch(rc);
-
+      ermia::ConcurrentMasstreeIndex *table_index =
+          (ermia::ConcurrentMasstreeIndex *)schema.index;
+      rc = rc_t{RC_INVALID};
+      rc = ddl_exe->scan(txn, arena, v2);
+      TryCatch(rc);
 #ifdef DCOPYDDL
-    schema.state = 0;
-    memcpy(str2, &schema, sizeof(str2));
-    v2 = Encode_(str(sizeof(str2)), str2);
+      schema.state = 0;
+      memcpy(str2, &schema, sizeof(str2));
+      v2 = Encode_(str(sizeof(str2)), str2);
 
-    schema_index->WriteSchemaTable(txn, rc, k1, v2);
-    TryCatch(rc);
+      schema_index->WriteSchemaTable(txn, rc, k1, v2);
+      TryCatch(rc);
 #endif
 #endif
+    }
 
     TryCatch(db->Commit(txn));
 #elif defined(BLOCKDDL)
@@ -251,7 +262,7 @@ public:
 
     TryCatch(db->Commit(txn));
     // printf("%d attempts\n", count);
-#else
+/*#else
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
@@ -272,6 +283,7 @@ public:
     std::cerr << "Change to a new schema, version: " << schema_version
               << std::endl;
     schema.v = schema_version;
+    schema.ddl_type = ermia::ddl::ddl_type_map(ermia::config::ddl_type);
     memcpy(str2, &schema, sizeof(str2));
     ermia::varstr &v = str(sizeof(str2));
     v.copy_from(str2, sizeof(str2));
@@ -281,6 +293,7 @@ public:
     TryCatch(rc);
 
     TryCatch(db->Commit(txn));
+*/
 #endif
     printf("DDL commit OK\n");
     return {RC_TRUE};
@@ -354,13 +367,12 @@ public:
     }
 #endif
 
-#if !defined(NONEDDL)
-    if (record_test.v != schema_version) {
+    if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION &&
+        record_test.v != schema_version) {
       // LOG(FATAL) << "Read: It should get " << schema_version << " ,but get "
       //            << record_test.v;
       TryCatch(rc_t{RC_ABORT_USER});
     }
-#endif
 
     if (schema_version == 0) {
       struct ermia::Schema1 record1_test;
@@ -369,25 +381,31 @@ public:
       ALWAYS_ASSERT(record1_test.a == a);
       ALWAYS_ASSERT(record1_test.b == a || record1_test.b == 20000000);
     } else {
-      struct ermia::Schema2 record2_test;
-#ifdef NONEDDL
-      struct ermia::Schema1 record1_test;
-      memcpy(&record1_test, (char *)v2.data(), sizeof(record1_test));
+      if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
+        struct ermia::Schema2 record2_test;
+        memcpy(&record2_test, (char *)v2.data(), sizeof(record2_test));
 
-      record2_test.a = a;
-      record2_test.b = schema_version;
-      record2_test.c = schema_version;
-#else
-      memcpy(&record2_test, (char *)v2.data(), sizeof(record2_test));
+        ALWAYS_ASSERT(record2_test.a == a);
+        ALWAYS_ASSERT(record2_test.b == schema_version);
+        ALWAYS_ASSERT(record2_test.c == schema_version);
+      } else {
+        if (record_test.v != schema_version) {
+#ifdef COPYDDL
+          no_copy_verification_op(&schema, v2, &(txn->string_allocator()));
 #endif
+        } else {
+          struct ermia::Schema6 record2_test;
+          memcpy(&record2_test, (char *)v2.data(), sizeof(record2_test));
 
-      if (record2_test.a != a || record2_test.b != schema_version ||
-          record2_test.c != schema_version)
-        printf("here 1, real a: %lu, a: %lu, b: %lu, c: %lu\n", a,
-               record2_test.a, record2_test.b, record2_test.c);
-      ALWAYS_ASSERT(record2_test.a == a);
-      ALWAYS_ASSERT(record2_test.b == schema_version);
-      ALWAYS_ASSERT(record2_test.c == schema_version);
+          ALWAYS_ASSERT(record2_test.a == a);
+          ALWAYS_ASSERT(record2_test.b == schema_version);
+          ALWAYS_ASSERT(record2_test.c == schema_version);
+          ALWAYS_ASSERT(record2_test.d == schema_version);
+          ALWAYS_ASSERT(record2_test.e == schema_version);
+          ALWAYS_ASSERT(record2_test.f == schema_version);
+          ALWAYS_ASSERT(record2_test.g == schema_version);
+        }
+      }
     }
 
     TryCatch(db->Commit(txn));
@@ -479,17 +497,36 @@ record_test.v;
 
       TryCatch(table_index->UpdateRecord(txn, k1, v2));
     } else {
-      struct ermia::Schema2 record2;
+      ermia::varstr v2;
+      if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
+        struct ermia::Schema2 record2;
 
-      record2.v = schema_version;
-      record2.a = a;
-      record2.b = schema_version;
-      record2.c = schema_version;
+        record2.v = schema_version;
+        record2.a = a;
+        record2.b = schema_version;
+        record2.c = schema_version;
 
-      char str2[sizeof(ermia::Schema2)];
-      memcpy(str2, &record2, sizeof(str2));
-      ermia::varstr &v2 = str(sizeof(str2));
-      v2.copy_from(str2, sizeof(str2));
+        char str2[sizeof(ermia::Schema2)];
+        memcpy(str2, &record2, sizeof(str2));
+        v2 = str(sizeof(str2));
+        v2.copy_from(str2, sizeof(str2));
+      } else {
+        struct ermia::Schema6 record2;
+
+        record2.v = schema_version;
+        record2.a = a;
+        record2.b = schema_version;
+        record2.c = schema_version;
+        record2.d = schema_version;
+        record2.e = schema_version;
+        record2.f = schema_version;
+        record2.g = schema_version;
+
+        char str2[sizeof(ermia::Schema6)];
+        memcpy(str2, &record2, sizeof(str2));
+        v2 = str(sizeof(str2));
+        v2.copy_from(str2, sizeof(str2));
+      }
 
 #ifdef LAZYDDL
       TryCatch(table_index->UpdateRecord(txn, k1, v2, &schema));

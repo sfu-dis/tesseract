@@ -20,6 +20,7 @@ struct Schema_record : public Schema_base {
   uint64_t old_v;
   OrderedIndex *old_index;
   TableDescriptor *old_tds[16];
+  uint64_t reformats[16];
 };
 
 } // namespace ermia

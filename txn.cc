@@ -306,30 +306,32 @@ rc_t transaction::si_commit() {
       printf("DDL schema commit with size %d\n", write_set.size());
     }
 
-    // Fix new table file's marks
-    auto *alloc = oidmgr->get_allocator(this->old_td->GetTupleFid());
-    uint32_t himark = alloc->head.hiwater_mark;
-    printf("old td sz: %d\n", himark);
-    auto *new_tuple_array = this->new_td->GetTupleArray();
-    new_tuple_array->ensure_size(new_tuple_array->alloc_size(himark - 64));
-    oidmgr->recreate_allocator(this->new_td->GetTupleFid(), himark - 64);
-    auto *new_alloc = oidmgr->get_allocator(this->new_td->GetTupleFid());
-    himark = new_alloc->head.hiwater_mark;
-    printf("new td sz: %d\n", himark);
+    if (config::ddl_type != 4) {
+      // Fix new table file's marks
+      auto *alloc = oidmgr->get_allocator(this->old_td->GetTupleFid());
+      uint32_t himark = alloc->head.hiwater_mark;
+      printf("old td sz: %d\n", himark);
+      auto *new_tuple_array = this->new_td->GetTupleArray();
+      new_tuple_array->ensure_size(new_tuple_array->alloc_size(himark - 64));
+      oidmgr->recreate_allocator(this->new_td->GetTupleFid(), himark - 64);
+      auto *new_alloc = oidmgr->get_allocator(this->new_td->GetTupleFid());
+      himark = new_alloc->head.hiwater_mark;
+      printf("new td sz: %d\n", himark);
 
-    // Switch table descriptor for index
-    OrderedIndex *index = this->new_td->GetPrimaryIndex();
-    index->SetTableDescriptor(this->new_td);
-    index->SetArrays(true);
+      // Switch table descriptor for index
+      OrderedIndex *index = this->new_td->GetPrimaryIndex();
+      index->SetTableDescriptor(this->new_td);
+      index->SetArrays(true);
 
-    if (config::enable_cdc_verification_test) {
-      cdc_test = false;
+      if (config::enable_cdc_verification_test) {
+        cdc_test = false;
+      }
     }
   }
 #endif
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  if (is_ddl()) {
+  if (is_ddl() && config::ddl_type != 4) {
     // Start the second round of CDC
     printf("Second CDC begins\n");
     ddl_running_2 = true;

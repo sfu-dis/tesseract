@@ -112,6 +112,88 @@ void microbenchmark_schematable_loader::load() {
     return new_value;
   };
 
+  auto add_column_1 = [=](ermia::varstr &value, ermia::str_arena *arena,
+                          uint64_t schema_version) {
+    struct ermia::Schema2 record;
+    memcpy(&record, (char *)value.data(), sizeof(record));
+    uint64_t a = record.a;
+
+    char str2[sizeof(ermia::Schema3)];
+    struct ermia::Schema3 record2;
+    record2.v = schema_version;
+    record2.a = a;
+    record2.b = schema_version;
+    record2.c = schema_version;
+    record2.d = schema_version;
+    memcpy(str2, &record2, sizeof(str2));
+    ermia::varstr *new_value = arena->next(sizeof(str2));
+    new_value->copy_from(str2, sizeof(str2));
+    return new_value;
+  };
+
+  auto add_column_2 = [=](ermia::varstr &value, ermia::str_arena *arena,
+                          uint64_t schema_version) {
+    struct ermia::Schema3 record;
+    memcpy(&record, (char *)value.data(), sizeof(record));
+    uint64_t a = record.a;
+
+    char str2[sizeof(ermia::Schema4)];
+    struct ermia::Schema4 record2;
+    record2.v = schema_version;
+    record2.a = a;
+    record2.b = schema_version;
+    record2.c = schema_version;
+    record2.d = schema_version;
+    record2.e = schema_version;
+    memcpy(str2, &record2, sizeof(str2));
+    ermia::varstr *new_value = arena->next(sizeof(str2));
+    new_value->copy_from(str2, sizeof(str2));
+    return new_value;
+  };
+
+  auto add_column_3 = [=](ermia::varstr &value, ermia::str_arena *arena,
+                          uint64_t schema_version) {
+    struct ermia::Schema4 record;
+    memcpy(&record, (char *)value.data(), sizeof(record));
+    uint64_t a = record.a;
+
+    char str2[sizeof(ermia::Schema5)];
+    struct ermia::Schema5 record2;
+    record2.v = schema_version;
+    record2.a = a;
+    record2.b = schema_version;
+    record2.c = schema_version;
+    record2.d = schema_version;
+    record2.e = schema_version;
+    record2.f = schema_version;
+    memcpy(str2, &record2, sizeof(str2));
+    ermia::varstr *new_value = arena->next(sizeof(str2));
+    new_value->copy_from(str2, sizeof(str2));
+    return new_value;
+  };
+
+  auto add_column_4 = [=](ermia::varstr &value, ermia::str_arena *arena,
+                          uint64_t schema_version) {
+    struct ermia::Schema5 record;
+    memcpy(&record, (char *)value.data(), sizeof(record));
+    uint64_t a = record.a;
+
+    char str2[sizeof(ermia::Schema6)];
+    struct ermia::Schema6 record2;
+    record2.v = schema_version;
+    record2.a = a;
+    record2.b = schema_version;
+    record2.c = schema_version;
+    record2.d = schema_version;
+    record2.e = schema_version;
+    record2.f = schema_version;
+    record2.g = schema_version;
+    memcpy(str2, &record2, sizeof(str2));
+    ermia::varstr *new_value = arena->next(sizeof(str2));
+    new_value->copy_from(str2, sizeof(str2));
+    return new_value;
+  };
+
   auto column_verification = [=](ermia::varstr &value,
                                  uint64_t schema_version) {
     if (schema_version == 1) {
@@ -133,6 +215,19 @@ void microbenchmark_schematable_loader::load() {
   struct ermia::Schema_record usertable_schema;
   usertable_schema.state = 0;
   usertable_schema.old_td = nullptr;
+  if (ermia::config::ddl_type == 4) {
+    int i = 0;
+    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(add_column);
+    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(add_column_1);
+    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(add_column_2);
+    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(add_column_3);
+    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(add_column_4);
+  }
 #ifdef LAZYDDL
   usertable_schema.old_index = nullptr;
 #elif DCOPYDDL
@@ -145,8 +240,10 @@ void microbenchmark_schematable_loader::load() {
   char str2[sizeof(ermia::Schema_base)];
 #endif
   usertable_schema.v = 0;
-  usertable_schema.reformat_idx = ermia::ddl::reformats.size();
-  ermia::ddl::reformats.push_back(add_column);
+  if (ermia::config::ddl_type != 4) {
+    usertable_schema.reformat_idx = ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(add_column);
+  }
   usertable_schema.constraint_idx = ermia::ddl::constraints.size();
   ermia::ddl::constraints.push_back(column_verification);
   usertable_schema.index =
