@@ -364,13 +364,11 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
   // Insert to the table first
   dbtuple *tuple = nullptr;
   TableDescriptor *td = nullptr;
-  if (t->IsWaitForNewSchema()) {
+  if (t->IsWaitForNewSchema() &&
+      (t->new_td == table_descriptor || t->old_td == table_descriptor)) {
     td = t->new_td;
     // oid = AWAIT t->DDLInsert(td, &value);
     oid = t->Insert(td, &value, &tuple);
-    if (oid == INVALID_OID) {
-      RETURN rc_t{RC_ABORT_INTERNAL};
-    }
   } else {
     td = table_descriptor;
     oid = t->Insert(td, &value, &tuple);
@@ -422,7 +420,8 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   AWAIT GetOID(key, rc, t->xc, oid);
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  if (t->IsWaitForNewSchema() && rc._val == RC_TRUE) {
+  if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
+      (t->new_td == table_descriptor || t->old_td == table_descriptor)) {
     if (AWAIT t->OverlapCheck(t->old_td, oid)) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
@@ -454,8 +453,11 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
 
   if (rc._val == RC_TRUE) {
     rc_t rc = rc_t{RC_INVALID};
-    if (t->IsWaitForNewSchema()) {
-      rc = AWAIT t->DDLCDCUpdate(t->new_td, oid, &value, 0);
+    if (t->IsWaitForNewSchema() &&
+        (t->new_td == table_descriptor || t->old_td == table_descriptor)) {
+      // rc = AWAIT t->DDLCDCUpdate(t->new_td, oid, &value, 0);
+      t->new_td->GetTupleArray()->ensure_size(oid);
+      rc = AWAIT t->Update(t->new_td, oid, &key, &value);
     } else {
       rc = AWAIT t->Update(table_descriptor, oid, &key, &value);
     }
@@ -477,7 +479,8 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
   AWAIT GetOID(key, rc, t->xc, oid);
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  if (t->IsWaitForNewSchema() && rc._val == RC_TRUE) {
+  if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
+      (t->new_td == table_descriptor || t->old_td == table_descriptor)) {
     if (AWAIT t->OverlapCheck(t->old_td, oid)) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
@@ -494,7 +497,8 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
     // Allocate an empty record version as the "new" version
     varstr *null_val = t->string_allocator().next(0);
     TableDescriptor *td = table_descriptor;
-    if (t->IsWaitForNewSchema()) {
+    if (t->IsWaitForNewSchema() &&
+        (t->new_td == table_descriptor || t->old_td == table_descriptor)) {
       td = t->new_td;
     }
     rc_t rc = AWAIT t->Update(td, oid, &key, null_val);
@@ -552,15 +556,21 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
                     << "  " << *((dbtuple *)v) << std::endl);
   varstr vv;
 #ifdef LAZYDDL
-  if (v) {
-    caller_callback->return_code = t->DoTupleRead(v, &vv);
-  } else {
-    caller_callback->return_code = rc_t{RC_ABORT_INTERNAL};
-  }
+  caller_callback->return_code =
+      v ? t->DoTupleRead(v, &vv) : rc_t{RC_ABORT_INTERNAL};
 #else
   caller_callback->return_code = t->DoTupleRead(v, &vv);
 #endif
   if (caller_callback->return_code._val == RC_TRUE) {
+#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+    if (t->IsWaitForNewSchema() && schema &&
+        (t->new_td == schema->td || t->old_td == schema->td)) {
+      if (AWAIT t->OverlapCheck(t->old_td, oid)) {
+        caller_callback->return_code = rc_t{RC_ABORT_SI_CONFLICT};
+        return false;
+      }
+    }
+#endif
     return caller_callback->Invoke(k, vv);
   } else if (caller_callback->return_code.IsAbort()) {
 #ifdef LAZYDDL

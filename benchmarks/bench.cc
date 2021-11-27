@@ -45,7 +45,7 @@ uint32_t bench_worker::fetch_workload() {
         ddl_num.fetch_add(1);
         int ddl_num_local = ddl_num.load();
 #if defined(COPYDDL)
-        if (ddl_num_local != 2) {
+        if (ddl_num_local != 15) {
           for (uint32_t i = 0; i < ermia::thread::cpu_cores.size(); ++i) {
             auto &c = ermia::thread::cpu_cores[i];
             if (c.node == me->node && c.physical_thread == me->sys_cpu) {

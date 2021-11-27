@@ -97,9 +97,12 @@ DEFINE_bool(iouring_read_log, false,
             "Whether to use iouring to load versions from logs.");
 
 // DDL & CDC settings
+DEFINE_uint64(cdc_threads, 3, "Number of CDC threads");
 DEFINE_bool(cdc_physical_workers_only, true,
             "Whether to use physical workers for CDC");
-DEFINE_uint64(cdc_threads, 3, "Number of CDC threads");
+DEFINE_uint64(scan_threads, 3, "Number of scan threads");
+DEFINE_bool(scan_physical_workers_only, false,
+            "Whether to use physical workers for scan");
 DEFINE_bool(enable_cdc_schema_lock, true,
             "Whether to lock schema records when CDC");
 DEFINE_uint64(ddl_type, 1, "DDL type");
@@ -134,28 +137,33 @@ int main(int argc, char **argv) {
   ermia::config::perf_record_event = FLAGS_perf_record_event;
   ermia::config::physical_workers_only = FLAGS_physical_workers_only;
   ermia::config::cdc_physical_workers_only = FLAGS_cdc_physical_workers_only;
+  ermia::config::scan_physical_workers_only = FLAGS_scan_physical_workers_only;
 
   ermia::config::replay_threads = 0;
   ermia::config::worker_threads = FLAGS_threads;
   ermia::config::cdc_threads = FLAGS_cdc_threads;
+  ermia::config::scan_threads = FLAGS_scan_threads;
   ermia::config::enable_cdc_schema_lock = FLAGS_enable_cdc_schema_lock;
   ermia::config::ddl_type = FLAGS_ddl_type;
   ermia::config::enable_cdc_verification_test =
       FLAGS_enable_cdc_verification_test;
   ermia::config::enable_dml_slow_down = FLAGS_enable_dml_slow_down;
 
-  if (ermia::config::physical_workers_only)
+  if (ermia::config::physical_workers_only) {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+    ermia::config::threads = ermia::config::worker_threads;
     if (ermia::config::cdc_physical_workers_only) {
-      ermia::config::threads = FLAGS_threads + FLAGS_cdc_threads;
-    } else {
-      ermia::config::threads = FLAGS_threads;
+      ermia::config::threads += ermia::config::cdc_threads;
+    }
+    if (ermia::config::scan_physical_workers_only) {
+      ermia::config::threads += ermia::config::scan_threads;
     }
 #else
     ermia::config::threads = FLAGS_threads;
 #endif
-  else
+  } else {
     ermia::config::threads = (FLAGS_threads + 1) / 2;
+  }
   ermia::config::index_probe_only = FLAGS_index_probe_only;
   ermia::config::verbose = FLAGS_verbose;
   ermia::config::node_memory_gb = FLAGS_node_memory_gb;

@@ -621,7 +621,6 @@ wait_for_commit:
 start_over:
   fat_ptr head = volatile_read(*ptr);
   if (head == NULL_PTR) {
-    // std::cerr << "NULL_PTR" << std::endl;
     return NULL_PTR;
   }
   ASSERT(head.asi_type() == 0);

@@ -156,7 +156,7 @@ public:
 
   inline bool is_dirty() { return dirty; }
 
-  inline void set_dirty(bool _dirty) { dirty = _dirty; } 
+  inline void set_dirty(bool _dirty) { dirty = _dirty; }
 
   inline std::vector<segment> *get_segments() { return &segments; }
 
@@ -198,6 +198,9 @@ public:
   void issue_read(int fd, char *buf, uint64_t size, uint64_t offset);
 
   bool peek_read(char *buf, uint64_t size);
+
+  // CDC flush
+  void cdc_flush() { last_flush(); }
 };
 
 extern std::vector<tls_log *> tlogs;

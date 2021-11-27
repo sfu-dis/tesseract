@@ -222,14 +222,14 @@ public:
     }*/
 #endif
 
-    // Work out the encoded size to be added to the log block later
-    auto logrec_size =
-        align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
-    log_size += logrec_size;
-    // Each write set entry still just records the size of the actual "data" to
-    // be inserted to the log excluding dlog::log_record, which will be
-    // prepended by log_insert/update etc.
     if (!is_ddl() || (is_ddl() && is_allowed)) {
+      // Work out the encoded size to be added to the log block later
+      auto logrec_size =
+          align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
+      log_size += logrec_size;
+      // Each write set entry still just records the size of the actual "data"
+      // to be inserted to the log excluding dlog::log_record, which will be
+      // prepended by log_insert/update etc.
       write_set.emplace_back(entry, fid, oid, size + sizeof(dbtuple), type);
     }
   }

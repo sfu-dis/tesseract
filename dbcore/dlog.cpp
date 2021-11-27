@@ -131,8 +131,8 @@ void tls_log::enqueue_flush() {
     poll_flush();
     flushing = false;
   }
-  
-  if (logbuf_offset) {
+
+  if (logbuf_offset && !is_dirty()) {
     issue_flush(active_logbuf, logbuf_offset);
     switch_log_buffers();
   }
@@ -145,7 +145,10 @@ void tls_log::last_flush() {
     flushing = false;
   }
 
-  if (logbuf_offset) {
+  while (is_dirty()) {
+  }
+
+  if (logbuf_offset && !is_dirty()) {
     issue_flush(active_logbuf, logbuf_offset);
     switch_log_buffers();
     poll_flush();
@@ -235,19 +238,15 @@ void tls_log::poll_flush() {
     io_uring_cqe_seen(&ring, cqe);
     durable_lsn += size;
     current_segment()->size += size;
-    if (current_segment()->expected_size != current_segment()->size)
-      printf("n ");
   }
 
-  if (!dirty) {
-    // get last tls durable csn
-    uint64_t last_tls_durable_csn =
-        (active_logbuf == logbuf[0]) ? last_csns[1] : last_csns[0];
+  // get last tls durable csn
+  uint64_t last_tls_durable_csn =
+      (active_logbuf == logbuf[0]) ? last_csns[1] : last_csns[0];
 
-    // set tls durable csn
-    tcommitter.set_tls_durable_csn(last_tls_durable_csn);
-    ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == last_tls_durable_csn);
-  }
+  // set tls durable csn
+  tcommitter.set_tls_durable_csn(last_tls_durable_csn);
+  ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == last_tls_durable_csn);
 
   if (ermia::config::pcommit_thread) {
     dlog::wakeup_commit_daemon();
@@ -260,7 +259,6 @@ void tls_log::create_segment() {
   size_t n = snprintf(segment_name_buf, sizeof(segment_name_buf),
                       SEGMENT_FILE_NAME_FMT, id, (unsigned int)segments.size());
   DIR *logdir = opendir(dir);
-  if (logdir == nullptr) printf("logdir null\n");
   ALWAYS_ASSERT(logdir);
   segments.emplace_back(dirfd(logdir), segment_name_buf);
 }
@@ -288,6 +286,7 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
 
   CRITICAL_SECTION(cs, lock);
   tcommitter.set_dirty_flag();
+  set_dirty(true);
 
   uint32_t alloc_size = payload_size + sizeof(log_block);
   LOG_IF(FATAL, alloc_size > logbuf_size) << "Total size too big";
@@ -366,7 +365,7 @@ retry:
     flush = false;
   }
   tcommitter.enqueue_committed_xct(csn, &flush, &insert);
-  if (count >= 2) {
+  if (count >= 10) {
     tcommitter.extend_queue();
     tcommitter.enqueue_committed_xct(csn, &flush, &insert);
     count = 0;

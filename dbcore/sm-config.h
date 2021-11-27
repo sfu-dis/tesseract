@@ -72,6 +72,8 @@ extern bool scan_with_it;
 // DDL & CDC settings
 extern uint32_t cdc_threads;
 extern bool cdc_physical_workers_only;
+extern uint32_t scan_threads;
+extern bool scan_physical_workers_only;
 extern bool enable_cdc_schema_lock;
 extern uint32_t ddl_type;
 extern bool enable_cdc_verification_test;
