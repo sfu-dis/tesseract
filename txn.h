@@ -27,6 +27,7 @@ extern volatile bool ddl_running_1;
 extern volatile bool ddl_running_2;
 extern volatile bool cdc_running;
 extern volatile bool cdc_failed;
+extern volatile bool ddl_td_set;
 extern volatile bool cdc_test;
 extern std::atomic<uint64_t> ddl_end;
 extern uint64_t *_tls_durable_lsn CACHE_ALIGNED;

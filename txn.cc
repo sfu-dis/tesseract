@@ -12,6 +12,7 @@ volatile bool ddl_running_1 = false;
 volatile bool ddl_running_2 = false;
 volatile bool cdc_running = false;
 volatile bool cdc_failed = false;
+volatile bool ddl_td_set = false;
 volatile bool cdc_test = false;
 std::atomic<uint64_t> ddl_end(0);
 uint64_t *_tls_durable_lsn =
@@ -26,6 +27,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   wait_for_new_schema = false;
   if (is_ddl()) {
     ddl_running_1 = true;
+    ddl_td_set = false;
     // write_set.init_large_write_set();
   }
   write_set.clear();
@@ -318,6 +320,7 @@ rc_t transaction::si_commit() {
       OrderedIndex *index = this->new_td->GetPrimaryIndex();
       index->SetTableDescriptor(this->new_td);
       index->SetArrays(true);
+      ddl_td_set = true;
 
       if (config::enable_cdc_verification_test) {
         cdc_test = false;
