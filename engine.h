@@ -7,7 +7,6 @@
 #include "../benchmarks/record/encoder.h"
 
 #if __clang__
-#include "rwlatch.h"
 #include <experimental/coroutine>
 using std::experimental::coroutine_handle;
 using std::experimental::noop_coroutine;
@@ -38,8 +37,8 @@ extern uint64_t *_cdc_last_csn;
 
 class Engine {
 private:
-  std::unordered_map<std::string, ReaderWriterLatch*> lock_map;
-  ReaderWriterLatch *map_rw_latch = new ReaderWriterLatch(); 
+  std::unordered_map<FID, pthread_rwlock_t *> lock_map;
+  std::mutex map_rw_latch;
 
 private:
   void LogIndexCreation(bool primary, FID table_fid, FID index_fid, const std::string &index_name);
@@ -80,34 +79,48 @@ public:
   inline void Abort(transaction *t) {
     t->Abort();
     t->uninitialize();
+#ifdef BLOCKDDL
+    for (auto &table : t->get_locked_tables()) {
+      ReadUnlock(table);
+    }
+#endif
   }
 
-  inline bool BuildIndexMap(std::string table_name) {
-    map_rw_latch->WLock();
-    if (lock_map.find(table_name) != lock_map.end()) {
-      map_rw_latch->WUnlock();
-      return false; 
+  inline bool BuildIndexMap(FID table_fid) {
+    std::unique_lock<std::mutex> lock(map_rw_latch);
+    if (lock_map.find(table_fid) != lock_map.end()) {
+      return false;
     } else {
-      lock_map[table_name] = new ReaderWriterLatch();
-      map_rw_latch->WUnlock();
+      pthread_rwlockattr_t attr;
+      lock_map[table_fid] = new pthread_rwlock_t;
+      pthread_rwlockattr_init(&attr);
+      int ret = pthread_rwlockattr_setkind_np(
+          &attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+      LOG_IF(FATAL, ret);
+      ret = pthread_rwlock_init(lock_map[table_fid], &attr);
+      LOG_IF(FATAL, ret);
       return true;
     }
   }
 
-  inline void ReadLock(std::string table_name) {
-    lock_map[table_name]->RLock();
+  inline void ReadLock(FID table_fid) {
+    int ret = pthread_rwlock_rdlock(lock_map[table_fid]);
+    LOG_IF(FATAL, ret);
   }
 
-  inline void ReadUnlock(std::string table_name) {
-    lock_map[table_name]->RUnlock();
+  inline void ReadUnlock(FID table_fid) {
+    int ret = pthread_rwlock_unlock(lock_map[table_fid]);
+    LOG_IF(FATAL, ret);
   }
 
-  inline void WriteLock(std::string table_name) {
-    lock_map[table_name]->WLock();
+  inline void WriteLock(FID table_fid) {
+    int ret = pthread_rwlock_wrlock(lock_map[table_fid]);
+    LOG_IF(FATAL, ret);
   }
 
-  inline void WriteUnlock(std::string table_name) {
-    lock_map[table_name]->WUnlock();
+  inline void WriteUnlock(FID table_fid) {
+    int ret = pthread_rwlock_unlock(lock_map[table_fid]);
+    LOG_IF(FATAL, ret);
   }
 };
 

@@ -279,17 +279,6 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
 
 // Note: try_catch_cond_abort might call __abort_txn with rc=RC_FALSE
 // so no need to assure rc must be RC_ABORT_*.
-#ifdef BLOCKDDL
-// For Block DDL, release read lock when abort in non DDL txn.
-#define __abort_txn(r)                                                         \
-  {                                                                            \
-    db->Abort(txn);                                                            \
-    db->ReadUnlock(std::string("SCHEMA"));                                     \
-    if (!r.IsAbort())                                                          \
-      return {RC_ABORT_USER};                                                  \
-    return r;                                                                  \
-  }
-#else
 #define __abort_txn(r)                                                         \
   {                                                                            \
     db->Abort(txn);                                                            \
@@ -297,7 +286,6 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
       return {RC_ABORT_USER};                                                  \
     return r;                                                                  \
   }
-#endif
 
 #define __abort_txn_coro(r)                       \
 {                                                 \
@@ -372,19 +360,6 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
     << "Wrong return value " << r._val;            \
   if (r.IsAbort()) __abort_txn_coro(r);            \
 }
-
-#ifdef BLOCKDDL
-// For Block DDL, release write lock when abort in DDL txn.
-#define TryCatchUnblock(rc)                                                    \
-  {                                                                            \
-    rc_t r = rc;                                                               \
-    if (r.IsAbort()) {                                                         \
-      db->Abort(txn);                                                          \
-      db->WriteUnlock(std::string("SCHEMA"));                                  \
-      return r;                                                                \
-    }                                                                          \
-  }
-#endif
 
 // No abort is allowed, usually for loading
 inline void TryVerifyStrict(rc_t rc) {

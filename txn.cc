@@ -10,8 +10,8 @@ namespace ermia {
 
 volatile bool ddl_running_1 = false;
 volatile bool ddl_running_2 = false;
+volatile bool ddl_failed = false;
 volatile bool cdc_running = false;
-volatile bool cdc_failed = false;
 volatile bool ddl_td_set = false;
 volatile bool cdc_test = false;
 std::atomic<uint64_t> ddl_end(0);
@@ -28,7 +28,9 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   if (is_ddl()) {
     ddl_running_1 = true;
     ddl_td_set = false;
-    // write_set.init_large_write_set();
+#if defined(BLOCKDDL) || defined(SIDDL)
+    write_set.init_large_write_set();
+#endif
   }
   write_set.clear();
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
@@ -150,7 +152,7 @@ void transaction::Abort() {
 #endif
 
   for (uint32_t i = 0; i < write_set.size(); ++i) {
-    write_record_t w = write_set.get(i);
+    write_record_t w = write_set.get(is_ddl(), i);
     dbtuple *tuple = (dbtuple *)w.get_object()->GetPayload();
     ASSERT(tuple);
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
@@ -259,7 +261,7 @@ rc_t transaction::si_commit() {
     printf("DDL txn end: %lu\n", xc->end);
     // If txn is DDL, commit schema record(s) first before CDC
     for (uint32_t i = 0; i < write_set.size(); ++i) {
-      write_record_t w = write_set.get(i);
+      write_record_t w = write_set.get(is_ddl(), i);
       Object *object = w.get_object();
       dbtuple *tuple = (dbtuple *)object->GetPayload();
 
@@ -337,12 +339,12 @@ rc_t transaction::si_commit() {
     ddl_running_2 = true;
     ddl_end.store(0);
     std::vector<thread::Thread *> cdc_workers = changed_data_capture();
-    while (ddl_end.load() != config::cdc_threads && !cdc_failed) {
+    while (ddl_end.load() != config::cdc_threads && !ddl_failed) {
     }
     join_changed_data_capture_threads(cdc_workers);
     ddl_running_2 = false;
     printf("Second CDC ends\n");
-    if (cdc_failed) {
+    if (ddl_failed) {
       printf("DDL failed\n");
       OrderedIndex *index = this->new_td->GetPrimaryIndex();
       index->SetTableDescriptor(this->old_td);
@@ -353,7 +355,7 @@ rc_t transaction::si_commit() {
 #endif
 
     for (uint32_t i = 0; i < write_set.size(); ++i) {
-      write_record_t w = write_set.get(i);
+      write_record_t w = write_set.get(is_ddl(), i);
       Object *object = w.get_object();
       dbtuple *tuple = (dbtuple *)object->GetPayload();
 
@@ -377,7 +379,9 @@ rc_t transaction::si_commit() {
 
   if (is_ddl()) {
     ddl_running_1 = false;
+#ifdef COPYDDL
     goto exit;
+#endif
   }
 
   // Normally, we'd generate each version's persitent address along the way or
@@ -388,7 +392,7 @@ rc_t transaction::si_commit() {
   // Post-commit: install CSN to tuples (traverse write-tuple), generate log
   // records, etc.
   for (uint32_t i = 0; i < write_set.size(); ++i) {
-    write_record_t w = write_set.get(i);
+    write_record_t w = write_set.get(is_ddl(), i);
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
 
@@ -449,7 +453,7 @@ exit:
 #ifdef COPYDDL
 #if !defined(LAZYDDL) && !defined(DCOPYDDL)
 std::vector<thread::Thread *> transaction::changed_data_capture() {
-  cdc_failed = false;
+  ddl_failed = false;
   cdc_running = true;
   transaction *txn = this;
   uint32_t cdc_threads = config::cdc_threads;
@@ -497,23 +501,12 @@ std::vector<thread::Thread *> transaction::changed_data_capture() {
         rc = ddl_exe->changed_data_capture_impl(
             this, i, ddl_thread_id, begin_log, end_log, arena, &ddl_end_local);
         if (rc._val != RC_TRUE) {
-          cdc_failed = true;
+          ddl_failed = true;
           cdc_running = false;
         }
-        /*if (ddl_running_2 &&
-            get_cdc_largest_csn() < xc->end - config::worker_threads) {
-          for (uint32_t i = begin_log; i <= end_log; i++) {
-            dlog::tls_log *tlog = dlog::tlogs[i];
-            if (tlog && tlog != log &&
-        volatile_read(pcommit::_tls_durable_csn[i])) { tlog->cdc_flush();
-            }
-          }
-          continue;
-        }*/
         if (ddl_end_local && ddl_running_2) {
           break;
         }
-        // usleep(1);
       }
       ddl_end.fetch_add(1);
     };
@@ -753,7 +746,7 @@ OID transaction::Insert(TableDescriptor *td, varstr *value,
   oidmgr->oid_put_new(tuple_array, oid, new_head);
 
   ASSERT(tuple->size == value->size());
-#if defined(SIDDL)
+#if defined(BLOCKDDL) || defined(SIDDL)
   add_to_write_set(true, tuple_array->get(oid), tuple_fid, oid, tuple->size,
                    dlog::log_record::logrec_type::INSERT);
 #else
@@ -867,9 +860,14 @@ void transaction::DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value) {
   oidmgr->oid_put_new(tuple_array, oid, new_head);
 
   ASSERT(new_tuple->size == value->size());
+#if defined(BLOCKDDL) || defined(SIDDL)
+  add_to_write_set(true, tuple_array->get(oid), tuple_fid, oid, new_tuple->size,
+                   dlog::log_record::logrec_type::UPDATE);
+#else
   add_to_write_set(tuple_fid == schema_td->GetTupleFid(), tuple_array->get(oid),
                    tuple_fid, oid, new_tuple->size,
-                   dlog::log_record::logrec_type::INSERT);
+                   dlog::log_record::logrec_type::UPDATE);
+#endif
 }
 
 PROMISE(rc_t)

@@ -25,8 +25,8 @@ namespace ermia {
 
 extern volatile bool ddl_running_1;
 extern volatile bool ddl_running_2;
+extern volatile bool ddl_failed;
 extern volatile bool cdc_running;
-extern volatile bool cdc_failed;
 extern volatile bool ddl_td_set;
 extern volatile bool cdc_test;
 extern std::atomic<uint64_t> ddl_end;
@@ -63,21 +63,41 @@ struct write_record_t {
 };
 
 struct write_set_t {
-  static const uint32_t kMaxEntries = 256, kMaxEntries_ = 100000000;
+  static const uint32_t kMaxEntries = 256, kMaxEntries_ = 50000000;
   uint32_t num_entries;
   write_record_t entries[kMaxEntries];
   write_record_t *entries_;
   mcs_lock lock;
   write_set_t() : num_entries(0) {}
-  inline void emplace_back(fat_ptr *oe, FID fid, OID oid, uint32_t size,
-                           dlog::log_record::logrec_type type) {
+  inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid,
+                           uint32_t size, dlog::log_record::logrec_type type) {
+#if defined(BLOCKDDL) || defined(SIDDL)
+    if (is_ddl) {
+      ALWAYS_ASSERT(num_entries < kMaxEntries_);
+      CRITICAL_SECTION(cs, lock);
+      new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, type);
+    } else {
+      ALWAYS_ASSERT(num_entries < kMaxEntries);
+      new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type);
+    }
+#else
     ALWAYS_ASSERT(num_entries < kMaxEntries);
     new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type);
+#endif
     ++num_entries;
   }
   inline uint32_t size() { return num_entries; }
   inline void clear() { num_entries = 0; }
-  inline write_record_t get(uint32_t idx) { return entries[idx]; }
+  inline write_record_t get(bool is_ddl, uint32_t idx) {
+#if defined(BLOCKDDL) || defined(SIDDL)
+    if (is_ddl)
+      return entries_[idx];
+    else
+      return entries[idx];
+#else
+    return entries[idx];
+#endif
+  }
   inline void init_large_write_set() { entries_ = new write_record_t[kMaxEntries_]; }
 };
 
@@ -231,7 +251,8 @@ public:
       // Each write set entry still just records the size of the actual "data"
       // to be inserted to the log excluding dlog::log_record, which will be
       // prepended by log_insert/update etc.
-      write_set.emplace_back(entry, fid, oid, size + sizeof(dbtuple), type);
+      write_set.emplace_back(is_ddl(), entry, fid, oid, size + sizeof(dbtuple),
+                             type);
     }
   }
 
@@ -252,7 +273,15 @@ public:
     ddl_exe = _ddl_exe;
   }
 
- protected:
+#ifdef BLOCKDDL
+  inline std::vector<FID> get_locked_tables() { return locked_tables; }
+
+  inline void register_locked_tables(FID table_fid) {
+    locked_tables.push_back(table_fid);
+  }
+#endif
+
+protected:
   const uint64_t flags;
   XID xid;
   TXN::xid_context *xc;
@@ -265,6 +294,9 @@ public:
   TableDescriptor *old_td;
   bool wait_for_new_schema;
   ddl::ddl_executor *ddl_exe;
+#ifdef BLOCKDDL
+  std::vector<FID> locked_tables;
+#endif
   util::timer timer;
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)

@@ -53,12 +53,6 @@ public:
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
-    /*    std::vector<ermia::thread::Thread *> cdc_workers;
-    #if !defined(LAZYDDL) && !defined(DCOPYDDL)
-        printf("First CDC begins\n");
-        cdc_workers = txn->changed_data_capture();
-    #endif
-    */
     char str1[] = "USERTABLE", str2[sizeof(ermia::Schema_record)];
     ermia::varstr &k1 = str(sizeof(str1));
     k1.copy_from(str1, sizeof(str1));
@@ -171,9 +165,12 @@ public:
 
     TryCatch(db->Commit(txn));
 #elif defined(BLOCKDDL)
-    db->WriteLock(std::string("SCHEMA"));
+    db->WriteLock(schema_fid);
+    db->ReadLock(table_fid);
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
+    txn->register_locked_tables(schema_fid);
+    txn->register_locked_tables(table_fid);
 
     char str1[] = "USERTABLE", str2[sizeof(ermia::Schema_base)];
     ermia::varstr &k = str(sizeof(str1));
@@ -195,25 +192,22 @@ public:
     ermia::varstr &v1 = str(sizeof(str2));
     v1.copy_from(str2, sizeof(str2));
 
-    rc = rc_t{RC_INVALID};
-    rc = schema_index->WriteSchemaTable(txn, rc, k, v1);
-    TryCatchUnblock(rc);
+    TryCatch(schema_index->WriteSchemaTable(txn, rc, k, v1));
 
     // New a ddl executor
     ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
         schema.v, -1, schema.ddl_type, schema.reformat_idx,
         schema.constraint_idx, schema.td, schema.td, schema.index, -1);
 
-    rc = rc_t{RC_INVALID};
-    rc = ddl_exe->scan(txn, arena, v1);
-    TryCatchUnblock(rc);
+    TryCatch(ddl_exe->scan(txn, arena, v1));
 
-    TryCatchUnblock(db->Commit(txn));
-    db->WriteUnlock(std::string("SCHEMA"));
+    TryCatch(db->Commit(txn));
+    db->ReadUnlock(table_fid);
+    db->WriteUnlock(schema_fid);
 #elif SIDDL
     std::cerr << "SI DDL begins" << std::endl;
-    // int count = 0;
-    // retry:
+    int count = 0;
+  retry:
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
@@ -252,14 +246,14 @@ public:
     rc = ddl_exe->scan(txn, arena, v);
     if (rc._val != RC_TRUE) {
       std::cerr << "SI DDL aborts" << std::endl;
-      // count++;
-      // db->Abort(txn);
-      // goto retry;
+      count++;
+      db->Abort(txn);
+      goto retry;
     }
     TryCatch(rc);
 
     TryCatch(db->Commit(txn));
-    // printf("%d attempts\n", count);
+    printf("%d attempts\n", count);
 /*#else
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
@@ -299,7 +293,8 @@ public:
 
   rc_t txn_read() {
 #ifdef BLOCKDDL
-    db->ReadLock(std::string("SCHEMA"));
+    db->ReadLock(schema_fid);
+    db->ReadLock(table_fid);
 #endif
     uint64_t a =
         r.next() % oddl_initial_table_size; // 0 ~ oddl_initial_table_size-1
@@ -313,6 +308,10 @@ public:
 #else
     ermia::transaction *txn = db->NewTransaction(
         ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+#ifdef BLOCKDDL
+    txn->register_locked_tables(schema_fid);
+    txn->register_locked_tables(table_fid);
+#endif
 #endif
 
     char str1[] = "USERTABLE";
@@ -408,20 +407,26 @@ public:
 
     TryCatch(db->Commit(txn));
 #ifdef BLOCKDDL
-    db->ReadUnlock(std::string("SCHEMA"));
+    db->ReadUnlock(table_fid);
+    db->ReadUnlock(schema_fid);
 #endif
     return {RC_TRUE};
   }
 
   rc_t txn_rmw() {
 #ifdef BLOCKDDL
-    db->ReadLock(std::string("SCHEMA"));
+    db->ReadLock(schema_fid);
+    db->ReadLock(table_fid);
 #endif
     uint64_t a =
         r.next() % oddl_initial_table_size; // 0 ~ oddl_initial_table_size-1
 
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
+#ifdef BLOCKDDL
+    txn->register_locked_tables(schema_fid);
+    txn->register_locked_tables(table_fid);
+#endif
 
 #ifdef SIDDL
   retry:
@@ -535,7 +540,8 @@ record_test.v;
 
     TryCatch(db->Commit(txn));
 #ifdef BLOCKDDL
-    db->ReadUnlock(std::string("SCHEMA"));
+    db->ReadUnlock(table_fid);
+    db->ReadUnlock(schema_fid);
 #endif
     return {RC_TRUE};
   }

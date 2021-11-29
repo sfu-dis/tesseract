@@ -121,18 +121,18 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
         varstr *new_tuple_value =
             reformats[reformat_idx](tuple_value, arena, new_v);
 #ifdef COPYDDL
-          t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin);
-          // t->DDLScanInsert(tmp_td, oid, new_tuple_value);
+        t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin);
+        // t->DDLScanInsert(tmp_td, oid, new_tuple_value);
 #elif BLOCKDDL
-          t->DDLScanUpdate(new_td, oid, new_tuple_value);
+        t->DDLScanUpdate(new_td, oid, new_tuple_value);
 #elif SIDDL
-          r = t->Update(new_td, oid, nullptr, new_tuple_value);
-          if (r._val != RC_TRUE) {
-            return r;
-          }
-#endif
+        r = t->Update(new_td, oid, nullptr, new_tuple_value);
+        if (r._val != RC_TRUE) {
+          return r;
         }
+#endif
       }
+    }
   }
 
   uint64_t current_csn = dlog::current_csn.load(std::memory_order_relaxed);
@@ -150,14 +150,14 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   printf("t->get_cdc_smallest_csn(): %lu\n", t->get_cdc_smallest_csn());
   // while (t->get_cdc_smallest_csn() <
-  // dlog::current_csn.load(std::memory_order_relaxed) - 3000000 && !cdc_failed)
+  // dlog::current_csn.load(std::memory_order_relaxed) - 3000000 && !ddl_failed)
   // {
   //}
   t->join_changed_data_capture_threads(cdc_workers);
   current_csn = dlog::current_csn.load(std::memory_order_relaxed);
   printf("current csn: %lu, t->get_cdc_smallest_csn(): %lu\n", current_csn,
          t->get_cdc_smallest_csn());
-  if (cdc_failed) {
+  if (ddl_failed) {
     printf("DDL failed\n");
     new_td->GetTupleArray()->destroy(new_td->GetTupleArray());
     return rc_t{RC_ABORT_INTERNAL};
@@ -220,7 +220,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                             offset_in_seg);
 
         while (offset_increment < data_sz - offset_in_seg &&
-               (cdc_running || ddl_running_2) && !cdc_failed) {
+               (cdc_running || ddl_running_2) && !ddl_failed) {
           dlog::log_block *header =
               (dlog::log_block *)(data_buf + offset_increment);
           if ((end_csn && begin_csn <= header->csn && header->csn <= end_csn) ||
@@ -229,7 +229,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
             volatile_write(_cdc_last_csn[i], last_csn);
             uint64_t offset_in_block = 0;
             varstr *insert_key, *update_key, *insert_key_idx;
-            while (offset_in_block < header->payload_size && !cdc_failed) {
+            while (offset_in_block < header->payload_size && !ddl_failed) {
               dlog::log_record *logrec =
                   (dlog::log_record *)(data_buf + offset_increment + block_sz +
                                        offset_in_block);
@@ -319,7 +319,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
         // if (ddl_running_2) printf("%d, %d\n", update_total, insert_total);
       }
     }
-    if ((!cdc_running && !ddl_running_2) || cdc_failed) {
+    if ((!cdc_running && !ddl_running_2) || ddl_failed) {
       break;
     }
   }

@@ -1219,24 +1219,38 @@ class new_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
 
 class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
  public:
-  tpcc_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
-              const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-              const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
-              spin_barrier *barrier_a, spin_barrier *barrier_b,
-              uint home_warehouse_id)
-      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
-        tpcc_worker_mixin(partitions),
-        home_warehouse_id(home_warehouse_id),
-        schema_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("SCHEMA"))
-#if !defined(COPYDDL)	
-	, order_line_table_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("order_line_0"))
-	, oorder_table_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("oorder_0"))
-        , oorder_table_secondary_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("oorder_c_id_idx_0"))
+   tpcc_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
+               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+               const std::map<std::string, std::vector<ermia::OrderedIndex *>>
+                   &partitions,
+               spin_barrier *barrier_a, spin_barrier *barrier_b,
+               uint home_warehouse_id)
+       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a,
+                      barrier_b),
+         tpcc_worker_mixin(partitions), home_warehouse_id(home_warehouse_id),
+         schema_index(
+             (ermia::ConcurrentMasstreeIndex *)open_tables.at("SCHEMA"))
+#if !defined(COPYDDL)
+         ,
+         order_line_table_index(
+             (ermia::ConcurrentMasstreeIndex *)open_tables.at("order_line_0")),
+         oorder_table_index(
+             (ermia::ConcurrentMasstreeIndex *)open_tables.at("oorder_0")),
+         oorder_table_secondary_index((ermia::ConcurrentMasstreeIndex *)
+                                          open_tables.at("oorder_c_id_idx_0"))
 #endif
-	{
+#ifdef BLOCKDDL
+         ,
+         schema_fid(
+             open_tables.at("SCHEMA")->GetTableDescriptor()->GetTupleFid()),
+         order_line_fid(open_tables.at("order_line_0")
+                            ->GetTableDescriptor()
+                            ->GetTupleFid())
+#endif
+   {
     ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
     memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
-  }
+   }
 
   // XXX(stephentu): tune this
   static const size_t NMaxCustomerIdxScanElems = 512;
@@ -1307,6 +1321,10 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   ermia::ConcurrentMasstreeIndex *order_line_table_index;
   ermia::ConcurrentMasstreeIndex *oorder_table_index;
   ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index;
+#endif
+#ifdef BLOCKDDL
+  ermia::FID schema_fid;
+  ermia::FID order_line_fid;
 #endif
 };
 
