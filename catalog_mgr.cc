@@ -269,7 +269,9 @@ void create_schema_table(ermia::Engine *db, const char *name) {
     db->CreateTable(name);
     db->CreateMasstreePrimaryIndex(name, std::string(name));
     ermia::schema_td = ermia::Catalog::GetTable(name);
-    db->BuildIndexMap(ermia::Catalog::GetTable(name)->GetTupleFid());
+#ifdef BLOCKDDL
+    db->BuildLockMap(ermia::Catalog::GetTable(name)->GetTupleFid());
+#endif
   };
 
   thread->StartTask(create_table);

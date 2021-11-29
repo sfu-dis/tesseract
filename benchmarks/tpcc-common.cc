@@ -237,8 +237,8 @@ class tpcc_bench_runner : public bench_runner {
     RegisterIndex(db, "warehouse",  "warehouse",        true);
     create_schema_table(db, "SCHEMA");
 #ifdef BLOCKDDL
-    db->BuildIndexMap(ermia::Catalog::GetTable("order_line")->GetTupleFid());
-    db->BuildIndexMap(ermia::Catalog::GetTable("oorder")->GetTupleFid());
+    db->BuildLockMap(ermia::Catalog::GetTable("order_line")->GetTupleFid());
+    db->BuildLockMap(ermia::Catalog::GetTable("oorder")->GetTupleFid());
 #endif
   }
 

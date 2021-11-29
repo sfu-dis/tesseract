@@ -86,7 +86,8 @@ public:
 #endif
   }
 
-  inline bool BuildIndexMap(FID table_fid) {
+#ifdef BLOCKDDL
+  inline bool BuildLockMap(FID table_fid) {
     std::unique_lock<std::mutex> lock(map_rw_latch);
     if (lock_map.find(table_fid) != lock_map.end()) {
       return false;
@@ -122,6 +123,7 @@ public:
     int ret = pthread_rwlock_unlock(lock_map[table_fid]);
     LOG_IF(FATAL, ret);
   }
+#endif
 };
 
 // User-facing table abstraction, operates on OIDs only
