@@ -19,9 +19,9 @@
 
 volatile bool running = true;
 std::vector<bench_worker *> bench_runner::workers;
-std::atomic<int> ddl_num(0);
-volatile bool ddling = false;
+volatile int ddl_num = 0;
 volatile int ddl_worker_id = -1;
+volatile bool ddl_start = false;
 
 thread_local ermia::epoch_num coroutine_batch_end_epoch = 0;
 
@@ -39,33 +39,13 @@ retry:
 
 uint32_t bench_worker::fetch_workload() {
   double d = r.next_uniform();
-  for (size_t i = 0; i < workload.size(); i++) {
-    if ((i + 1) == workload.size() || d < workload[i].frequency) {
-      if (i == workload.size() - 1) {
-        ddl_num.fetch_add(1);
-        int ddl_num_local = ddl_num.load();
-#if defined(COPYDDL)
-        if (ddl_num_local != 15) {
-          for (uint32_t i = 0; i < ermia::thread::cpu_cores.size(); ++i) {
-            auto &c = ermia::thread::cpu_cores[i];
-            if (c.node == me->node && c.physical_thread == me->sys_cpu) {
-              ermia::ddl::ddl_worker_logical_threads = c.logical_threads;
-            }
-          }
-          continue;
-        }
-#if !defined(LAZYDDL)
-        ddl_worker_id = worker_id;
-        ddling = true;
-#endif
-#elif defined(BLOCKDDL)
-        if (ddl_num_local != 4)
-          continue;
+#ifdef DDL
+  size_t workload_size = workload.size() - 1;
 #else
-        if (ddl_num_local != 2)
-          continue;
+  size_t workload_size = workload.size();
 #endif
-      }
+  for (size_t i = 0; i < workload_size; i++) {
+    if ((i + 1) == workload_size || d < workload[i].frequency) {
       return i;
     }
     d -= workload[i].frequency;
@@ -77,11 +57,6 @@ uint32_t bench_worker::fetch_workload() {
 
 bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer t) {
   if (!ret.IsAbort()) {
-#if defined(COPYDDL) && !defined(LAZYDDL)
-    if (ret._val == RC_DDL_TRUE) {
-      ddling = false;
-    }
-#endif
     ++ntxn_commits;
     std::get<0>(txn_counts[workload_idx])++;
     if (!ermia::config::pcommit) {
@@ -144,8 +119,15 @@ void bench_worker::MyWork(char *) {
     barrier_b->wait_for();
 
     while (running) {
-      uint32_t workload_idx = fetch_workload();
-      do_workload_function(workload_idx);
+      if (worker_id == ddl_worker_id &&
+          ddl_num < ermia::config::ddl_num_total && ddl_start) {
+        do_workload_function(workload.size() - 1);
+        ddl_num++;
+        ddl_start = false;
+      } else {
+        uint32_t workload_idx = fetch_workload();
+        do_workload_function(workload_idx);
+      }
     }
   }
 }
@@ -246,6 +228,10 @@ void bench_runner::run() {
 void bench_runner::start_measurement() {
   workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
+#ifdef DDL
+  util::fast_random r(2343352);
+  ddl_worker_id = r.next() % workers.size() - 1;
+#endif
   for (std::vector<bench_worker *>::const_iterator it = workers.begin();
        it != workers.end(); ++it) {
     while (!(*it)->IsImpersonated()) {
@@ -344,6 +330,9 @@ void bench_runner::start_measurement() {
   uint32_t sleep_time = 1;
   // uint32_t sleep_time = 500;
   auto gather_stats = [&]() {
+    if (slept == ermia::config::ddl_start_time) {
+      ddl_start = true;
+    }
     sleep(1);
     // usleep(1000 * sleep_time);
     uint64_t sec_commits = 0, sec_aborts = 0;

@@ -23,9 +23,7 @@ enum { RUNMODE_TIME = 0, RUNMODE_OPS = 1 };
 
 // benchmark global variables
 extern volatile bool running;
-extern std::atomic<int> ddl_num;
-extern volatile bool ddling;
-extern volatile int ddl_thread_id;
+extern volatile int ddl_num;
 
 template <typename T>
 static std::vector<T> unique_filter(const std::vector<T> &v) {
@@ -131,6 +129,8 @@ class bench_worker : public ermia::thread::Runner {
     workload_desc(const std::string &name, double frequency, txn_fn_t fn,
                   coro_txn_fn_t cf=nullptr, task_fn_t tf=nullptr)
         : name(name), frequency(frequency), fn(fn), coro_fn(cf) , task_fn(tf) {
+      if (name == "DDL")
+        return;
       ALWAYS_ASSERT(frequency > 0.0);
       ALWAYS_ASSERT(frequency <= 1.0);
     }

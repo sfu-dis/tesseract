@@ -83,50 +83,50 @@ add_library(thread_pool SHARED ${THREAD_POOL_SRC})
 
 # Non blocking DDL - SI
 add_library(corobase_ddl_si SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_si PROPERTIES COMPILE_FLAGS "-DSIDDL")
+set_target_properties(corobase_ddl_si PROPERTIES COMPILE_FLAGS "-DDDL -DSIDDL")
 
 add_executable(corobase_DDL_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_SI PROPERTIES COMPILE_FLAGS "-DSIDDL")
+set_target_properties(corobase_DDL_SI PROPERTIES COMPILE_FLAGS "-DDDL -DSIDDL")
 target_link_libraries(corobase_DDL_SI corobase_ddl_si thread_pool)
 
 set(corobase_SI_LIB corobase_ddl_si)
 
 # Non blocking DDL - Copy
 add_library(corobase_ddl_copy SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_copy PROPERTIES COMPILE_FLAGS "-DCOPYDDL")
+set_target_properties(corobase_ddl_copy PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL")
 
 add_executable(corobase_DDL_COPY ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_COPY PROPERTIES COMPILE_FLAGS "-DCOPYDDL")
+set_target_properties(corobase_DDL_COPY PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL")
 target_link_libraries(corobase_DDL_COPY corobase_ddl_copy thread_pool)
 
 set(corobase_COPY_LIB corobase_ddl_copy)
 
 # Non blocking DDL - Double write copy
 add_library(corobase_ddl_double_copy SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_double_copy PROPERTIES COMPILE_FLAGS "-DCOPYDDL -DDCOPYDDL")
+set_target_properties(corobase_ddl_double_copy PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL")
 
 add_executable(corobase_DDL_DOUBLE_COPY ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_DOUBLE_COPY PROPERTIES COMPILE_FLAGS "-DCOPYDDL -DDCOPYDDL")
+set_target_properties(corobase_DDL_DOUBLE_COPY PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL")
 target_link_libraries(corobase_DDL_DOUBLE_COPY corobase_ddl_double_copy thread_pool)
 
 set(corobase_COPY_LIB corobase_ddl_double_copy)
 
 # Non blocking DDL - Lazy copy
 add_library(corobase_ddl_lazy_copy SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_lazy_copy PROPERTIES COMPILE_FLAGS "-DCOPYDDL -DLAZYDDL")
+set_target_properties(corobase_ddl_lazy_copy PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL")
 
 add_executable(corobase_DDL_LAZY_COPY ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_LAZY_COPY PROPERTIES COMPILE_FLAGS "-DCOPYDDL -DLAZYDDL")
+set_target_properties(corobase_DDL_LAZY_COPY PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL")
 target_link_libraries(corobase_DDL_LAZY_COPY corobase_ddl_lazy_copy thread_pool)
 
 set(corobase_COPY_LIB corobase_ddl_lazy_copy)
 
 # Blocking DDL
 add_library(corobase_ddl_block SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_block PROPERTIES COMPILE_FLAGS "-DBLOCKDDL")
+set_target_properties(corobase_ddl_block PROPERTIES COMPILE_FLAGS "-DDDL -DBLOCKDDL")
 
 add_executable(corobase_DDL_BLOCK ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_BLOCK PROPERTIES COMPILE_FLAGS "-DBLOCKDDL")
+set_target_properties(corobase_DDL_BLOCK PROPERTIES COMPILE_FLAGS "-DDDL -DBLOCKDDL")
 target_link_libraries(corobase_DDL_BLOCK corobase_ddl_block thread_pool)
 
 set(corobase_BLOCK_LIB corobase_ddl_block)

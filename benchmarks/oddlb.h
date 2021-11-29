@@ -131,7 +131,7 @@ public:
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a,
                      barrier_b),
         schema_index((ermia::ConcurrentMasstreeIndex *)open_tables.at("SCHEMA"))
-#if defined(SIDDL) || defined(BLOCKDDL) || defined(NONEDDL)
+#if defined(SIDDL) || defined(BLOCKDDL)
         ,
         table_index(
             (ermia::ConcurrentMasstreeIndex *)open_tables.at("USERTABLE"))
@@ -146,7 +146,7 @@ protected:
   }
 
   ermia::ConcurrentMasstreeIndex *schema_index;
-#if defined(SIDDL) || defined(BLOCKDDL) || defined(NONEDDL)
+#if defined(SIDDL) || defined(BLOCKDDL)
   ermia::ConcurrentMasstreeIndex *table_index;
 #endif
 

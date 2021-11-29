@@ -13,18 +13,16 @@ public:
       spin_barrier *barrier_a, spin_barrier *barrier_b)
       : oddlb_base_worker(worker_id, seed, db, open_tables, barrier_a,
                           barrier_b) {
-    // std::cerr << "Read/Write = " << read_ratio << "/" << write_ratio
-    //           << std::endl;
   }
 
-  double read_ratio = 0.2, write_ratio = 0.7999985;
+  double read_ratio = 0.2, write_ratio = 0.8;
 
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
 
     w.push_back(workload_desc("Read", read_ratio, TxnRead));
     w.push_back(workload_desc("RMW", write_ratio, TxnRMW));
-    w.push_back(workload_desc("DDL", 0.0000015, TxnDDL));
+    w.push_back(workload_desc("DDL", 0, TxnDDL));
 
     return w;
   }
