@@ -74,7 +74,9 @@ struct write_set_t {
 #if defined(BLOCKDDL) || defined(SIDDL)
     if (is_ddl) {
       ALWAYS_ASSERT(num_entries < kMaxEntries_);
-      CRITICAL_SECTION(cs, lock);
+      if (config::scan_threads) {
+        CRITICAL_SECTION(cs, lock);
+      }
       new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, type);
     } else {
       ALWAYS_ASSERT(num_entries < kMaxEntries);
