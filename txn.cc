@@ -1028,21 +1028,29 @@ retry:
 }
 
 PROMISE(bool)
-transaction::OverlapCheck(TableDescriptor *td, OID oid) {
-  auto *tuple_array = td->GetTupleArray();
-  tuple_array->ensure_size(oid);
+transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
+                          OID oid) {
+  auto *new_tuple_array = new_td->GetTupleArray();
+  auto *old_tuple_array = old_td->GetTupleArray();
+  new_tuple_array->ensure_size(oid);
+  old_tuple_array->ensure_size(oid);
 
-  fat_ptr *entry_ptr = tuple_array->get(oid);
-  fat_ptr expected = *entry_ptr;
-  Object *obj = (Object *)expected.offset();
-  fat_ptr csn = obj->GetCSN();
-  if (expected == NULL_PTR) {
+  fat_ptr *new_entry_ptr = new_tuple_array->get(oid);
+  fat_ptr new_expected = *new_entry_ptr;
+  Object *new_obj = (Object *)new_expected.offset();
+  fat_ptr new_csn = new_obj->GetCSN();
+
+  fat_ptr *old_entry_ptr = old_tuple_array->get(oid);
+  fat_ptr old_expected = *old_entry_ptr;
+  Object *old_obj = (Object *)old_expected.offset();
+  fat_ptr old_csn = old_obj->GetCSN();
+
+  if (new_expected == NULL_PTR && old_expected != NULL_PTR) {
     RETURN true;
   }
-  if (expected != NULL_PTR &&
-      (csn.asi_type() == fat_ptr::ASI_XID ||
-       CSN::from_ptr(csn).offset() >
-           volatile_read(_cdc_last_csn[log->get_id()]))) {
+  if (new_expected != NULL_PTR && old_expected != NULL_PTR &&
+      (old_csn.asi_type() == fat_ptr::ASI_XID ||
+       CSN::from_ptr(old_csn).offset() > CSN::from_ptr(new_csn).offset())) {
     RETURN true;
   }
 

@@ -425,7 +425,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
       (t->new_td == table_descriptor || t->old_td == table_descriptor)) {
-    if (AWAIT t->OverlapCheck(t->old_td, oid)) {
+    if (AWAIT t->OverlapCheck(t->new_td, t->old_td, oid)) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
   }
@@ -484,7 +484,7 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
       (t->new_td == table_descriptor || t->old_td == table_descriptor)) {
-    if (AWAIT t->OverlapCheck(t->old_td, oid)) {
+    if (AWAIT t->OverlapCheck(t->new_td, t->old_td, oid)) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
   }
@@ -568,7 +568,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
     if (t->IsWaitForNewSchema() && schema &&
         (t->new_td == schema->td || t->old_td == schema->td)) {
-      if (AWAIT t->OverlapCheck(t->old_td, oid)) {
+      if (AWAIT t->OverlapCheck(t->new_td, t->old_td, oid)) {
         caller_callback->return_code = rc_t{RC_ABORT_SI_CONFLICT};
         return false;
       }

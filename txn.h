@@ -213,7 +213,7 @@ protected:
 
   // DML & DDL overlap check
   PROMISE(bool)
-  OverlapCheck(TableDescriptor *td, OID oid);
+  OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td, OID oid);
 
   PROMISE(rc_t)
   Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
