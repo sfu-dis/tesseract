@@ -20,8 +20,10 @@ public:
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
 
-    w.push_back(workload_desc("Read", read_ratio, TxnRead));
-    w.push_back(workload_desc("RMW", write_ratio, TxnRMW));
+    if (read_ratio)
+      w.push_back(workload_desc("Read", read_ratio, TxnRead));
+    if (write_ratio)
+      w.push_back(workload_desc("RMW", write_ratio, TxnRMW));
     w.push_back(workload_desc("DDL", 0, TxnDDL));
 
     return w;
@@ -41,11 +43,22 @@ public:
                                ermia::varstr &value, ermia::str_arena *arena) {
     uint64_t latest_version = schema->v;
     uint64_t current_version = 1;
+    ermia::varstr *new_value;
     for (; current_version <= latest_version; current_version++) {
-      ermia::varstr *new_value =
-          ermia::ddl::reformats[schema->reformats[current_version - 1]](
-              value, arena, current_version);
+      new_value = ermia::ddl::reformats[schema->reformats[current_version - 1]](
+          value, arena, current_version);
     }
+
+    struct ermia::Schema6 record2_test;
+    memcpy(&record2_test, (char *)new_value->data(), sizeof(record2_test));
+
+    // ALWAYS_ASSERT(record2_test.a == a);
+    ALWAYS_ASSERT(record2_test.b == latest_version);
+    ALWAYS_ASSERT(record2_test.c == latest_version);
+    ALWAYS_ASSERT(record2_test.d == latest_version);
+    ALWAYS_ASSERT(record2_test.e == latest_version);
+    ALWAYS_ASSERT(record2_test.f == latest_version);
+    ALWAYS_ASSERT(record2_test.g == latest_version);
   }
 
   rc_t txn_ddl() {
@@ -112,13 +125,15 @@ public:
 #ifdef LAZYDDL
       schema.old_index = old_table_index;
       schema.old_tds[old_schema_version] = old_td;
+      schema.state = 2;
 #elif DCOPYDDL
       schema.state = 1;
 #else
       schema.state = 2;
 #endif
     } else {
-      schema_version = old_schema_version + 5;
+      schema_version =
+          old_schema_version + ermia::config::no_copy_verification_version_add;
       schema.v = schema_version;
       schema.ddl_type = ermia::ddl::ddl_type_map(ermia::config::ddl_type);
       schema.state = 0;

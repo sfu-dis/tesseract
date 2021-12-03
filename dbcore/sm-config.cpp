@@ -70,6 +70,7 @@ bool enable_cdc_verification_test = false;
 bool enable_dml_slow_down = true;
 uint32_t ddl_num_total = 1;
 uint32_t ddl_start_time = 1;
+uint32_t no_copy_verification_version_add = 1;
 bool always_load = false;
 bool kStateRunning = false;
 bool iouring_read_log = false;

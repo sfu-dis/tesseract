@@ -71,7 +71,7 @@ struct write_set_t {
   write_set_t() : num_entries(0) {}
   inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid,
                            uint32_t size, dlog::log_record::logrec_type type) {
-#if defined(BLOCKDDL) || defined(SIDDL)
+#if defined(SIDDL)
     if (is_ddl) {
       ALWAYS_ASSERT(num_entries < kMaxEntries_);
       if (config::scan_threads) {
@@ -91,7 +91,7 @@ struct write_set_t {
   inline uint32_t size() { return num_entries; }
   inline void clear() { num_entries = 0; }
   inline write_record_t get(bool is_ddl, uint32_t idx) {
-#if defined(BLOCKDDL) || defined(SIDDL)
+#if defined(SIDDL)
     if (is_ddl)
       return entries_[idx];
     else

@@ -28,7 +28,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   if (is_ddl()) {
     ddl_running_1 = true;
     ddl_td_set = false;
-#if defined(BLOCKDDL) || defined(SIDDL)
+#if defined(SIDDL)
     write_set.init_large_write_set();
 #endif
   }
@@ -746,7 +746,7 @@ OID transaction::Insert(TableDescriptor *td, varstr *value,
   oidmgr->oid_put_new(tuple_array, oid, new_head);
 
   ASSERT(tuple->size == value->size());
-#if defined(BLOCKDDL) || defined(SIDDL)
+#if defined(SIDDL)
   add_to_write_set(true, tuple_array->get(oid), tuple_fid, oid, tuple->size,
                    dlog::log_record::logrec_type::INSERT);
 #else
@@ -860,14 +860,9 @@ void transaction::DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value) {
   oidmgr->oid_put_new(tuple_array, oid, new_head);
 
   ASSERT(new_tuple->size == value->size());
-#if defined(BLOCKDDL) || defined(SIDDL)
-  add_to_write_set(true, tuple_array->get(oid), tuple_fid, oid, new_tuple->size,
-                   dlog::log_record::logrec_type::UPDATE);
-#else
   add_to_write_set(tuple_fid == schema_td->GetTupleFid(), tuple_array->get(oid),
                    tuple_fid, oid, new_tuple->size,
                    dlog::log_record::logrec_type::UPDATE);
-#endif
 }
 
 PROMISE(rc_t)
@@ -1050,6 +1045,7 @@ transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
   }
   if (new_expected != NULL_PTR && old_expected != NULL_PTR &&
       (old_csn.asi_type() == fat_ptr::ASI_XID ||
+       new_csn.asi_type() == fat_ptr::ASI_XID ||
        CSN::from_ptr(old_csn).offset() > CSN::from_ptr(new_csn).offset())) {
     RETURN true;
   }

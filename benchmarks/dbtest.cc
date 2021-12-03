@@ -111,6 +111,9 @@ DEFINE_bool(enable_cdc_verification_test, false,
 DEFINE_bool(enable_dml_slow_down, true, "Whether make DMLs slow down when DDL");
 DEFINE_uint64(ddl_num_total, 1, "Number of DDL txns");
 DEFINE_uint64(ddl_start_time, 1, "When does a DDL txn start");
+DEFINE_uint64(no_copy_verification_version_add, 1,
+              "To which version we want to add to version when doing no copy "
+              "verification");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -152,6 +155,8 @@ int main(int argc, char **argv) {
   ermia::config::enable_dml_slow_down = FLAGS_enable_dml_slow_down;
   ermia::config::ddl_num_total = FLAGS_ddl_num_total;
   ermia::config::ddl_start_time = FLAGS_ddl_start_time;
+  ermia::config::no_copy_verification_version_add =
+      FLAGS_no_copy_verification_version_add;
 
   if (ermia::config::physical_workers_only) {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
@@ -301,6 +306,29 @@ int main(int argc, char **argv) {
   std::cerr << "  var-encode        : no" << std::endl;
 #endif
   std::cerr << "  worker-threads    : " << ermia::config::worker_threads << std::endl;
+#ifdef DDL
+  std::cerr << "DDL settings" << std::endl;
+  std::cerr << "  scan-threads    : " << ermia::config::scan_threads
+            << std::endl;
+  std::cerr << "  scan_physical_workers_only    : "
+            << ermia::config::scan_physical_workers_only << std::endl;
+  std::cerr << "  cdc-threads    : " << ermia::config::cdc_threads << std::endl;
+  std::cerr << "  cdc_physical_workers_only    : "
+            << ermia::config::cdc_physical_workers_only << std::endl;
+  std::cerr << "  enable_cdc_schema_lock    : "
+            << ermia::config::enable_cdc_schema_lock << std::endl;
+  std::cerr << "  ddl_type    : " << ermia::config::ddl_type << std::endl;
+  std::cerr << "  enable_cdc_verification_test    : "
+            << ermia::config::enable_cdc_verification_test << std::endl;
+  std::cerr << "  enable_dml_slow_down    : "
+            << ermia::config::enable_dml_slow_down << std::endl;
+  std::cerr << "  ddl_num_total    : " << ermia::config::ddl_num_total
+            << std::endl;
+  std::cerr << "  ddl_start_time    : " << ermia::config::ddl_start_time
+            << std::endl;
+  std::cerr << "  no_copy_verification_version_add    : "
+            << ermia::config::no_copy_verification_version_add << std::endl;
+#endif
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");
   ermia::MM::prepare_node_memory();
