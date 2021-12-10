@@ -308,25 +308,27 @@ int main(int argc, char **argv) {
   std::cerr << "  worker-threads    : " << ermia::config::worker_threads << std::endl;
 #ifdef DDL
   std::cerr << "DDL settings" << std::endl;
-  std::cerr << "  scan-threads    : " << ermia::config::scan_threads
-            << std::endl;
-  std::cerr << "  scan_physical_workers_only    : "
+  std::cerr << "  scan-threads				: "
+            << ermia::config::scan_threads << std::endl;
+  std::cerr << "  scan_physical_workers_only		: "
             << ermia::config::scan_physical_workers_only << std::endl;
-  std::cerr << "  cdc-threads    : " << ermia::config::cdc_threads << std::endl;
-  std::cerr << "  cdc_physical_workers_only    : "
+  std::cerr << "  cdc-threads				: "
+            << ermia::config::cdc_threads << std::endl;
+  std::cerr << "  cdc_physical_workers_only		: "
             << ermia::config::cdc_physical_workers_only << std::endl;
-  std::cerr << "  enable_cdc_schema_lock    : "
+  std::cerr << "  enable_cdc_schema_lock		: "
             << ermia::config::enable_cdc_schema_lock << std::endl;
-  std::cerr << "  ddl_type    : " << ermia::config::ddl_type << std::endl;
-  std::cerr << "  enable_cdc_verification_test    : "
+  std::cerr << "  ddl_type				: "
+            << ermia::config::ddl_type << std::endl;
+  std::cerr << "  enable_cdc_verification_test		: "
             << ermia::config::enable_cdc_verification_test << std::endl;
-  std::cerr << "  enable_dml_slow_down    : "
+  std::cerr << "  enable_dml_slow_down    		: "
             << ermia::config::enable_dml_slow_down << std::endl;
-  std::cerr << "  ddl_num_total    : " << ermia::config::ddl_num_total
-            << std::endl;
-  std::cerr << "  ddl_start_time    : " << ermia::config::ddl_start_time
-            << std::endl;
-  std::cerr << "  no_copy_verification_version_add    : "
+  std::cerr << "  ddl_num_total				: "
+            << ermia::config::ddl_num_total << std::endl;
+  std::cerr << "  ddl_start_time			: "
+            << ermia::config::ddl_start_time << std::endl;
+  std::cerr << "  no_copy_verification_version_add	: "
             << ermia::config::no_copy_verification_version_add << std::endl;
 #endif
 
