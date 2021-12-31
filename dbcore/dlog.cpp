@@ -100,6 +100,7 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
   durable_lsn = 0;
   current_lsn = 0;
   dirty = false;
+  normal = true;
 
   // Create a new segment
   create_segment();
@@ -125,6 +126,21 @@ void tls_log::uninitialize() {
   io_uring_queue_exit(&ring);
 }
 
+void tls_log::reset_logbuf(uint64_t logbuf_mb) {
+  CRITICAL_SECTION(cs, lock);
+  numa_free(logbuf[0], logbuf_size);
+  numa_free(logbuf[1], logbuf_size);
+
+  logbuf_size = logbuf_mb * uint32_t{1024 * 1024};
+  logbuf[0] = (char *)numa_alloc_onnode(logbuf_size, numa_node);
+  LOG_IF(FATAL, !logbuf[0]) << "Unable to allocate log buffer";
+  logbuf[1] = (char *)numa_alloc_onnode(logbuf_size, numa_node);
+  LOG_IF(FATAL, !logbuf[1]) << "Unable to allocate log buffer";
+
+  logbuf_offset = 0;
+  active_logbuf = logbuf[0];
+}
+
 void tls_log::enqueue_flush() {
   CRITICAL_SECTION(cs, lock);
   if (flushing) {
@@ -148,7 +164,7 @@ void tls_log::last_flush() {
   while (is_dirty()) {
   }
 
-  if (logbuf_offset && !is_dirty()) {
+  if (logbuf_offset) {
     issue_flush(active_logbuf, logbuf_offset);
     switch_log_buffers();
     poll_flush();
@@ -240,6 +256,9 @@ void tls_log::poll_flush() {
     current_segment()->size += size;
   }
 
+  if (!normal)
+    return;
+
   // get last tls durable csn
   uint64_t last_tls_durable_csn =
       (active_logbuf == logbuf[0]) ? last_csns[1] : last_csns[0];
@@ -285,7 +304,8 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
   }
 
   CRITICAL_SECTION(cs, lock);
-  tcommitter.set_dirty_flag();
+  if (normal)
+    tcommitter.set_dirty_flag();
   set_dirty(true);
 
   uint32_t alloc_size = payload_size + sizeof(log_block);

@@ -123,6 +123,9 @@ private:
   // Whether dirty
   bool dirty;
 
+  // Whether do normal operations
+  bool normal;
+
 private:
   // Get the currently open segment
   inline segment *current_segment() { return &segments[segments.size() - 1]; }
@@ -157,6 +160,8 @@ public:
   inline bool is_dirty() { return dirty; }
 
   inline void set_dirty(bool _dirty) { dirty = _dirty; }
+
+  inline void set_normal(bool _normal) { normal = _normal; }
 
   inline std::vector<segment> *get_segments() { return &segments; }
 
@@ -201,6 +206,9 @@ public:
 
   // CDC flush
   void cdc_flush() { last_flush(); }
+
+  // Reset log buffer size
+  void reset_logbuf(uint64_t logbuf_m);
 };
 
 extern std::vector<tls_log *> tlogs;

@@ -83,7 +83,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
             varstr *new_tuple_value =
                 reformats[reformat_idx](tuple_value, arena, new_v);
 #ifdef COPYDDL
-            t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin);
+            t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin, nullptr);
               // t->DDLScanInsert(tmp_td, oid, new_tuple_value);
 #elif BLOCKDDL
             t->DDLScanUpdate(new_td, oid, new_tuple_value);
@@ -121,7 +121,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
         varstr *new_tuple_value =
             reformats[reformat_idx](tuple_value, arena, new_v);
 #ifdef COPYDDL
-        t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin);
+        t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin, nullptr);
         // t->DDLScanInsert(tmp_td, oid, new_tuple_value);
 #elif BLOCKDDL
         t->DDLScanUpdate(new_td, oid, new_tuple_value);
@@ -150,7 +150,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   printf("t->get_cdc_smallest_csn(): %lu\n", t->get_cdc_smallest_csn());
   // while (t->get_cdc_smallest_csn() <
-  // dlog::current_csn.load(std::memory_order_relaxed) - 3000000 && !ddl_failed)
+  // dlog::current_csn.load(std::memory_order_relaxed) - 400000 && !ddl_failed)
   // {
   //}
   t->join_changed_data_capture_threads(cdc_workers);

@@ -189,18 +189,22 @@ protected:
   OID Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple = nullptr);
 
   // DDL scan insert
-  void DDLScanInsert(TableDescriptor *td, OID oid, varstr *value);
+  void DDLScanInsert(TableDescriptor *td, OID oid, varstr *value,
+                     dlog::log_block *block = nullptr);
 
   // DDL scan update
-  void DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value);
+  void DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value,
+                     dlog::log_block *block = nullptr);
 
   // DDL CDC insert
   PROMISE(rc_t)
-  DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn);
+  DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
+               dlog::log_block *block = nullptr);
 
   // DDL CDC update
   PROMISE(rc_t)
-  DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn);
+  DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
+               dlog::log_block *block = nullptr);
 
   // DDL update
   PROMISE(OID)
@@ -274,6 +278,8 @@ public:
   inline void set_ddl_executor(ddl::ddl_executor *_ddl_exe) {
     ddl_exe = _ddl_exe;
   }
+
+  inline dlog::tls_log *get_log() { return log; }
 
 #ifdef BLOCKDDL
   inline std::vector<FID> get_locked_tables() { return locked_tables; }
