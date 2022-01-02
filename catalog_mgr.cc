@@ -27,10 +27,12 @@ void schematable_loader::load() {
     return new_value;
   };
 
-  char str1[] = "order_line", str2[] = "oorder";
-  ermia::varstr &k1 = str(sizeof(str1)), &k2 = str(sizeof(str2));
+  char str1[] = "order_line", str2[] = "oorder", str3[] = "customer";
+  ermia::varstr &k1 = str(sizeof(str1)), &k2 = str(sizeof(str2)),
+                &k3 = str(sizeof(str3));
   k1.copy_from(str1, sizeof(str1));
   k2.copy_from(str2, sizeof(str2));
+  k3.copy_from(str3, sizeof(str3));
 
 #ifdef COPYDDL
   struct ermia::Schema_record order_line_schema;
@@ -51,10 +53,23 @@ void schematable_loader::load() {
   oorder_schema.old_v = -1;
 #endif
 
-  char str3[sizeof(ermia::Schema_record)], str4[sizeof(ermia::Schema_record)];
+  struct ermia::Schema_record customer_schema;
+  customer_schema.state = 0;
+  customer_schema.old_td = nullptr;
+#ifdef LAZYDDL
+  customer_schema.old_index = nullptr;
+#elif DCOPYDDL
+  customer_schema.old_v = -1;
+#endif
+
+  char schema_str1[sizeof(ermia::Schema_record)],
+      schema_str2[sizeof(ermia::Schema_record)],
+      schema_str3[sizeof(ermia::Schema_record)];
 #else
-  struct ermia::Schema_base order_line_schema, oorder_schema;
-  char str3[sizeof(ermia::Schema_base)], str4[sizeof(ermia::Schema_record)];
+  struct ermia::Schema_base order_line_schema, oorder_schema, customer_schema;
+  char schema_str1[sizeof(ermia::Schema_base)],
+      schema_str2[sizeof(ermia::Schema_record)],
+      schema_str3[sizeof(ermia::Schema_base)];
 #endif
   order_line_schema.v = 0;
   order_line_schema.reformat_idx = ermia::ddl::reformats.size();
@@ -63,19 +78,30 @@ void schematable_loader::load() {
   order_line_schema.index =
       ermia::Catalog::GetTable("order_line")->GetPrimaryIndex();
   order_line_schema.td = ermia::Catalog::GetTable("order_line");
-  memcpy(str3, &order_line_schema, sizeof(str3));
-  ermia::varstr &v1 = str(sizeof(str3));
-  v1.copy_from(str3, sizeof(str3));
+  memcpy(schema_str1, &order_line_schema, sizeof(schema_str1));
+  ermia::varstr &v1 = str(sizeof(schema_str1));
+  v1.copy_from(schema_str1, sizeof(schema_str1));
 
   oorder_schema.v = 0;
   oorder_schema.index = ermia::Catalog::GetTable("oorder")->GetPrimaryIndex();
   oorder_schema.td = ermia::Catalog::GetTable("oorder");
-  memcpy(str4, &oorder_schema, sizeof(str4));
-  ermia::varstr &v2 = str(sizeof(str4));
-  v2.copy_from(str4, sizeof(str4));
+  memcpy(schema_str2, &oorder_schema, sizeof(schema_str2));
+  ermia::varstr &v2 = str(sizeof(schema_str2));
+  v2.copy_from(schema_str2, sizeof(schema_str2));
+
+  customer_schema.v = 0;
+  customer_schema.reformat_idx = -1;
+  customer_schema.constraint_idx = -1;
+  customer_schema.index =
+      ermia::Catalog::GetTable("customer")->GetPrimaryIndex();
+  customer_schema.td = ermia::Catalog::GetTable("customer");
+  memcpy(schema_str3, &customer_schema, sizeof(schema_str3));
+  ermia::varstr &v3 = str(sizeof(schema_str3));
+  v3.copy_from(schema_str3, sizeof(schema_str3));
 
   TryVerifyStrict(tbl->InsertRecord(txn, k1, v1));
   TryVerifyStrict(tbl->InsertRecord(txn, k2, v2));
+  TryVerifyStrict(tbl->InsertRecord(txn, k3, v3));
   TryVerifyStrict(db->Commit(txn));
 
   if (ermia::config::verbose) {

@@ -25,6 +25,13 @@
                                       y(inline_str_16<500>, c_data)
 DO_STRUCT(customer, CUSTOMER_KEY_FIELDS, CUSTOMER_VALUE_FIELDS)
 
+#define CUSTOMER_PRIVATE_VALUE_FIELDS(x, y)                                    \
+  x(int32_t, c_id) y(float, c_discount) y(inline_str_fixed<2>, c_credit)       \
+      y(float, c_credit_lim) y(float, c_balance) y(float, c_ytd_payment)       \
+          y(int32_t, c_payment_cnt) y(int32_t, c_delivery_cnt)                 \
+              y(inline_str_16<500>, c_data)
+DO_STRUCT(customer_private, CUSTOMER_KEY_FIELDS, CUSTOMER_PRIVATE_VALUE_FIELDS)
+
 #define CUSTOMER_NAME_IDX_KEY_FIELDS(x, y)                              \
   x(int32_t, c_w_id) y(int32_t, c_d_id) y(inline_str_fixed<16>, c_last) \
       y(inline_str_fixed<16>, c_first)

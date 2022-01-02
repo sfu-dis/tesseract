@@ -32,6 +32,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
 
   printf("DDL scan begins\n");
   uint64_t count = 0;
+  TableDescriptor *old_td = ddl_executor_paras_list.at(0)->old_td;
   auto *alloc = oidmgr->get_allocator(old_td->GetTupleFid());
   uint32_t himark = alloc->head.hiwater_mark;
   auto *old_tuple_array = old_td->GetTupleArray();
@@ -72,30 +73,37 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
             AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
         varstr tuple_value;
         if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
-          if (type == VERIFICATION_ONLY || type == COPY_VERIFICATION) {
-            if (!constraints[constraint_idx](tuple_value, new_v)) {
-              printf("DDL failed\n");
-              return;
+          for (std::vector<struct ddl_executor_paras *>::const_iterator it =
+                   ddl_executor_paras_list.begin();
+               it != ddl_executor_paras_list.end(); ++it) {
+            if ((*it)->type == VERIFICATION_ONLY ||
+                (*it)->type == COPY_VERIFICATION) {
+              if (!constraints[(*it)->constraint_idx](tuple_value,
+                                                      (*it)->new_v)) {
+                printf("DDL failed\n");
+                return rc_t{RC_ABORT_INTERNAL};
+              }
             }
-          }
-          if (type == COPY_ONLY || type == COPY_VERIFICATION) {
-            arena->reset();
-            varstr *new_tuple_value =
-                reformats[reformat_idx](tuple_value, arena, new_v);
+            if ((*it)->type == COPY_ONLY || (*it)->type == COPY_VERIFICATION) {
+              arena->reset();
+              varstr *new_tuple_value = reformats[(*it)->reformat_idx](
+                  tuple_value, arena, (*it)->new_v);
 #ifdef COPYDDL
-            t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin, nullptr);
-              // t->DDLScanInsert(tmp_td, oid, new_tuple_value);
+              t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->begin,
+                              nullptr);
 #elif BLOCKDDL
-            t->DDLScanUpdate(new_td, oid, new_tuple_value);
+              t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value);
 #elif SIDDL
-            rc_t r = t->Update(new_td, oid, nullptr, new_tuple_value);
-            if (r._val != RC_TRUE) {
-              return;
-            }
+              rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value);
+              if (r._val != RC_TRUE) {
+                return rc_t{RC_ABORT_INTERNAL};
+              }
 #endif
+            }
           }
         }
       }
+      return rc_t{RC_TRUE};
     };
     thread->StartTask(parallel_scan);
   }
@@ -110,27 +118,32 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
     dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
     varstr tuple_value;
     if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
-      if (type == VERIFICATION_ONLY || type == COPY_VERIFICATION) {
-        if (!constraints[constraint_idx](tuple_value, new_v)) {
-          printf("DDL failed\n");
-          return rc_t{RC_ABORT_INTERNAL};
+      for (std::vector<struct ddl_executor_paras *>::const_iterator it =
+               ddl_executor_paras_list.begin();
+           it != ddl_executor_paras_list.end(); ++it) {
+        if ((*it)->type == VERIFICATION_ONLY ||
+            (*it)->type == COPY_VERIFICATION) {
+          if (!constraints[(*it)->constraint_idx](tuple_value, (*it)->new_v)) {
+            printf("DDL failed\n");
+            return rc_t{RC_ABORT_INTERNAL};
+          }
         }
-      }
-      if (type == COPY_ONLY || type == COPY_VERIFICATION) {
-        arena->reset();
-        varstr *new_tuple_value =
-            reformats[reformat_idx](tuple_value, arena, new_v);
+        if ((*it)->type == COPY_ONLY || (*it)->type == COPY_VERIFICATION) {
+          arena->reset();
+          varstr *new_tuple_value =
+              reformats[(*it)->reformat_idx](tuple_value, arena, (*it)->new_v);
 #ifdef COPYDDL
-        t->DDLCDCInsert(new_td, oid, new_tuple_value, xc->begin, nullptr);
-        // t->DDLScanInsert(tmp_td, oid, new_tuple_value);
+          t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->begin,
+                          nullptr);
 #elif BLOCKDDL
-        t->DDLScanUpdate(new_td, oid, new_tuple_value);
+          t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value);
 #elif SIDDL
-        r = t->Update(new_td, oid, nullptr, new_tuple_value);
-        if (r._val != RC_TRUE) {
-          return r;
-        }
+          rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value);
+          if (r._val != RC_TRUE) {
+            return rc_t{RC_ABORT_INTERNAL};
+          }
 #endif
+        }
       }
     }
   }
@@ -159,8 +172,12 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
          t->get_cdc_smallest_csn());
   if (ddl_failed) {
     printf("DDL failed\n");
-    new_td->GetTupleArray()->destroy(new_td->GetTupleArray());
-    return rc_t{RC_ABORT_INTERNAL};
+    for (std::vector<struct ddl_executor_paras *>::const_iterator it =
+             ddl_executor_paras_list.begin();
+         it != ddl_executor_paras_list.end(); ++it) {
+      (*it)->new_td->GetTupleArray()->destroy((*it)->new_td->GetTupleArray());
+      return rc_t{RC_ABORT_INTERNAL};
+    }
   }
   printf("First CDC ends\n");
   printf("Now go to grab a t4\n");
@@ -182,14 +199,14 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
   TXN::xid_context *xc = t->GetXIDContext();
   uint64_t begin_csn = xc->begin;
   uint64_t end_csn = xc->end;
-  bool ddl_end_tmp = true, ddl_end_flag = false;
-  FID fid = old_td->GetTupleFid();
+  // FID fid = old_td->GetTupleFid();
+  std::unordered_map<FID, TableDescriptor *> old_td_map = t->get_old_td_map();
   ermia::ConcurrentMasstreeIndex *table_secondary_index = nullptr;
-  if (new_td->GetSecIndexes().size()) {
+  /*if (new_td->GetSecIndexes().size()) {
     table_secondary_index =
         (ermia::ConcurrentMasstreeIndex *)(*(new_td->GetSecIndexes().begin()));
     ALWAYS_ASSERT(table_secondary_index);
-  }
+  }*/
   uint32_t count = 0;
   for (uint32_t i = begin_log; i <= end_log; i++) {
     dlog::tls_log *tlog = dlog::tlogs[i];
@@ -239,7 +256,8 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
               FID f = logrec->fid;
               OID o = logrec->oid;
 
-              if (f != fid) {
+              if (!old_td_map[f]) {
+                // if (f != fid) {
                 offset_in_block += logrec->rec_size;
                 continue;
               }
@@ -250,24 +268,31 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                 dbtuple *tuple = (dbtuple *)(logrec->data);
                 varstr tuple_value(tuple->get_value_start(), tuple->size);
 
-                if (type == VERIFICATION_ONLY || type == COPY_VERIFICATION) {
-                  if (!constraints[constraint_idx](tuple_value, new_v)) {
-                    return rc_t{RC_ABORT_INTERNAL};
+                for (std::vector<struct ddl_executor_paras *>::const_iterator
+                         it = ddl_executor_paras_list.begin();
+                     it != ddl_executor_paras_list.end(); ++it) {
+                  if ((*it)->type == VERIFICATION_ONLY ||
+                      (*it)->type == COPY_VERIFICATION) {
+                    if (!constraints[(*it)->constraint_idx](tuple_value,
+                                                            (*it)->new_v)) {
+                      return rc_t{RC_ABORT_INTERNAL};
+                    }
                   }
-                }
-                if (type == COPY_ONLY || type == COPY_VERIFICATION) {
+                  if ((*it)->type == COPY_ONLY ||
+                      (*it)->type == COPY_VERIFICATION) {
+                    varstr *new_value = reformats[(*it)->reformat_idx](
+                        tuple_value, arena, (*it)->new_v);
 
-                  varstr *new_value =
-                      reformats[reformat_idx](tuple_value, arena, new_v);
-
-                  insert_total++;
-                  if (t->DDLCDCInsert(new_td, o, new_value, logrec->csn)._val !=
-                      RC_TRUE) {
-                    insert_fail++;
-                  }
-                  if (table_secondary_index) {
-                    //   table_secondary_index->InsertOID(t, *insert_key_idx,
-                    //   oid);
+                    insert_total++;
+                    if (t->DDLCDCInsert((*it)->new_td, o, new_value,
+                                        logrec->csn)
+                            ._val != RC_TRUE) {
+                      insert_fail++;
+                    }
+                    if (table_secondary_index) {
+                      //   table_secondary_index->InsertOID(t, *insert_key_idx,
+                      //   oid);
+                    }
                   }
                 }
               } else if (logrec->type ==
@@ -275,19 +300,27 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                 dbtuple *tuple = (dbtuple *)(logrec->data);
                 varstr tuple_value(tuple->get_value_start(), tuple->size);
 
-                if (type == VERIFICATION_ONLY || type == COPY_VERIFICATION) {
-                  if (!constraints[constraint_idx](tuple_value, new_v)) {
-                    return rc_t{RC_ABORT_INTERNAL};
+                for (std::vector<struct ddl_executor_paras *>::const_iterator
+                         it = ddl_executor_paras_list.begin();
+                     it != ddl_executor_paras_list.end(); ++it) {
+                  if ((*it)->type == VERIFICATION_ONLY ||
+                      (*it)->type == COPY_VERIFICATION) {
+                    if (!constraints[(*it)->constraint_idx](tuple_value,
+                                                            (*it)->new_v)) {
+                      return rc_t{RC_ABORT_INTERNAL};
+                    }
                   }
-                }
-                if (type == COPY_ONLY || type == COPY_VERIFICATION) {
-                  varstr *new_value =
-                      reformats[reformat_idx](tuple_value, arena, new_v);
+                  if ((*it)->type == COPY_ONLY ||
+                      (*it)->type == COPY_VERIFICATION) {
+                    varstr *new_value = reformats[(*it)->reformat_idx](
+                        tuple_value, arena, (*it)->new_v);
 
-                  update_total++;
-                  if (t->DDLCDCUpdate(new_td, o, new_value, logrec->csn)._val !=
-                      RC_TRUE) {
-                    update_fail++;
+                    update_total++;
+                    if (t->DDLCDCUpdate((*it)->new_td, o, new_value,
+                                        logrec->csn)
+                            ._val != RC_TRUE) {
+                      update_fail++;
+                    }
                   }
                 }
               }

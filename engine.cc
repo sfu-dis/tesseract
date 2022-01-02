@@ -362,26 +362,15 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
   ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
   t->ensure_active();
 
-  OID oid = 0;
-
   // Insert to the table first
   dbtuple *tuple = nullptr;
-  TableDescriptor *td = nullptr;
-  if (t->IsWaitForNewSchema() &&
-      (t->new_td == table_descriptor || t->old_td == table_descriptor)) {
-    td = t->new_td;
-    // oid = AWAIT t->DDLInsert(td, &value);
-    oid = t->Insert(td, &value, &tuple);
-  } else {
-    td = table_descriptor;
-    oid = t->Insert(td, &value, &tuple);
-  }
+  OID oid = t->Insert(table_descriptor, &value, &tuple);
 
   // Done with table record, now set up index
   ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
   if (!AWAIT InsertOID(t, key, oid)) {
     if (config::enable_chkpt) {
-      volatile_write(td->GetKeyArray()->get(oid)->_ptr, 0);
+      volatile_write(table_descriptor->GetKeyArray()->get(oid)->_ptr, 0);
     }
     RETURN rc_t{RC_ABORT_INTERNAL};
   }
@@ -394,7 +383,7 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
     varstr *new_key = (varstr *)MM::allocate(sizeof(varstr) + key.size());
     new (new_key) varstr((char *)new_key + sizeof(varstr), 0);
     new_key->copy_from(&key);
-    auto *key_array = td->GetKeyArray();
+    auto *key_array = table_descriptor->GetKeyArray();
     key_array->ensure_size(oid);
     oidmgr->oid_put(key_array, oid,
                     fat_ptr::make((void *)new_key, INVALID_SIZE_CODE));
@@ -413,19 +402,17 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
-  /*if (t->IsWaitForNewSchema()) {
-    RETURN rc_t{RC_ABORT_INTERNAL};
-  }*/
-
   // Search for OID
   OID oid = 0;
   rc_t rc = {RC_INVALID};
   AWAIT GetOID(key, rc, t->xc, oid);
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+  std::unordered_map<FID, TableDescriptor *> new_td_map = t->get_new_td_map();
   if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
-      (t->new_td == table_descriptor || t->old_td == table_descriptor)) {
-    if (AWAIT t->OverlapCheck(t->new_td, t->old_td, oid)) {
+      new_td_map[table_descriptor->GetTupleFid()]) {
+    if (AWAIT t->OverlapCheck(new_td_map[table_descriptor->GetTupleFid()],
+                              t->old_td, oid)) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
   }
@@ -456,14 +443,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
 
   if (rc._val == RC_TRUE) {
     rc_t rc = rc_t{RC_INVALID};
-    if (t->IsWaitForNewSchema() &&
-        (t->new_td == table_descriptor || t->old_td == table_descriptor)) {
-      // rc = AWAIT t->DDLCDCUpdate(t->new_td, oid, &value, 0);
-      t->new_td->GetTupleArray()->ensure_size(oid);
-      rc = AWAIT t->Update(t->new_td, oid, &key, &value);
-    } else {
-      rc = AWAIT t->Update(table_descriptor, oid, &key, &value);
-    }
+    rc = AWAIT t->Update(table_descriptor, oid, &key, &value);
     RETURN rc;
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};
@@ -482,9 +462,10 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
   AWAIT GetOID(key, rc, t->xc, oid);
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+  std::unordered_map<FID, TableDescriptor *> new_td_map = t->get_new_td_map();
   if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
-      (t->new_td == table_descriptor || t->old_td == table_descriptor)) {
-    if (AWAIT t->OverlapCheck(t->new_td, t->old_td, oid)) {
+      (new_td_map.find(table_descriptor->GetTupleFid()) != new_td_map.end())) {
+    if (AWAIT t->OverlapCheck(table_descriptor, t->old_td, oid)) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
   }
@@ -499,12 +480,7 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
   if (rc._val == RC_TRUE) {
     // Allocate an empty record version as the "new" version
     varstr *null_val = t->string_allocator().next(0);
-    TableDescriptor *td = table_descriptor;
-    if (t->IsWaitForNewSchema() &&
-        (t->new_td == table_descriptor || t->old_td == table_descriptor)) {
-      td = t->new_td;
-    }
-    rc_t rc = AWAIT t->Update(td, oid, &key, null_val);
+    rc_t rc = AWAIT t->Update(table_descriptor, oid, &key, null_val);
     RETURN rc;
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};

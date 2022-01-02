@@ -152,14 +152,11 @@ public:
       txn->set_table_descriptors(schema.td, old_td);
 #if !defined(LAZYDDL)
       // New a ddl executor
-      ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
+      ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
+      ddl_exe->add_ddl_executor_paras(
           schema.v, schema.old_v, schema.ddl_type, schema.reformat_idx,
           schema.constraint_idx, schema.td, schema.old_td, schema.index,
           schema.state);
-      if (ermia::config::ddl_type == 2 || ermia::config::ddl_type == 3) {
-        ddl_exe->store_new_schema(&v2, txn->GetXIDContext());
-      }
-      // ddl_exe->set_cdc_workers(cdc_workers);
       txn->set_ddl_executor(ddl_exe);
 
       ermia::ConcurrentMasstreeIndex *table_index =
@@ -210,9 +207,10 @@ public:
     TryCatch(schema_index->WriteSchemaTable(txn, rc, k, v1));
 
     // New a ddl executor
-    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
-        schema.v, -1, schema.ddl_type, schema.reformat_idx,
-        schema.constraint_idx, schema.td, schema.td, schema.index, -1);
+    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
+    ddl_exe->add_ddl_executor_paras(schema.v, -1, schema.ddl_type,
+                                    schema.reformat_idx, schema.constraint_idx,
+                                    schema.td, schema.td, schema.index, -1);
 
     TryCatch(ddl_exe->scan(txn, arena, v1));
 
@@ -253,9 +251,10 @@ public:
     TryCatch(rc);
 
     // New a ddl executor
-    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
-        schema.v, -1, schema.ddl_type, schema.reformat_idx,
-        schema.constraint_idx, schema.td, schema.td, schema.index, -1);
+    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
+    ddl_exe->add_ddl_executor_paras(schema.v, -1, schema.ddl_type,
+                                    schema.reformat_idx, schema.constraint_idx,
+                                    schema.td, schema.td, schema.index, -1);
 
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(txn, arena, v);

@@ -1549,9 +1549,10 @@ rc_t tpcc_worker::txn_ddl() {
   TryCatch(schema_index->WriteSchemaTable(txn, rc, k1, v2));
 
   // New a ddl executor
-  ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
-      schema.v, -1, schema.ddl_type, schema.reformat_idx, schema.constraint_idx,
-      schema.td, schema.td, schema.index, -1);
+  ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
+  ddl_exe->add_ddl_executor_paras(schema.v, -1, schema.ddl_type,
+                                  schema.reformat_idx, schema.constraint_idx,
+                                  schema.td, schema.td, schema.index, -1);
 
   TryCatch(ddl_exe->scan(txn, arena, v2));
 
@@ -1564,90 +1565,190 @@ rc_t tpcc_worker::txn_ddl() {
   printf("DDL txn begin: %lu\n", txn->GetXIDContext()->begin);
 
   // Read schema tables first
-  char str1[] = "order_line";
-  ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1);
-  ermia::varstr v1;
-  rc_t rc = rc_t{RC_INVALID};
-  ermia::OID oid = ermia::INVALID_OID;
+  if (ermia::config::ddl_example == 0) {
+    char str1[] = "order_line";
+    ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1);
+    ermia::varstr v1;
+    rc_t rc = rc_t{RC_INVALID};
+    ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
-  TryVerifyRelaxed(rc);
+    schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+    TryVerifyRelaxed(rc);
 
-  struct ermia::Schema_record order_line_schema;
-  memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
+    struct ermia::Schema_record order_line_schema;
+    memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
 
-  ermia::ConcurrentMasstreeIndex *old_order_line_table_index = (ermia::ConcurrentMasstreeIndex *) order_line_schema.index;
-  ermia::TableDescriptor *old_order_line_td = order_line_schema.td;
-  
-  uint64_t old_schema_version = order_line_schema.v;
-  uint64_t schema_version = order_line_schema.v + 1;
-  std::cerr << "Change to a new schema, version: " << schema_version
-            << std::endl;
-  order_line_schema.v = schema_version;
-  order_line_schema.old_v = old_schema_version;
-  order_line_schema.state = 0;
-  order_line_schema.old_td = old_order_line_td;
+    ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
+        (ermia::ConcurrentMasstreeIndex *)order_line_schema.index;
+    ermia::TableDescriptor *old_order_line_td = order_line_schema.td;
 
-  rc = rc_t{RC_INVALID};
+    uint64_t old_schema_version = order_line_schema.v;
+    uint64_t schema_version = order_line_schema.v + 1;
+    std::cerr << "Order line table changes to a new schema, version: "
+              << schema_version << std::endl;
+    order_line_schema.v = schema_version;
+    order_line_schema.old_v = old_schema_version;
+    order_line_schema.state = 0;
+    order_line_schema.old_td = old_order_line_td;
 
-  std::stringstream ss;
-  ss << schema_version;
+    rc = rc_t{RC_INVALID};
 
-  std::string str3 = std::string(str1);
-  str3 += ss.str();
-  
-  db->CreateTable(str3.c_str());
-  // For create index DDL
-  // db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
+    std::stringstream ss;
+    ss << schema_version;
+
+    std::string str3 = std::string(str1);
+    str3 += ss.str();
+
+    db->CreateTable(str3.c_str());
+    // For create index DDL
+    // db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
 
 #ifdef LAZYDDL
-  order_line_schema.old_index = old_order_line_table_index;
-  order_line_schema.old_tds[old_schema_version] = old_order_line_td;
-  order_line_schema.state = 2;
+    order_line_schema.old_index = old_order_line_table_index;
+    order_line_schema.old_tds[old_schema_version] = old_order_line_td;
+    order_line_schema.state = 2;
 #elif DCOPYDDL
-  order_line_schema.state = 1;
+    order_line_schema.state = 1;
 #else
-  order_line_schema.state = 2;
+    order_line_schema.state = 2;
 #endif
-  ermia::Catalog::GetTable(str3.c_str())
-      ->SetPrimaryIndex(old_order_line_table_index, std::string(str1));
-  order_line_schema.index =
-      ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
-  order_line_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
-  ALWAYS_ASSERT(old_order_line_table_index == order_line_schema.index);
-  order_line_schema.td = ermia::Catalog::GetTable(str3.c_str());
-  char str4[sizeof(ermia::Schema_record)];
-  ALWAYS_ASSERT(sizeof(ermia::Schema_record) == sizeof(order_line_schema));
-  memcpy(str4, &order_line_schema, sizeof(str4));
-  ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
+    ermia::Catalog::GetTable(str3.c_str())
+        ->SetPrimaryIndex(old_order_line_table_index, std::string(str1));
+    order_line_schema.index =
+        ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
+    order_line_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
+    ALWAYS_ASSERT(old_order_line_table_index == order_line_schema.index);
+    order_line_schema.td = ermia::Catalog::GetTable(str3.c_str());
+    char str4[sizeof(ermia::Schema_record)];
+    ALWAYS_ASSERT(sizeof(ermia::Schema_record) == sizeof(order_line_schema));
+    memcpy(str4, &order_line_schema, sizeof(str4));
+    ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
 
-  txn->set_table_descriptors(order_line_schema.td, old_order_line_td);
+    txn->set_table_descriptors(order_line_schema.td, old_order_line_td);
+    txn->add_new_td_map(order_line_schema.td);
+    txn->add_old_td_map(old_order_line_td);
 
-  schema_index->WriteSchemaTable(txn, rc, k1, v3);
-  TryCatch(rc);
+    schema_index->WriteSchemaTable(txn, rc, k1, v3);
+    TryCatch(rc);
 
-  // New a ddl executor
-  ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor(
-      order_line_schema.v, order_line_schema.old_v, order_line_schema.ddl_type,
-      order_line_schema.reformat_idx, order_line_schema.constraint_idx,
-      order_line_schema.td, order_line_schema.old_td, order_line_schema.index,
-      order_line_schema.state);
-  // ddl_exe->set_cdc_workers(cdc_workers);
-  txn->set_ddl_executor(ddl_exe);
+    // New a ddl executor
+    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
+    ddl_exe->add_ddl_executor_paras(
+        order_line_schema.v, order_line_schema.old_v,
+        order_line_schema.ddl_type, order_line_schema.reformat_idx,
+        order_line_schema.constraint_idx, order_line_schema.td,
+        order_line_schema.old_td, order_line_schema.index,
+        order_line_schema.state);
+    // ddl_exe->set_cdc_workers(cdc_workers);
+    txn->set_ddl_executor(ddl_exe);
 
 #if !defined(LAZYDDL)
-  rc = ddl_exe->scan(txn, arena, v3);
-  TryCatch(rc);
+    rc = ddl_exe->scan(txn, arena, v3);
+    TryCatch(rc);
 
 #ifdef DCOPYDDL
-  order_line_schema.state = 0;
-  memcpy(str4, &order_line_schema, sizeof(str4));
-  v3 = Encode_(str(sizeof(str4)), str4);
+    order_line_schema.state = 0;
+    memcpy(str4, &order_line_schema, sizeof(str4));
+    v3 = Encode_(str(sizeof(str4)), str4);
 
-  schema_index->WriteSchemaTable(txn, rc, k1, v3);
-  TryCatch(rc);
+    schema_index->WriteSchemaTable(txn, rc, k1, v3);
+    TryCatch(rc);
 #endif
 #endif
+  } else if (ermia::config::ddl_example == 1) {
+    char str1[] = "customer";
+    ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1);
+    ermia::varstr v1;
+    rc_t rc = rc_t{RC_INVALID};
+    ermia::OID oid = ermia::INVALID_OID;
+
+    schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+    TryVerifyRelaxed(rc);
+
+    struct ermia::Schema_record customer_schema;
+    memcpy(&customer_schema, (char *)v1.data(), sizeof(customer_schema));
+
+    ermia::ConcurrentMasstreeIndex *old_customer_table_index =
+        (ermia::ConcurrentMasstreeIndex *)customer_schema.index;
+    ermia::TableDescriptor *old_customer_td = customer_schema.td;
+
+    uint64_t old_schema_version = customer_schema.v;
+    uint64_t schema_version = customer_schema.v + 1;
+    std::cerr << "Customer table changes to a new schema, version: "
+              << schema_version << std::endl;
+
+    customer_schema.v = schema_version;
+    customer_schema.old_v = old_schema_version;
+    customer_schema.state = 0;
+    customer_schema.old_td = old_customer_td;
+
+    rc = rc_t{RC_INVALID};
+
+    std::stringstream ss;
+    ss << schema_version;
+
+    std::string str3 = std::string(str1);
+    str3 += ss.str();
+
+    // This new table is for private customer records
+    db->CreateTable(str3.c_str());
+
+#ifdef LAZYDDL
+    customer_schema.old_index = old_customer_table_index;
+    customer_schema.old_tds[old_schema_version] = old_customer_td;
+    customer_schema.state = 2;
+#elif DCOPYDDL
+    customer_schema.state = 1;
+#else
+    customer_schema.state = 2;
+#endif
+    ermia::Catalog::GetTable(str3.c_str())
+        ->SetPrimaryIndex(old_customer_table_index, std::string(str1));
+    customer_schema.index =
+        ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
+    customer_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
+    ALWAYS_ASSERT(old_customer_table_index == customer_schema.index);
+    customer_schema.td = ermia::Catalog::GetTable(str3.c_str());
+    char str4[sizeof(ermia::Schema_record)];
+    ALWAYS_ASSERT(sizeof(ermia::Schema_record) == sizeof(customer_schema));
+    memcpy(str4, &customer_schema, sizeof(str4));
+    ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
+
+    schema_index->WriteSchemaTable(txn, rc, k1, v3);
+    TryCatch(rc);
+
+    // Now let us build a new table for public customer records
+    char str5[] = "customer_public";
+    db->CreateTable(str5);
+
+    ermia::varstr &k2 = str(sizeof(str5));
+    k2.copy_from(str5, sizeof(str5));
+
+    struct ermia::Schema_record public_customer_schema;
+#ifdef LAZYDDL
+    public_customer_schema.old_index = old_customer_table_index;
+    public_customer_schema.old_tds[old_schema_version] = old_customer_td;
+    public_customer_schema.state = 2;
+#elif DCOPYDDL
+    public_customer_schema.state = 1;
+#else
+    public_customer_schema.state = 2;
+#endif
+    ermia::Catalog::GetTable(str5)->SetPrimaryIndex(old_customer_table_index,
+                                                    std::string(str5));
+    public_customer_schema.index =
+        ermia::Catalog::GetTable(str5)->GetPrimaryIndex();
+    public_customer_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
+    ALWAYS_ASSERT(old_customer_table_index == public_customer_schema.index);
+    public_customer_schema.td = ermia::Catalog::GetTable(str5);
+    char str6[sizeof(ermia::Schema_record)];
+    ALWAYS_ASSERT(sizeof(ermia::Schema_record) ==
+                  sizeof(public_customer_schema));
+    memcpy(str6, &public_customer_schema, sizeof(str6));
+    ermia::varstr &v4 = Encode_(str(sizeof(str6)), str6);
+
+    TryVerifyStrict(schema_index->InsertRecord(txn, k2, v4));
+  }
 
   TryCatch(db->Commit(txn));
 #endif

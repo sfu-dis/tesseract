@@ -31,8 +31,8 @@ enum ddl_type {
 
 ddl_type ddl_type_map(uint32_t type);
 
-class ddl_executor {
-private:
+// struct of DDL executor parameters
+struct ddl_executor_paras {
   // New schema version
   uint64_t new_v;
 
@@ -60,37 +60,40 @@ private:
   // State
   uint64_t state;
 
-  // New schema fat ptr
-  fat_ptr new_schema_fat_ptr;
+  ddl_executor_paras(uint64_t new_v, uint64_t old_v, ddl_type type,
+                     uint64_t reformat_idx, uint64_t constraint_idx,
+                     TableDescriptor *new_td, TableDescriptor *old_td,
+                     OrderedIndex *index, uint64_t state)
+      : new_v(new_v), old_v(old_v), type(type), reformat_idx(reformat_idx),
+        constraint_idx(constraint_idx), new_td(new_td), old_td(old_td),
+        index(index), state(state) {}
+};
+
+class ddl_executor {
+  friend class transaction;
+
+private:
+  // List of DDL executor parameters
+  std::vector<struct ddl_executor_paras *> ddl_executor_paras_list;
 
   // CDC workers
   std::vector<ermia::thread::Thread *> cdc_workers;
 
 public:
   // Constructor and destructor
-  ddl_executor(uint64_t _new_v, uint64_t _old_v, ddl_type _type,
-               uint64_t _reformat_idx, uint64_t _constraint_idx,
-               TableDescriptor *_new_td, TableDescriptor *_old_td,
-               OrderedIndex *_index, uint64_t _state) {
-    new_v = _new_v;
-    old_v = _old_v;
-    type = _type;
-    reformat_idx = _reformat_idx;
-    constraint_idx = _constraint_idx;
-    new_td = _new_td;
-    old_td = _old_td;
-    index = _index;
-    state = _state;
-  }
+  ddl_executor() {}
   ~ddl_executor() {}
 
-  inline ddl_type get_ddl_type() { return type; }
-
-  inline void store_new_schema(varstr *value, TXN::xid_context *xc) {
-    new_schema_fat_ptr = Object::Create(value, xc->begin_epoch);
+  inline void add_ddl_executor_paras(uint64_t new_v, uint64_t old_v,
+                                     ddl_type type, uint64_t reformat_idx,
+                                     uint64_t constraint_idx,
+                                     TableDescriptor *new_td,
+                                     TableDescriptor *old_td,
+                                     OrderedIndex *index, uint64_t state) {
+    ddl_executor_paras_list.push_back(
+        new ddl_executor_paras(new_v, old_v, type, reformat_idx, constraint_idx,
+                               new_td, old_td, index, state));
   }
-
-  inline fat_ptr get_new_schema_fat_ptr() { return new_schema_fat_ptr; }
 
   inline void
   set_cdc_workers(std::vector<ermia::thread::Thread *> _cdc_workers) {

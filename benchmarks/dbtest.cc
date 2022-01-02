@@ -114,6 +114,7 @@ DEFINE_uint64(ddl_start_time, 1, "When does a DDL txn start");
 DEFINE_uint64(no_copy_verification_version_add, 1,
               "To which version we want to add to version when doing no copy "
               "verification");
+DEFINE_uint64(ddl_example, 0, "DDL example");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -157,6 +158,7 @@ int main(int argc, char **argv) {
   ermia::config::ddl_start_time = FLAGS_ddl_start_time;
   ermia::config::no_copy_verification_version_add =
       FLAGS_no_copy_verification_version_add;
+  ermia::config::ddl_example = FLAGS_ddl_example;
 
   if (ermia::config::physical_workers_only) {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
@@ -330,6 +332,8 @@ int main(int argc, char **argv) {
             << ermia::config::ddl_start_time << std::endl;
   std::cerr << "  no_copy_verification_version_add	: "
             << ermia::config::no_copy_verification_version_add << std::endl;
+  std::cerr << "  ddl_example			        : "
+            << ermia::config::ddl_example << std::endl;
 #endif
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");

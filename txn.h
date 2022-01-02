@@ -206,10 +206,6 @@ protected:
   DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
                dlog::log_block *block = nullptr);
 
-  // DDL update
-  PROMISE(OID)
-  DDLInsert(TableDescriptor *td, varstr *value);
-
   // DDL schema unblock
   PROMISE(rc_t)
   DDLSchemaUnblock(TableDescriptor *td, OID oid, varstr *value,
@@ -270,16 +266,27 @@ public:
 
   inline bool IsWaitForNewSchema() { return wait_for_new_schema; }
 
-  inline TableDescriptor *GetOldTd() { return old_td; }
-  inline TableDescriptor *GetNewTd() { return new_td; }
-
   inline void set_table_descriptors(TableDescriptor *_new_td, TableDescriptor *_old_td) { new_td = _new_td, old_td = _old_td; }
+
+  inline std::unordered_map<FID, TableDescriptor *> get_new_td_map() {
+    return new_td_map;
+  }
+
+  inline std::unordered_map<FID, TableDescriptor *> get_old_td_map() {
+    return old_td_map;
+  }
+
+  inline void add_new_td_map(TableDescriptor *new_td) {
+    new_td_map[new_td->GetTupleFid()] = new_td;
+  }
+
+  inline void add_old_td_map(TableDescriptor *old_td) {
+    old_td_map[old_td->GetTupleFid()] = old_td;
+  }
 
   inline void set_ddl_executor(ddl::ddl_executor *_ddl_exe) {
     ddl_exe = _ddl_exe;
   }
-
-  inline dlog::tls_log *get_log() { return log; }
 
 #ifdef BLOCKDDL
   inline std::vector<FID> get_locked_tables() { return locked_tables; }
@@ -299,7 +306,9 @@ protected:
   uint32_t coro_batch_idx; // its index in the batch
   std::unordered_map<TableDescriptor*, OID> schema_read_map;
   TableDescriptor *new_td;
+  std::unordered_map<FID, TableDescriptor *> new_td_map;
   TableDescriptor *old_td;
+  std::unordered_map<FID, TableDescriptor *> old_td_map;
   bool wait_for_new_schema;
   ddl::ddl_executor *ddl_exe;
 #ifdef BLOCKDDL
