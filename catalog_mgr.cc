@@ -68,7 +68,7 @@ void schematable_loader::load() {
 #else
   struct ermia::Schema_base order_line_schema, oorder_schema, customer_schema;
   char schema_str1[sizeof(ermia::Schema_base)],
-      schema_str2[sizeof(ermia::Schema_record)],
+      schema_str2[sizeof(ermia::Schema_base)],
       schema_str3[sizeof(ermia::Schema_base)];
 #endif
   order_line_schema.v = 0;

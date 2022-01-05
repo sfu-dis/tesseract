@@ -149,7 +149,7 @@ public:
     //}
 
     if (ermia::config::ddl_type != 4) {
-      txn->set_table_descriptors(schema.td, old_td);
+      txn->set_old_td(old_td);
 #if !defined(LAZYDDL)
       // New a ddl executor
       ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
@@ -244,7 +244,7 @@ public:
     ermia::varstr &v = str(sizeof(str2));
     v.copy_from(str2, sizeof(str2));
 
-    txn->set_table_descriptors(schema.td, schema.td);
+    txn->set_old_td(schema.td);
 
     rc = rc_t{RC_INVALID};
     rc = schema_index->WriteSchemaTable(txn, rc, k, v);

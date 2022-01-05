@@ -800,6 +800,8 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
             v.c_middle.assign("OE");
             v.c_data.assign(RandomStr(r, RandomNumber(r, 300, 500)));
 
+            v.v = 0;
+
 #ifndef NDEBUG
             checker::SanityCheckCustomer(&k, &v);
 #endif
@@ -1125,6 +1127,7 @@ class order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
       ASSERT(keylen == sizeof(order_line_1::key));
       order_line_1::value v_ol_temp;
       const order_line_1::value *v_ol = Decode(value, v_ol_temp);
+      ALWAYS_ASSERT(v_ol->v != 0);
     }
     ++n;
     return true;
@@ -1179,10 +1182,6 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
        ASSERT(keylen == sizeof(order_line_1::key));
        order_line_1::value v_ol_temp;
        const order_line_1::value *v_ol = Decode(value, v_ol_temp);
-       if (v_ol->v == 0) {
-         // printf("v_ol->v == 0\n");
-         return false;
-       }
        ALWAYS_ASSERT(v_ol->v != 0);
        s_i_ids[v_ol->ol_i_id] = 1;
      }

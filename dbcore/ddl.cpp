@@ -32,7 +32,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
 
   printf("DDL scan begins\n");
   uint64_t count = 0;
-  TableDescriptor *old_td = ddl_executor_paras_list.at(0)->old_td;
+  TableDescriptor *old_td = t->get_old_td();
   auto *alloc = oidmgr->get_allocator(old_td->GetTupleFid());
   uint32_t himark = alloc->head.hiwater_mark;
   auto *old_tuple_array = old_td->GetTupleArray();
@@ -185,6 +185,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
     cdc_test = true;
     usleep(10);
   }
+  ddl_td_set = false;
 #endif
 
   return rc_t{RC_TRUE};
@@ -199,7 +200,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
   TXN::xid_context *xc = t->GetXIDContext();
   uint64_t begin_csn = xc->begin;
   uint64_t end_csn = xc->end;
-  // FID fid = old_td->GetTupleFid();
+  FID fid = t->get_old_td()->GetTupleFid();
   std::unordered_map<FID, TableDescriptor *> old_td_map = t->get_old_td_map();
   ermia::ConcurrentMasstreeIndex *table_secondary_index = nullptr;
   /*if (new_td->GetSecIndexes().size()) {
@@ -256,13 +257,11 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
               FID f = logrec->fid;
               OID o = logrec->oid;
 
-              if (!old_td_map[f]) {
-                // if (f != fid) {
+              // if (!old_td_map[f]) {
+              if (f != fid) {
                 offset_in_block += logrec->rec_size;
                 continue;
               }
-
-              arena->reset();
 
               if (logrec->type == dlog::log_record::logrec_type::INSERT) {
                 dbtuple *tuple = (dbtuple *)(logrec->data);
@@ -280,6 +279,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                   }
                   if ((*it)->type == COPY_ONLY ||
                       (*it)->type == COPY_VERIFICATION) {
+                    arena->reset();
                     varstr *new_value = reformats[(*it)->reformat_idx](
                         tuple_value, arena, (*it)->new_v);
 
@@ -312,6 +312,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                   }
                   if ((*it)->type == COPY_ONLY ||
                       (*it)->type == COPY_VERIFICATION) {
+                    arena->reset();
                     varstr *new_value = reformats[(*it)->reformat_idx](
                         tuple_value, arena, (*it)->new_v);
 

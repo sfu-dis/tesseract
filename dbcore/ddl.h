@@ -104,7 +104,7 @@ public:
     return cdc_workers;
   }
 
-  // Scan and do operations (copy, verfication)
+  // Scan and do operations (copy, verification)
   rc_t scan(transaction *t, str_arena *arena, varstr &value);
 
   // CDC

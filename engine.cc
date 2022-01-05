@@ -61,25 +61,23 @@ retry:
   }
 
 #ifdef COPYDDL
-  if (t->is_dml()) {
+  if (t->is_dml() || t->is_read_only()) {
     struct Schema_record schema;
     memcpy(&schema, (char *)value.data(), sizeof(schema));
     ALWAYS_ASSERT(schema.td != schema.old_td);
     if (schema.state == 2) {
-      if (!ddl_td_set) {
-        goto retry;
-      }
-      if (schema.td->GetTupleArray() != schema.index->GetTupleArray()) {
-        goto retry;
-      }
-      if (config::enable_cdc_schema_lock) {
+      if (!ddl_td_set || config::enable_cdc_schema_lock) {
         goto retry;
       } else {
         t->SetWaitForNewSchema(true);
-        t->set_table_descriptors(schema.td, schema.old_td);
+        t->set_old_td(schema.old_td);
+        t->add_new_td_map(schema.td);
+        t->add_old_td_map(schema.old_td);
       }
     }
-    t->schema_read_map[schema.td] = *out_oid;
+    if (t->is_dml()) {
+      t->schema_read_map[schema.td] = *out_oid;
+    }
   }
 #endif
 }
@@ -156,9 +154,6 @@ PROMISE(rc_t)
 ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
                               const varstr *end_key, ScanCallback &callback,
                               Schema_record *schema) {
-  /*if (t->IsWaitForNewSchema()) {
-    RETURN rc_t{RC_ABORT_INTERNAL};
-  }*/
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 
@@ -174,7 +169,7 @@ ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
   }
 
   if (!unlikely(end_key && *end_key <= start_key)) {
-    XctSearchRangeCallback cb(t, &c, schema);
+    XctSearchRangeCallback cb(t, &c, schema, table_descriptor);
     AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
                                       cb, t->xc);
   }
@@ -191,7 +186,7 @@ ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
 
   t->ensure_active();
   if (!unlikely(end_key && start_key <= *end_key)) {
-    XctSearchRangeCallback cb(t, &c, schema);
+    XctSearchRangeCallback cb(t, &c, schema, table_descriptor);
 
     varstr lowervk;
     if (end_key) {
@@ -231,6 +226,12 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
       // Key-OID mapping exists, now try to get the actual tuple to be sure
       tuple = AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(),
                                             oid, t->xc);
+
+      if (schema && table_descriptor != schema->td) {
+        volatile_write(rc._val, RC_ABORT_INTERNAL);
+        RETURN;
+      }
+
       if (!tuple) {
         found = false;
       }
@@ -443,7 +444,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
 
   if (rc._val == RC_TRUE) {
     rc_t rc = rc_t{RC_INVALID};
-    rc = AWAIT t->Update(table_descriptor, oid, &key, &value);
+    rc = AWAIT t->Update(table_descriptor, oid, &key, &value, schema);
     RETURN rc;
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};
@@ -542,9 +543,15 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
 #endif
   if (caller_callback->return_code._val == RC_TRUE) {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+    if (schema && table_descriptor != schema->td) {
+      caller_callback->return_code = rc_t{RC_ABORT_SI_CONFLICT};
+      return false;
+    }
+    std::unordered_map<FID, TableDescriptor *> new_td_map = t->get_new_td_map();
     if (t->IsWaitForNewSchema() && schema &&
-        (t->new_td == schema->td || t->old_td == schema->td)) {
-      if (AWAIT t->OverlapCheck(t->new_td, t->old_td, oid)) {
+        (new_td_map.find(table_descriptor->GetTupleFid()) !=
+         new_td_map.end())) {
+      if (AWAIT t->OverlapCheck(table_descriptor, t->old_td, oid)) {
         caller_callback->return_code = rc_t{RC_ABORT_SI_CONFLICT};
         return false;
       }
@@ -641,6 +648,12 @@ OrderedIndex::OrderedIndex(std::string table_name, bool is_primary)
     : is_primary(is_primary) {
   table_descriptor = Catalog::GetTable(table_name);
   self_fid = oidmgr->create_file(true);
+}
+
+OrderedIndex::OrderedIndex(std::string table_name, bool is_primary,
+                           FID self_fid)
+    : is_primary(is_primary), self_fid(self_fid) {
+  table_descriptor = Catalog::GetTable(table_name);
 }
 
 } // namespace ermia

@@ -32,6 +32,8 @@ extern volatile bool cdc_test;
 extern std::atomic<uint64_t> ddl_end;
 extern uint64_t *_tls_durable_lsn CACHE_ALIGNED;
 
+struct Schema_record;
+
 #if defined(SSN) || defined(SSI)
 #define set_tuple_xstamp(tuple, s)                                    \
   {                                                                   \
@@ -216,11 +218,12 @@ protected:
   OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td, OID oid);
 
   PROMISE(rc_t)
-  Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
+  Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
+         Schema_record *schema = nullptr);
 
   // Same as Update but without support for logging key
   inline PROMISE(rc_t) Update(TableDescriptor *td, OID oid, varstr *v) {
-    auto rc = AWAIT Update(td, oid, nullptr, v);
+    auto rc = AWAIT Update(td, oid, nullptr, v, nullptr);
     RETURN rc;
   }
 
@@ -266,7 +269,9 @@ public:
 
   inline bool IsWaitForNewSchema() { return wait_for_new_schema; }
 
-  inline void set_table_descriptors(TableDescriptor *_new_td, TableDescriptor *_old_td) { new_td = _new_td, old_td = _old_td; }
+  inline TableDescriptor *get_old_td() { return old_td; }
+
+  inline void set_old_td(TableDescriptor *_old_td) { old_td = _old_td; }
 
   inline std::unordered_map<FID, TableDescriptor *> get_new_td_map() {
     return new_td_map;
@@ -305,7 +310,6 @@ protected:
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
   std::unordered_map<TableDescriptor*, OID> schema_read_map;
-  TableDescriptor *new_td;
   std::unordered_map<FID, TableDescriptor *> new_td_map;
   TableDescriptor *old_td;
   std::unordered_map<FID, TableDescriptor *> old_td_map;

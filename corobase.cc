@@ -1245,7 +1245,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
     co_return c.return_code;
   }
 
-  XctSearchRangeCallback cb(t, &c, nullptr);
+  XctSearchRangeCallback cb(t, &c, nullptr, table_descriptor);
 
   ConcurrentMasstree:: low_level_search_range_scanner<false>
     scanner(&masstree_, end_key ? end_key : nullptr, cb);

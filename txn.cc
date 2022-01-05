@@ -236,9 +236,10 @@ rc_t transaction::si_commit() {
   xc->end = write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;
 
 #if defined(COPYDDL)
-  if (is_dml() && DMLConsistencyHandler()) {
-    // printf("DML failed with begin: %lu, end: %lu\n", xc->begin, xc->end);
-    // std::cerr << "DML failed" << std::endl;
+  if (is_dml() && DMLConsistencyHandler() && ddl_running_1) {
+    // std::cerr << "DML failed with begin: " << xc->begin << ", end: " <<
+    // xc->end << std::endl; printf("DML failed with begin: %lu, end: %lu\n",
+    // xc->begin, xc->end);
     return rc_t{RC_ABORT_SI_CONFLICT};
   }
 #endif
@@ -301,27 +302,39 @@ rc_t transaction::si_commit() {
       fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
       object->SetCSN(csn_ptr);
       ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
-      printf("DDL schema commit with size %d\n", write_set.size());
     }
+    std::cerr << "DDL schema commit with size " << write_set.size()
+              << std::endl;
+    ;
     log->set_dirty(false);
 
     if (config::ddl_type != 4) {
-      // Fix new table file's marks
-      auto *alloc = oidmgr->get_allocator(this->old_td->GetTupleFid());
-      uint32_t himark = alloc->head.hiwater_mark;
-      printf("old td sz: %d\n", himark);
-      auto *new_tuple_array = this->new_td->GetTupleArray();
-      // new_tuple_array->ensure_size(new_tuple_array->alloc_size(himark - 64));
-      new_tuple_array->ensure_size(himark - 64);
-      oidmgr->recreate_allocator(this->new_td->GetTupleFid(), himark - 64);
-      auto *new_alloc = oidmgr->get_allocator(this->new_td->GetTupleFid());
-      himark = new_alloc->head.hiwater_mark;
-      printf("new td sz: %d\n", himark);
+      for (auto &v : new_td_map) {
+        // Fix new table file's marks
+        auto *alloc = oidmgr->get_allocator(this->old_td->GetTupleFid());
+        uint32_t himark = alloc->head.hiwater_mark;
+        std::cerr << "old td sz: " << himark << std::endl;
+        auto *new_tuple_array = v.second->GetTupleArray();
+        new_tuple_array->ensure_size(himark - 64);
+        oidmgr->recreate_allocator(v.second->GetTupleFid(), himark - 64);
+        auto *new_alloc = oidmgr->get_allocator(v.second->GetTupleFid());
+        himark = new_alloc->head.hiwater_mark;
+        std::cerr << "new td sz: " << himark << std::endl;
 
-      // Switch table descriptor for index
-      OrderedIndex *index = this->new_td->GetPrimaryIndex();
-      index->SetTableDescriptor(this->new_td);
-      index->SetArrays(true);
+        // Switch table descriptor for primary index
+        OrderedIndex *index = v.second->GetPrimaryIndex();
+        index->SetTableDescriptor(v.second);
+        index->SetArrays(true);
+
+        // Switch table descriptor for secondary index(es)
+        std::vector<OrderedIndex *> sec_indexes = v.second->GetSecIndexes();
+        for (std::vector<OrderedIndex *>::const_iterator it =
+                 sec_indexes.begin();
+             it != sec_indexes.end(); ++it) {
+          (*it)->SetTableDescriptor(v.second);
+          (*it)->SetArrays(false);
+        }
+      }
       ddl_td_set = true;
 
       if (config::enable_cdc_verification_test) {
@@ -335,7 +348,7 @@ rc_t transaction::si_commit() {
   if (is_ddl() && config::ddl_type != 4) {
 #if !defined(LAZYDDL) && !defined(DCOPYDDL)
     // Start the second round of CDC
-    printf("Second CDC begins\n");
+    std::cerr << "Second CDC begins" << std::endl;
     ddl_running_2 = true;
     ddl_end.store(0);
     std::vector<thread::Thread *> cdc_workers = changed_data_capture();
@@ -343,13 +356,15 @@ rc_t transaction::si_commit() {
     }
     join_changed_data_capture_threads(cdc_workers);
     ddl_running_2 = false;
-    printf("Second CDC ends\n");
+    std::cerr << "Second CDC ends" << std::endl;
     if (ddl_failed) {
       printf("DDL failed\n");
-      OrderedIndex *index = this->new_td->GetPrimaryIndex();
-      index->SetTableDescriptor(this->old_td);
-      index->SetArrays(true);
-      this->new_td->GetTupleArray()->destroy(this->new_td->GetTupleArray());
+      for (auto &v : new_td_map) {
+        OrderedIndex *index = v.second->GetPrimaryIndex();
+        index->SetTableDescriptor(this->old_td);
+        index->SetArrays(true);
+        v.second->GetTupleArray()->destroy(v.second->GetTupleArray());
+      }
       return rc_t{RC_ABORT_INTERNAL};
     }
 #endif
@@ -380,100 +395,99 @@ rc_t transaction::si_commit() {
   if (is_ddl()) {
     ddl_running_1 = false;
 #ifdef COPYDDL
-    FID fid = this->new_td->GetTupleFid();
-    auto *new_alloc = oidmgr->get_allocator(fid);
-    uint32_t himark = new_alloc->head.hiwater_mark;
-    auto *new_tuple_array = new_td->GetTupleArray();
+    for (auto &v : new_td_map) {
+      FID fid = v.second->GetTupleFid();
+      auto *new_alloc = oidmgr->get_allocator(fid);
+      uint32_t himark = new_alloc->head.hiwater_mark;
+      auto *new_tuple_array = v.second->GetTupleArray();
 
-    uint32_t ddl_log_threads = 5;
-    uint32_t num_per_scan_thread = himark / ddl_log_threads;
+      uint32_t ddl_log_threads = 5;
+      uint32_t num_per_scan_thread = himark / ddl_log_threads;
 
-    std::vector<thread::Thread *> ddl_log_workers;
+      std::vector<thread::Thread *> ddl_log_workers;
 
-    for (uint32_t i = 0; i < ddl_log_threads; i++) {
-      uint32_t begin = i * num_per_scan_thread;
-      uint32_t end = (i + 1) * num_per_scan_thread;
-      if (i == ddl_log_threads - 1)
-        end = himark;
+      for (uint32_t i = 0; i < ddl_log_threads; i++) {
+        uint32_t begin = i * num_per_scan_thread;
+        uint32_t end = (i + 1) * num_per_scan_thread;
+        if (i == ddl_log_threads - 1)
+          end = himark;
 
-      thread::Thread *thread =
-          thread::GetThread(config::scan_physical_workers_only);
-      ALWAYS_ASSERT(thread);
-      ddl_log_workers.push_back(thread);
-      auto ddl_log = [=](char *) {
-        dlog::tls_log *log = GetLog();
-        log->set_normal(false);
-        log->reset_logbuf(50);
-        dlog::log_block *lb = nullptr;
-        dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
-        uint64_t segnum = -1;
-        uint64_t logbuf_size = log->get_logbuf_size() - sizeof(dlog::log_block);
+        thread::Thread *thread =
+            thread::GetThread(config::scan_physical_workers_only);
+        ALWAYS_ASSERT(thread);
+        ddl_log_workers.push_back(thread);
+        auto ddl_log = [=](char *) {
+          dlog::tls_log *log = GetLog();
+          log->set_normal(false);
+          log->reset_logbuf(50);
+          dlog::log_block *lb = nullptr;
+          dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
+          uint64_t segnum = -1;
+          uint64_t logbuf_size =
+              log->get_logbuf_size() - sizeof(dlog::log_block);
 
-        uint32_t count = 0;
-        lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
-        for (uint32_t oid = 0; oid <= himark; ++oid) {
-          if (oid % ddl_log_threads != i)
-            continue;
-          // for (uint32_t oid = begin; oid <= end; ++oid) {
-          fat_ptr *entry = new_tuple_array->get(oid);
-          fat_ptr ptr = volatile_read(*entry);
-          while (ptr.offset()) {
-            fat_ptr tentative_next = NULL_PTR;
-            Object *cur_obj = (Object *)ptr.offset();
-            tentative_next = cur_obj->GetNextVolatile();
-            fat_ptr csn = cur_obj->GetCSN();
-            if (csn.asi_type() == fat_ptr::ASI_CSN &&
-                CSN::from_ptr(csn).offset() > xc->end) {
-              break;
-            } else if (csn.asi_type() == fat_ptr::ASI_CSN &&
-                       CSN::from_ptr(csn).offset() < xc->end &&
-                       CSN::from_ptr(csn).offset() > xc->begin) {
-              dbtuple *tuple = (dbtuple *)cur_obj->GetPayload();
-              uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
-              uint32_t off = lb->payload_size;
-              if (off + align_up(log_tuple_size + sizeof(dlog::log_record)) >
-                  lb->capacity) {
-                lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum,
-                                             xc->end);
-                off = lb->payload_size;
-                count++;
+          uint32_t count = 0;
+          lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
+          for (uint32_t oid = 0; oid <= himark; ++oid) {
+            if (oid % ddl_log_threads != i)
+              continue;
+            // for (uint32_t oid = begin; oid <= end; ++oid) {
+            fat_ptr *entry = new_tuple_array->get(oid);
+            fat_ptr ptr = volatile_read(*entry);
+            while (ptr.offset()) {
+              fat_ptr tentative_next = NULL_PTR;
+              Object *cur_obj = (Object *)ptr.offset();
+              tentative_next = cur_obj->GetNextVolatile();
+              fat_ptr csn = cur_obj->GetCSN();
+              if (csn.asi_type() == fat_ptr::ASI_CSN &&
+                  CSN::from_ptr(csn).offset() > xc->end) {
+                break;
+              } else if (csn.asi_type() == fat_ptr::ASI_CSN &&
+                         CSN::from_ptr(csn).offset() < xc->end &&
+                         CSN::from_ptr(csn).offset() > xc->begin) {
+                dbtuple *tuple = (dbtuple *)cur_obj->GetPayload();
+                uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
+                uint32_t off = lb->payload_size;
+                if (off + align_up(log_tuple_size + sizeof(dlog::log_record)) >
+                    lb->capacity) {
+                  lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum,
+                                               xc->end);
+                  off = lb->payload_size;
+                  count++;
+                }
+                auto ret_off = dlog::log_insert(lb, fid, oid, (char *)tuple,
+                                                log_tuple_size);
+                ALWAYS_ASSERT(ret_off == off);
+
+                auto aligned_size =
+                    align_up(log_tuple_size + sizeof(dlog::log_record));
+                auto size_code = encode_size_aligned(aligned_size);
+
+                fat_ptr pdest =
+                    LSN::make(log->get_id(),
+                              lb_lsn + sizeof(dlog::log_block) + off, segnum,
+                              size_code)
+                        .to_ptr();
+                cur_obj->SetPersistentAddress(pdest);
+                ASSERT(cur_obj->GetPersistentAddress().asi_type() ==
+                       fat_ptr::ASI_LOG);
+
+                break;
               }
-              auto ret_off =
-                  dlog::log_insert(lb, fid, oid, (char *)tuple, log_tuple_size);
-              ALWAYS_ASSERT(ret_off == off);
-
-              auto aligned_size =
-                  align_up(log_tuple_size + sizeof(dlog::log_record));
-              auto size_code = encode_size_aligned(aligned_size);
-
-              fat_ptr pdest = LSN::make(log->get_id(),
-                                        lb_lsn + sizeof(dlog::log_block) + off,
-                                        segnum, size_code)
-                                  .to_ptr();
-              cur_obj->SetPersistentAddress(pdest);
-              ASSERT(cur_obj->GetPersistentAddress().asi_type() ==
-                     fat_ptr::ASI_LOG);
-
-              break;
-            } else if (csn.asi_type() == fat_ptr::ASI_CSN &&
-                       CSN::from_ptr(csn).offset() < xc->begin) {
-              printf("oid: %d\n", oid);
-              goto finish;
+              ptr = tentative_next;
             }
-            ptr = tentative_next;
           }
-        }
-      finish:
-        printf("count: %d\n", count);
-      };
-      thread->StartTask(ddl_log);
-    }
+          // printf("count: %d\n", count);
+        };
+        thread->StartTask(ddl_log);
+      }
 
-    for (std::vector<thread::Thread *>::const_iterator it =
-             ddl_log_workers.begin();
-         it != ddl_log_workers.end(); ++it) {
-      (*it)->Join();
-      thread::PutThread(*it);
+      for (std::vector<thread::Thread *>::const_iterator it =
+               ddl_log_workers.begin();
+           it != ddl_log_workers.end(); ++it) {
+        (*it)->Join();
+        thread::PutThread(*it);
+      }
     }
 
     goto exit;
@@ -687,9 +701,14 @@ bool transaction::MasstreeCheckPhantom() {
 }
 
 PROMISE(rc_t)
-transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v) {
+transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
+                    Schema_record *schema) {
   oid_array *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
+
+  if (schema && td != schema->td) {
+    RETURN rc_t{RC_ABORT_SI_CONFLICT};
+  }
 
   // first *updater* wins
   fat_ptr new_obj_ptr = NULL_PTR;

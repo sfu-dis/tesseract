@@ -163,8 +163,10 @@ private:
   struct XctSearchRangeCallback
       : public ConcurrentMasstree::low_level_search_range_callback {
     XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback,
-                           Schema_record *schema)
-        : t(t), caller_callback(caller_callback), schema(schema) {}
+                           Schema_record *schema,
+                           TableDescriptor *table_descriptor)
+        : t(t), caller_callback(caller_callback), schema(schema),
+          table_descriptor(table_descriptor) {}
 
     virtual void
     on_resp_node(const typename ConcurrentMasstree::node_opaque_t *n,
@@ -179,6 +181,7 @@ private:
     transaction *const t;
     SearchRangeCallback *const caller_callback;
     Schema_record *schema;
+    TableDescriptor *table_descriptor;
   };
 
   struct PurgeTreeWalker : public ConcurrentMasstree::tree_walk_callback {
@@ -198,6 +201,8 @@ private:
 
 public:
   ConcurrentMasstreeIndex(const char *table_name, bool primary) : OrderedIndex(table_name, primary) {}
+  ConcurrentMasstreeIndex(const char *table_name, bool primary, FID self_fid)
+      : OrderedIndex(table_name, primary, self_fid) {}
 
   ConcurrentMasstree &GetMasstree() { return masstree_; }
 
