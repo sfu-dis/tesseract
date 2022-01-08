@@ -701,14 +701,9 @@ bool transaction::MasstreeCheckPhantom() {
 }
 
 PROMISE(rc_t)
-transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
-                    Schema_record *schema) {
+transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v) {
   oid_array *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
-
-  if (schema && td != schema->td) {
-    RETURN rc_t{RC_ABORT_SI_CONFLICT};
-  }
 
   // first *updater* wins
   fat_ptr new_obj_ptr = NULL_PTR;

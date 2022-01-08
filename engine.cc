@@ -352,7 +352,8 @@ ConcurrentMasstreeIndex::InsertOID(transaction *t, const varstr &key, OID oid) {
 
 PROMISE(rc_t)
 ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
-                                      varstr &value, OID *out_oid) {
+                                      varstr &value, OID *out_oid,
+                                      Schema_record *schema) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
@@ -388,6 +389,10 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
     key_array->ensure_size(oid);
     oidmgr->oid_put(key_array, oid,
                     fat_ptr::make((void *)new_key, INVALID_SIZE_CODE));
+  }
+
+  if (schema && table_descriptor != schema->td) {
+    RETURN rc_t{RC_ABORT_INTERNAL};
   }
 
   if (out_oid) {
@@ -444,7 +449,10 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
 
   if (rc._val == RC_TRUE) {
     rc_t rc = rc_t{RC_INVALID};
-    rc = AWAIT t->Update(table_descriptor, oid, &key, &value, schema);
+    rc = AWAIT t->Update(table_descriptor, oid, &key, &value);
+    if (schema && table_descriptor != schema->td) {
+      RETURN rc_t{RC_ABORT_INTERNAL};
+    }
     RETURN rc;
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};
@@ -482,6 +490,9 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
     // Allocate an empty record version as the "new" version
     varstr *null_val = t->string_allocator().next(0);
     rc_t rc = AWAIT t->Update(table_descriptor, oid, &key, null_val);
+    if (schema && table_descriptor != schema->td) {
+      RETURN rc_t{RC_ABORT_INTERNAL};
+    }
     RETURN rc;
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};

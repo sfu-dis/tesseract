@@ -218,12 +218,11 @@ protected:
   OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td, OID oid);
 
   PROMISE(rc_t)
-  Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
-         Schema_record *schema = nullptr);
+  Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
 
   // Same as Update but without support for logging key
   inline PROMISE(rc_t) Update(TableDescriptor *td, OID oid, varstr *v) {
-    auto rc = AWAIT Update(td, oid, nullptr, v, nullptr);
+    auto rc = AWAIT Update(td, oid, nullptr, v);
     RETURN rc;
   }
 

@@ -61,8 +61,9 @@ public:
                    Schema_record *schema = nullptr) = 0;
 
   // Insert a record with a key of length keylen.
-  virtual PROMISE(rc_t) InsertRecord(transaction *t, const varstr &key, varstr &value,
-                                     OID *out_oid = nullptr) = 0;
+  virtual PROMISE(rc_t)
+      InsertRecord(transaction *t, const varstr &key, varstr &value,
+                   OID *out_oid = nullptr, Schema_record *schema = nullptr) = 0;
 
   // Map a key to an existing OID. Could be used for primary or secondary index.
   virtual PROMISE(bool) InsertOID(transaction *t, const varstr &key, OID oid) = 0;

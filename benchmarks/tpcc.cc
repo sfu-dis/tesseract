@@ -243,7 +243,8 @@ rc_t tpcc_worker::txn_new_order() {
       const size_t order_line_sz = Size(v_ol);
       TryCatch(tbl_order_line(warehouse_id)
                    ->InsertRecord(txn, Encode(str(Size(k_ol)), k_ol),
-                                  Encode(str(order_line_sz), v_ol)));
+                                  Encode(str(order_line_sz), v_ol), nullptr,
+                                  &order_line_schema));
     } else {
       const order_line_1::key k_ol_1(warehouse_id, districtID, k_no.no_o_id,
                                      ol_number);

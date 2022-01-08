@@ -250,7 +250,10 @@ public:
   PROMISE(rc_t)
   UpdateRecord(transaction *t, const varstr &key, varstr &value,
                Schema_record *schema = nullptr) override;
-  PROMISE(rc_t) InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
+  PROMISE(rc_t)
+  InsertRecord(transaction *t, const varstr &key, varstr &value,
+               OID *out_oid = nullptr,
+               Schema_record *schema = nullptr) override;
   PROMISE(rc_t)
   RemoveRecord(transaction *t, const varstr &key,
                Schema_record *schema = nullptr) override;
