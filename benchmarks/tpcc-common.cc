@@ -393,11 +393,11 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
         unsigned s = 0;
         for (size_t i = 0; i < toks.size(); i++) {
           unsigned p = strtoul(toks[i].c_str(), nullptr, 10);
-          // ALWAYS_ASSERT(p >= 0 && p <= 100);
+          ALWAYS_ASSERT(p >= 0 && p <= 100);
           s += p;
           g_txn_workload_mix[i] = p;
         }
-        // ALWAYS_ASSERT(s == 100);
+        ALWAYS_ASSERT(s == 100);
       } break;
       case 'z':
         g_nr_suppliers = strtoul(optarg, NULL, 10);

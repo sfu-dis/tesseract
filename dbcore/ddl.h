@@ -14,7 +14,7 @@ class OrderedIndex;
 namespace ddl {
 
 // Schema reformation function
-typedef std::function<varstr *(varstr &value, str_arena *arena,
+typedef std::function<varstr *(varstr *key, varstr &value, str_arena *arena,
                                uint64_t schema_version)>
     Reformat;
 
@@ -60,13 +60,24 @@ struct ddl_executor_paras {
   // State
   uint64_t state;
 
+  // Whether handle insert
+  bool handle_insert;
+
+  // Whether handle update
+  bool handle_update;
+
+  // Schema reformation function index when scanning
+  uint64_t scan_reformat_idx;
+
   ddl_executor_paras(uint64_t new_v, uint64_t old_v, ddl_type type,
                      uint64_t reformat_idx, uint64_t constraint_idx,
                      TableDescriptor *new_td, TableDescriptor *old_td,
-                     OrderedIndex *index, uint64_t state)
+                     OrderedIndex *index, uint64_t state, bool handle_insert,
+                     bool handle_update, uint64_t scan_reformat_idx)
       : new_v(new_v), old_v(old_v), type(type), reformat_idx(reformat_idx),
         constraint_idx(constraint_idx), new_td(new_td), old_td(old_td),
-        index(index), state(state) {}
+        index(index), state(state), handle_insert(handle_insert),
+        handle_update(handle_update), scan_reformat_idx(scan_reformat_idx) {}
 };
 
 class ddl_executor {
@@ -84,15 +95,14 @@ public:
   ddl_executor() {}
   ~ddl_executor() {}
 
-  inline void add_ddl_executor_paras(uint64_t new_v, uint64_t old_v,
-                                     ddl_type type, uint64_t reformat_idx,
-                                     uint64_t constraint_idx,
-                                     TableDescriptor *new_td,
-                                     TableDescriptor *old_td,
-                                     OrderedIndex *index, uint64_t state) {
-    ddl_executor_paras_list.push_back(
-        new ddl_executor_paras(new_v, old_v, type, reformat_idx, constraint_idx,
-                               new_td, old_td, index, state));
+  inline void add_ddl_executor_paras(
+      uint64_t new_v, uint64_t old_v, ddl_type type, uint64_t reformat_idx,
+      uint64_t constraint_idx, TableDescriptor *new_td, TableDescriptor *old_td,
+      OrderedIndex *index, uint64_t state, bool handle_insert = true,
+      bool handle_update = true, uint64_t scan_reformat_idx = -1) {
+    ddl_executor_paras_list.push_back(new ddl_executor_paras(
+        new_v, old_v, type, reformat_idx, constraint_idx, new_td, old_td, index,
+        state, handle_insert, handle_update, scan_reformat_idx));
   }
 
   inline void
@@ -112,6 +122,9 @@ public:
                                  uint32_t ddl_thread_id, uint32_t begin_log,
                                  uint32_t end_log, str_arena *arena,
                                  bool *ddl_end);
+
+  // Build map for join and aggregation
+  rc_t build_map(transaction *t, str_arena *arena, TableDescriptor *td);
 };
 
 extern std::vector<Reformat> reformats;

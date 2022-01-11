@@ -87,7 +87,7 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
   id = log_id;
   numa_node = node;
   flushing = false;
-  logbuf_size = logbuf_mb * uint32_t{1024};
+  logbuf_size = logbuf_mb * uint32_t{1024 * 1024};
   logbuf[0] = (char *)numa_alloc_onnode(logbuf_size, numa_node);
   LOG_IF(FATAL, !logbuf[0]) << "Unable to allocate log buffer";
   logbuf[1] = (char *)numa_alloc_onnode(logbuf_size, numa_node);

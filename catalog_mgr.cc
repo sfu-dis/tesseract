@@ -6,8 +6,8 @@ void schematable_loader::load() {
   ermia::OrderedIndex *tbl = open_tables.at("SCHEMA");
   ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
 
-  auto add_column = [=](ermia::varstr &value, ermia::str_arena *arena,
-                        uint64_t schema_version) {
+  auto add_column = [=](ermia::varstr *key, ermia::varstr &value,
+                        ermia::str_arena *arena, uint64_t schema_version) {
     order_line::value v_ol_temp;
     const order_line::value *v_ol = Decode(value, v_ol_temp);
 
@@ -113,8 +113,8 @@ void microbenchmark_schematable_loader::load() {
   ermia::OrderedIndex *tbl = open_tables.at("SCHEMA");
   ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
 
-  auto add_column = [=](ermia::varstr &value, ermia::str_arena *arena,
-                        uint64_t schema_version) {
+  auto add_column = [=](ermia::varstr *key, ermia::varstr &value,
+                        ermia::str_arena *arena, uint64_t schema_version) {
     uint64_t a = 0;
     if (schema_version == 1) {
       struct ermia::Schema1 record;
@@ -138,8 +138,8 @@ void microbenchmark_schematable_loader::load() {
     return new_value;
   };
 
-  auto add_column_1 = [=](ermia::varstr &value, ermia::str_arena *arena,
-                          uint64_t schema_version) {
+  auto add_column_1 = [=](ermia::varstr *key, ermia::varstr &value,
+                          ermia::str_arena *arena, uint64_t schema_version) {
     struct ermia::Schema2 record;
     memcpy(&record, (char *)value.data(), sizeof(record));
     uint64_t a = record.a;
@@ -157,8 +157,8 @@ void microbenchmark_schematable_loader::load() {
     return new_value;
   };
 
-  auto add_column_2 = [=](ermia::varstr &value, ermia::str_arena *arena,
-                          uint64_t schema_version) {
+  auto add_column_2 = [=](ermia::varstr *key, ermia::varstr &value,
+                          ermia::str_arena *arena, uint64_t schema_version) {
     struct ermia::Schema3 record;
     memcpy(&record, (char *)value.data(), sizeof(record));
     uint64_t a = record.a;
@@ -177,8 +177,8 @@ void microbenchmark_schematable_loader::load() {
     return new_value;
   };
 
-  auto add_column_3 = [=](ermia::varstr &value, ermia::str_arena *arena,
-                          uint64_t schema_version) {
+  auto add_column_3 = [=](ermia::varstr *key, ermia::varstr &value,
+                          ermia::str_arena *arena, uint64_t schema_version) {
     struct ermia::Schema4 record;
     memcpy(&record, (char *)value.data(), sizeof(record));
     uint64_t a = record.a;
@@ -198,8 +198,8 @@ void microbenchmark_schematable_loader::load() {
     return new_value;
   };
 
-  auto add_column_4 = [=](ermia::varstr &value, ermia::str_arena *arena,
-                          uint64_t schema_version) {
+  auto add_column_4 = [=](ermia::varstr *key, ermia::varstr &value,
+                          ermia::str_arena *arena, uint64_t schema_version) {
     struct ermia::Schema5 record;
     memcpy(&record, (char *)value.data(), sizeof(record));
     uint64_t a = record.a;
