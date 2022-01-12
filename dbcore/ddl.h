@@ -15,7 +15,7 @@ namespace ddl {
 
 // Schema reformation function
 typedef std::function<varstr *(varstr *key, varstr &value, str_arena *arena,
-                               uint64_t schema_version)>
+                               uint64_t schema_version, FID fid, OID oid)>
     Reformat;
 
 // Schema constraint function

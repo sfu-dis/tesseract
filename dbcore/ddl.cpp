@@ -33,7 +33,8 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   printf("DDL scan begins\n");
   uint64_t count = 0;
   TableDescriptor *old_td = t->get_old_td();
-  auto *alloc = oidmgr->get_allocator(old_td->GetTupleFid());
+  FID fid = old_td->GetTupleFid();
+  auto *alloc = oidmgr->get_allocator(fid);
   uint32_t himark = alloc->head.hiwater_mark;
   auto *old_tuple_array = old_td->GetTupleArray();
   auto *key_array = old_td->GetKeyArray();
@@ -94,7 +95,9 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
                                           ? (*it)->reformat_idx
                                           : (*it)->scan_reformat_idx;
               varstr *new_tuple_value = reformats[reformat_idx](
-                  key, tuple_value, arena, (*it)->new_v);
+                  key, tuple_value, arena, (*it)->new_v, fid, oid);
+              if (!new_tuple_value)
+                continue;
 #ifdef COPYDDL
               t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->begin,
                               nullptr);
@@ -120,7 +123,8 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   cdc_workers = t->changed_data_capture();
 #endif
 
-  for (OID oid = 0; oid <= 3 * num_per_scan_thread; oid++) {
+  OID end = scan_threads == 0 ? himark : 3 * num_per_scan_thread;
+  for (OID oid = 0; oid <= end; oid++) {
     fat_ptr *entry = key_array->get(oid);
     dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
     varstr tuple_value;
@@ -143,8 +147,10 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
           uint64_t reformat_idx = (*it)->scan_reformat_idx == -1
                                       ? (*it)->reformat_idx
                                       : (*it)->scan_reformat_idx;
-          varstr *new_tuple_value =
-              reformats[reformat_idx](key, tuple_value, arena, (*it)->new_v);
+          varstr *new_tuple_value = reformats[reformat_idx](
+              key, tuple_value, arena, (*it)->new_v, fid, oid);
+          if (!new_tuple_value)
+            continue;
 #ifdef COPYDDL
           t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->begin,
                           nullptr);
@@ -282,8 +288,9 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                          it = ddl_executor_paras_list.begin();
                      it != ddl_executor_paras_list.end(); ++it) {
                   if (!(*it)->handle_insert ||
-                      (*it)->old_td->GetTupleFid() != f)
-                    continue;
+                      (*it)->old_td->GetTupleFid() != f) {
+                    goto keep_going;
+                  }
                   if ((*it)->type == VERIFICATION_ONLY ||
                       (*it)->type == COPY_VERIFICATION) {
                     if (!constraints[(*it)->constraint_idx](tuple_value,
@@ -295,11 +302,12 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                       (*it)->type == COPY_VERIFICATION) {
                     arena->reset();
                     varstr *new_value = reformats[(*it)->reformat_idx](
-                        key, tuple_value, arena, (*it)->new_v);
+                        key, tuple_value, arena, (*it)->new_v, f, o);
 
                     insert_total++;
-                    if (!new_value)
-                      continue;
+                    if (!new_value) {
+                      goto keep_going;
+                    }
                     if (t->DDLCDCInsert((*it)->new_td, o, new_value,
                                         logrec->csn)
                             ._val != RC_TRUE) {
@@ -316,8 +324,9 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                          it = ddl_executor_paras_list.begin();
                      it != ddl_executor_paras_list.end(); ++it) {
                   if (!(*it)->handle_update ||
-                      (*it)->old_td->GetTupleFid() != f)
-                    continue;
+                      (*it)->old_td->GetTupleFid() != f) {
+                    goto keep_going;
+                  }
                   if ((*it)->type == VERIFICATION_ONLY ||
                       (*it)->type == COPY_VERIFICATION) {
                     if (!constraints[(*it)->constraint_idx](tuple_value,
@@ -329,11 +338,12 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                       (*it)->type == COPY_VERIFICATION) {
                     arena->reset();
                     varstr *new_value = reformats[(*it)->reformat_idx](
-                        key, tuple_value, arena, (*it)->new_v);
+                        key, tuple_value, arena, (*it)->new_v, f, o);
 
                     update_total++;
-                    if (!new_value)
-                      continue;
+                    if (!new_value) {
+                      goto keep_going;
+                    }
                     if (t->DDLCDCUpdate((*it)->new_td, o, new_value,
                                         logrec->csn)
                             ._val != RC_TRUE) {
@@ -343,6 +353,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                 }
               }
 
+            keep_going:
               offset_in_block += logrec->rec_size;
             }
           } else {
@@ -386,7 +397,8 @@ rc_t ddl_executor::build_map(transaction *t, str_arena *arena,
 
   printf("DDL build map begins\n");
   uint64_t count = 0;
-  auto *alloc = oidmgr->get_allocator(td->GetTupleFid());
+  FID fid = td->GetTupleFid();
+  auto *alloc = oidmgr->get_allocator(fid);
   uint32_t himark = alloc->head.hiwater_mark;
   auto *tuple_array = td->GetTupleArray();
   auto *key_array = td->GetKeyArray();
@@ -402,7 +414,8 @@ rc_t ddl_executor::build_map(transaction *t, str_arena *arena,
                ddl_executor_paras_list.begin();
            it != ddl_executor_paras_list.end(); ++it) {
         if ((*it)->old_td == td) {
-          reformats[(*it)->reformat_idx](key, tuple_value, arena, (*it)->new_v);
+          reformats[(*it)->reformat_idx](key, tuple_value, arena, (*it)->new_v,
+                                         fid, oid);
         }
       }
     }

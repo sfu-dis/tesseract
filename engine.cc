@@ -64,7 +64,6 @@ retry:
   if (t->is_dml() || t->is_read_only()) {
     struct Schema_record schema;
     memcpy(&schema, (char *)value.data(), sizeof(schema));
-    ALWAYS_ASSERT(schema.td != schema.old_td);
     if (schema.state == 2) {
       if (!ddl_td_set || config::enable_cdc_schema_lock) {
         goto retry;
@@ -263,7 +262,8 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
       } else {
         if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
           varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
-              nullptr, value, &(t->string_allocator()), schema->v);
+              nullptr, value, &(t->string_allocator()), schema->v,
+              old_table_descriptor->GetTupleFid(), oid);
           t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
           found = true;
           tuple = AWAIT oidmgr->oid_get_version(
@@ -356,10 +356,6 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
                                       Schema_record *schema) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
-
-  /*if (t->IsWaitForNewSchema()) {
-    RETURN rc_t{RC_ABORT_INTERNAL};
-  }*/
 
   ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
   t->ensure_active();
@@ -596,7 +592,8 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
       } else {
         if (t->DoTupleRead(tuple, &vv)._val == RC_TRUE) {
           varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
-              nullptr, vv, &(t->string_allocator()), schema->v);
+              nullptr, vv, &(t->string_allocator()), schema->v,
+              old_table_descriptor->GetTupleFid(), oid);
           t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
           tuple = AWAIT oidmgr->oid_get_version(schema->td->GetTupleArray(),
                                                 oid, t->xc);

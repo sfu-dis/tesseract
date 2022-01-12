@@ -46,7 +46,7 @@ public:
     ermia::varstr *new_value;
     for (; current_version <= latest_version; current_version++) {
       new_value = ermia::ddl::reformats[schema->reformats[current_version - 1]](
-          nullptr, value, arena, current_version);
+          nullptr, value, arena, current_version, -1, -1);
     }
 
     struct ermia::Schema6 record2_test;
