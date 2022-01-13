@@ -374,18 +374,18 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
   }
 
   // Succeeded, now put the key there if we need it
-  // if (config::enable_chkpt) {
-  // XXX(tzwang): only need to install this key if we need chkpt; not a
-  // realistic setting here to not generate it, the purpose of skipping
-  // this is solely for benchmarking CC.
-  varstr *new_key = (varstr *)MM::allocate(sizeof(varstr) + key.size());
-  new (new_key) varstr((char *)new_key + sizeof(varstr), 0);
-  new_key->copy_from(&key);
-  auto *key_array = table_descriptor->GetKeyArray();
-  key_array->ensure_size(oid);
-  oidmgr->oid_put(key_array, oid,
-                  fat_ptr::make((void *)new_key, INVALID_SIZE_CODE));
-  //}
+  if (config::enable_chkpt || config::enable_ddl_keys) {
+    // XXX(tzwang): only need to install this key if we need chkpt; not a
+    // realistic setting here to not generate it, the purpose of skipping
+    // this is solely for benchmarking CC.
+    varstr *new_key = (varstr *)MM::allocate(sizeof(varstr) + key.size());
+    new (new_key) varstr((char *)new_key + sizeof(varstr), 0);
+    new_key->copy_from(&key);
+    auto *key_array = table_descriptor->GetKeyArray();
+    key_array->ensure_size(oid);
+    oidmgr->oid_put(key_array, oid,
+                    fat_ptr::make((void *)new_key, INVALID_SIZE_CODE));
+  }
 
   if (schema && table_descriptor != schema->td) {
     RETURN rc_t{RC_ABORT_INTERNAL};

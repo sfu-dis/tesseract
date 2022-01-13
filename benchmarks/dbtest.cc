@@ -115,6 +115,7 @@ DEFINE_uint64(no_copy_verification_version_add, 1,
               "To which version we want to add to version when doing no copy "
               "verification");
 DEFINE_uint64(ddl_example, 0, "DDL example");
+DEFINE_bool(enable_ddl_keys, false, "Whether need maintain key arrays");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -159,6 +160,7 @@ int main(int argc, char **argv) {
   ermia::config::no_copy_verification_version_add =
       FLAGS_no_copy_verification_version_add;
   ermia::config::ddl_example = FLAGS_ddl_example;
+  ermia::config::enable_ddl_keys = FLAGS_enable_ddl_keys;
 
   if (ermia::config::physical_workers_only) {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
@@ -334,6 +336,8 @@ int main(int argc, char **argv) {
             << ermia::config::no_copy_verification_version_add << std::endl;
   std::cerr << "  ddl_example			        : "
             << ermia::config::ddl_example << std::endl;
+  std::cerr << "  enable_ddl_keys			: "
+            << ermia::config::enable_ddl_keys << std::endl;
 #endif
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");

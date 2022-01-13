@@ -82,6 +82,7 @@ extern uint32_t ddl_num_total;
 extern uint32_t ddl_start_time;
 extern uint32_t no_copy_verification_version_add;
 extern uint32_t ddl_example;
+extern bool enable_ddl_keys;
 
 // Create an object for each version and install directly on the main
 // indirection arrays only; for experimental purpose only to see the

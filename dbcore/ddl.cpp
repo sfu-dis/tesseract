@@ -74,7 +74,9 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
         dbtuple *tuple =
             AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
         varstr tuple_value;
-        varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
+        varstr *key = (config::enable_ddl_keys && entry)
+                          ? (varstr *)((*entry).offset())
+                          : nullptr;
         if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
           for (std::vector<struct ddl_executor_paras *>::const_iterator it =
                    ddl_executor_paras_list.begin();
@@ -128,7 +130,9 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
     fat_ptr *entry = key_array->get(oid);
     dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
     varstr tuple_value;
-    varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
+    varstr *key = (config::enable_ddl_keys && entry)
+                      ? (varstr *)((*entry).offset())
+                      : nullptr;
     if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
       for (std::vector<struct ddl_executor_paras *>::const_iterator it =
                ddl_executor_paras_list.begin();
@@ -278,7 +282,9 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
 
               auto *key_array = old_td_map[f]->GetKeyArray();
               fat_ptr *entry = key_array->get(o);
-              varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
+              varstr *key = (config::enable_ddl_keys && entry)
+                                ? (varstr *)((*entry).offset())
+                                : nullptr;
 
               if (logrec->type == dlog::log_record::logrec_type::INSERT) {
                 dbtuple *tuple = (dbtuple *)(logrec->data);
