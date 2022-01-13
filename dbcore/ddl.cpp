@@ -223,7 +223,6 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
   TXN::xid_context *xc = t->GetXIDContext();
   uint64_t begin_csn = xc->begin;
   uint64_t end_csn = xc->end;
-  FID fid = t->get_old_td()->GetTupleFid();
   std::unordered_map<FID, TableDescriptor *> old_td_map = t->get_old_td_map();
   uint32_t count = 0;
   for (uint32_t i = begin_log; i <= end_log; i++) {
@@ -275,7 +274,6 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
               OID o = logrec->oid;
 
               if (!old_td_map[f]) {
-                // if (f != fid) {
                 offset_in_block += logrec->rec_size;
                 continue;
               }
@@ -295,7 +293,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                      it != ddl_executor_paras_list.end(); ++it) {
                   if (!(*it)->handle_insert ||
                       (*it)->old_td->GetTupleFid() != f) {
-                    goto keep_going;
+                    continue;
                   }
                   if ((*it)->type == VERIFICATION_ONLY ||
                       (*it)->type == COPY_VERIFICATION) {
@@ -312,7 +310,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
 
                     insert_total++;
                     if (!new_value) {
-                      goto keep_going;
+                      continue;
                     }
                     if (t->DDLCDCInsert((*it)->new_td, o, new_value,
                                         logrec->csn)
@@ -331,7 +329,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                      it != ddl_executor_paras_list.end(); ++it) {
                   if (!(*it)->handle_update ||
                       (*it)->old_td->GetTupleFid() != f) {
-                    goto keep_going;
+                    continue;
                   }
                   if ((*it)->type == VERIFICATION_ONLY ||
                       (*it)->type == COPY_VERIFICATION) {
@@ -348,7 +346,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
 
                     update_total++;
                     if (!new_value) {
-                      goto keep_going;
+                      continue;
                     }
                     if (t->DDLCDCUpdate((*it)->new_td, o, new_value,
                                         logrec->csn)
@@ -359,7 +357,6 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                 }
               }
 
-            keep_going:
               offset_in_block += logrec->rec_size;
             }
           } else {

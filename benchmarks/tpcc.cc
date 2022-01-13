@@ -2136,42 +2136,65 @@ rc_t tpcc_worker::txn_ddl() {
     uint64_t scan_reformat_idx = ermia::ddl::reformats.size();
     ermia::ddl::reformats.push_back(precompute_aggregate_1);
 
+    ermia::FID old_oorder_fid = old_oorder_td->GetTupleFid();
+    ermia::FID old_order_line_fid = old_order_line_td->GetTupleFid();
+
     auto precompute_aggregate_2 = [=](ermia::varstr *key, ermia::varstr &value,
                                       ermia::str_arena *arena,
                                       uint64_t schema_version, ermia::FID fid,
                                       ermia::OID oid) {
-      const char *keyp = (const char *)(key->p);
-      oorder::key k_oo_temp;
-      const oorder::key *k_oo = Decode(keyp, k_oo_temp);
-
-      oorder::value v_oo_temp;
-      const oorder::value *v_oo = Decode(value, v_oo_temp);
-
       thread_local std::unordered_map<key_tuple<int, int, int>, float,
                                       key_tuple<int, int, int>::hash>
           key_sum_map;
-      auto it = key_sum_map.find(
-          key_tuple<int, int, int>{k_oo->o_w_id, k_oo->o_d_id, k_oo->o_id});
+      ermia::varstr *new_value = nullptr;
+      if (fid == old_oorder_fid) {
+        const char *keyp = (const char *)(key->p);
+        oorder::key k_oo_temp;
+        const oorder::key *k_oo = Decode(keyp, k_oo_temp);
 
-      oorder_precompute_aggregate::value v_oo_pa;
-      v_oo_pa.o_c_id = v_oo->o_c_id;
-      v_oo_pa.o_carrier_id = v_oo->o_carrier_id;
-      v_oo_pa.o_ol_cnt = v_oo->o_ol_cnt;
-      v_oo_pa.o_all_local = v_oo->o_all_local;
-      v_oo_pa.o_entry_d = v_oo->o_entry_d;
-      v_oo_pa.o_total_amount = (it != key_sum_map.end()) ? it->second : 0;
+        oorder::value v_oo_temp;
+        const oorder::value *v_oo = Decode(value, v_oo_temp);
 
-      const size_t oorder_precompute_aggregate_sz = ::Size(v_oo_pa);
-      ermia::varstr *new_value = arena->next(oorder_precompute_aggregate_sz);
-      new_value = &Encode(*new_value, v_oo_pa);
+        auto it = key_sum_map.find(
+            key_tuple<int, int, int>{k_oo->o_w_id, k_oo->o_d_id, k_oo->o_id});
+
+        oorder_precompute_aggregate::value v_oo_pa;
+        v_oo_pa.o_c_id = v_oo->o_c_id;
+        v_oo_pa.o_carrier_id = v_oo->o_carrier_id;
+        v_oo_pa.o_ol_cnt = v_oo->o_ol_cnt;
+        v_oo_pa.o_all_local = v_oo->o_all_local;
+        v_oo_pa.o_entry_d = v_oo->o_entry_d;
+        v_oo_pa.o_total_amount = (it != key_sum_map.end()) ? it->second : 0;
+
+        const size_t oorder_precompute_aggregate_sz = ::Size(v_oo_pa);
+        new_value = arena->next(oorder_precompute_aggregate_sz);
+        new_value = &Encode(*new_value, v_oo_pa);
+      } else if (fid == old_order_line_fid) {
+        const char *keyp = (const char *)(key->p);
+        order_line::key k_ol_temp;
+        const order_line::key *k_ol = Decode(keyp, k_ol_temp);
+
+        order_line::value v_ol_temp;
+        const order_line::value *v_ol = Decode(value, v_ol_temp);
+
+        auto it = key_sum_map.find(key_tuple<int, int, int>{
+            k_ol->ol_w_id, k_ol->ol_d_id, k_ol->ol_o_id});
+        if (it != key_sum_map.end()) {
+          it->second += v_ol->ol_amount;
+        } else {
+          key_sum_map.insert(std::make_pair<key_tuple<int, int, int>>(
+              {k_ol->ol_w_id, k_ol->ol_d_id, k_ol->ol_o_id}, v_ol->ol_amount));
+        }
+      }
 
       return new_value;
     };
 
     oorder_schema.reformat_idx = ermia::ddl::reformats.size();
+    order_line_schema.reformat_idx = oorder_schema.reformat_idx;
     ermia::ddl::reformats.push_back(precompute_aggregate_2);
 
-    auto build_key_sum_map = [=](ermia::varstr *key, ermia::varstr &value,
+    /*auto build_key_sum_map = [=](ermia::varstr *key, ermia::varstr &value,
                                  ermia::str_arena *arena,
                                  uint64_t schema_version, ermia::FID fid,
                                  ermia::OID oid) {
@@ -2199,6 +2222,7 @@ rc_t tpcc_worker::txn_ddl() {
 
     order_line_schema.reformat_idx = ermia::ddl::reformats.size();
     ermia::ddl::reformats.push_back(build_key_sum_map);
+    */
 
 #ifdef LAZYDDL
     oorder_schema.old_index = old_oorder_table_index;
