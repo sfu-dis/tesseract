@@ -1082,9 +1082,15 @@ class credit_check_order_line_scan_callback
       const order_line::value *val = Decode(value, v_ol_temp);
       sum += val->ol_amount;
     } else {
-      order_line_1::value v_ol_temp;
-      const order_line_1::value *val = Decode(value, v_ol_temp);
-      sum += val->ol_amount;
+      if (ermia::config::ddl_example == 0) {
+        order_line_1::value v_ol_temp;
+        const order_line_1::value *val = Decode(value, v_ol_temp);
+        sum += val->ol_amount;
+      } else if (ermia::config::ddl_example == 4) {
+        order_line_stock::value v_ol_temp;
+        const order_line_stock::value *val = Decode(value, v_ol_temp);
+        sum += val->ol_amount;
+      }
     }
     return true;
   }
@@ -1125,9 +1131,14 @@ class order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
 #endif
     } else {
       ASSERT(keylen == sizeof(order_line_1::key));
-      order_line_1::value v_ol_temp;
-      const order_line_1::value *v_ol = Decode(value, v_ol_temp);
-      ALWAYS_ASSERT(v_ol->v != 0);
+      if (ermia::config::ddl_example == 0) {
+        order_line_1::value v_ol_temp;
+        const order_line_1::value *v_ol = Decode(value, v_ol_temp);
+        ALWAYS_ASSERT(v_ol->v != 0);
+      } else if (ermia::config::ddl_example == 4) {
+        order_line_stock::value v_ol_temp;
+        const order_line_stock::value *v_ol = Decode(value, v_ol_temp);
+      }
     }
     ++n;
     return true;
@@ -1180,10 +1191,16 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
        s_i_ids[v_ol->ol_i_id] = 1;
      } else {
        ASSERT(keylen == sizeof(order_line_1::key));
-       order_line_1::value v_ol_temp;
-       const order_line_1::value *v_ol = Decode(value, v_ol_temp);
-       ALWAYS_ASSERT(v_ol->v != 0);
-       s_i_ids[v_ol->ol_i_id] = 1;
+       if (ermia::config::ddl_example == 0) {
+         order_line_1::value v_ol_temp;
+         const order_line_1::value *v_ol = Decode(value, v_ol_temp);
+         ALWAYS_ASSERT(v_ol->v != 0);
+         s_i_ids[v_ol->ol_i_id] = 1;
+       } else if (ermia::config::ddl_example == 4) {
+         order_line_stock::value v_ol_temp;
+         const order_line_stock::value *v_ol = Decode(value, v_ol_temp);
+         s_i_ids[v_ol->ol_i_id] = 1;
+       }
      }
      n++;
      return true;

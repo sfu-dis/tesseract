@@ -44,14 +44,14 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   // -
   //                         config::cdc_threads - config::worker_threads;
   uint32_t scan_threads = config::scan_threads;
-  uint32_t num_per_scan_thread = himark / (scan_threads + 3);
+  uint32_t num_per_scan_thread = himark / (scan_threads + 2);
   printf("scan_threads: %d, num_per_scan_thread: %d\n", scan_threads + 1,
          num_per_scan_thread);
 
   std::vector<thread::Thread *> scan_workers;
   for (uint32_t i = 1; i <= scan_threads; i++) {
-    uint32_t begin = (i + 2) * num_per_scan_thread;
-    uint32_t end = (i + 3) * num_per_scan_thread;
+    uint32_t begin = (i + 1) * num_per_scan_thread;
+    uint32_t end = (i + 2) * num_per_scan_thread;
     if (i == scan_threads)
       end = himark;
   retry:
@@ -123,7 +123,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   cdc_workers = t->changed_data_capture();
 #endif
 
-  OID end = scan_threads == 0 ? himark : 3 * num_per_scan_thread;
+  OID end = scan_threads == 0 ? himark : 2 * num_per_scan_thread;
   for (OID oid = 0; oid <= end; oid++) {
     fat_ptr *entry = key_array->get(oid);
     dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
