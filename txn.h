@@ -67,10 +67,13 @@ struct write_record_t {
 struct write_set_t {
   static const uint32_t kMaxEntries = 256, kMaxEntries_ = 50000000;
   uint32_t num_entries;
-  write_record_t entries[kMaxEntries];
+  uint32_t max_entries;
+  write_record_t init_entries[kMaxEntries];
+  write_record_t *entries;
   write_record_t *entries_;
   mcs_lock lock;
-  write_set_t() : num_entries(0) {}
+  write_set_t()
+      : num_entries(0), max_entries(kMaxEntries), entries(&init_entries[0]) {}
   inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid,
                            uint32_t size, dlog::log_record::logrec_type type) {
 #if defined(SIDDL)
@@ -85,7 +88,15 @@ struct write_set_t {
       new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type);
     }
 #else
-    ALWAYS_ASSERT(num_entries < kMaxEntries);
+    if (num_entries >= max_entries) {
+      write_record_t *new_entries = new write_record_t[max_entries * 2];
+      memcpy(new_entries, entries, sizeof(write_record_t) * max_entries);
+      max_entries *= 2;
+      if (entries != &init_entries[0]) {
+        delete[] entries;
+      }
+      entries = new_entries;
+    }
     new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type);
 #endif
     ++num_entries;

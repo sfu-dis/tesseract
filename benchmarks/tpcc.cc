@@ -279,6 +279,11 @@ rc_t tpcc_worker::txn_new_order() {
     }
   }
 
+#ifdef COPYDDL
+  ermia::ConcurrentMasstreeIndex *oorder_table_index =
+      (ermia::ConcurrentMasstreeIndex *)oorder_schema.index;
+#endif
+
   const oorder::key k_oo(warehouse_id, districtID, k_no.no_o_id);
   if (oorder_schema.v == 0) {
     oorder::value v_oo;
@@ -290,10 +295,9 @@ rc_t tpcc_worker::txn_new_order() {
 
     const size_t oorder_sz = Size(v_oo);
     ermia::OID v_oo_oid = 0; // Get the OID and put it in oorder_c_id_idx later
-    TryCatch(tbl_oorder(warehouse_id)
-                 ->InsertRecord(txn, Encode(str(Size(k_oo)), k_oo),
-                                Encode(str(oorder_sz), v_oo), &v_oo_oid,
-                                &oorder_schema));
+    TryCatch(oorder_table_index->InsertRecord(
+        txn, Encode(str(Size(k_oo)), k_oo), Encode(str(oorder_sz), v_oo),
+        &v_oo_oid, &oorder_schema));
 
     const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID,
                                         k_no.no_o_id);
@@ -311,12 +315,6 @@ rc_t tpcc_worker::txn_new_order() {
 
     const size_t oorder_sz = Size(v_oo);
     ermia::OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
-#ifdef COPYDDL
-    ermia::ConcurrentMasstreeIndex *oorder_table_index =
-	    (ermia::ConcurrentMasstreeIndex *) oorder_schema.index;
-    ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index = 
-	    (ermia::ConcurrentMasstreeIndex *) (*((oorder_schema.td)->GetSecIndexes().begin()));
-#endif
     TryCatch(oorder_table_index
                  ->InsertRecord(txn, Encode(str(Size(k_oo)), k_oo),
                                 Encode(str(oorder_sz), v_oo), &v_oo_oid));
@@ -645,6 +643,11 @@ rc_t tpcc_worker::txn_delivery() {
   struct ermia::Schema_record customer_schema;
   memcpy(&customer_schema, (char *)v3.data(), sizeof(customer_schema));
 
+#ifdef COPYDDL
+  ermia::ConcurrentMasstreeIndex *oorder_table_index =
+      (ermia::ConcurrentMasstreeIndex *)oorder_schema.index;
+#endif
+
   for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
     const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
     const new_order::key k_no_1(warehouse_id, d,
@@ -660,10 +663,6 @@ rc_t tpcc_worker::txn_delivery() {
     if (unlikely(!k_no)) continue;
     last_no_o_ids[d - 1] = k_no->no_o_id + 1;  // XXX: update last seen
 
-#ifdef COPYDDL
-    ermia::ConcurrentMasstreeIndex *oorder_table_index = (ermia::ConcurrentMasstreeIndex *) oorder_schema.index;
-#endif
-
     const oorder::key k_oo(warehouse_id, d, k_no->no_o_id);
     // even if we read the new order entry, there's no guarantee
     // we will read the oorder entry: in this case the txn will abort,
@@ -677,18 +676,14 @@ rc_t tpcc_worker::txn_delivery() {
 
     rc = rc_t{RC_INVALID};
     if (oorder_schema.v == 0) {
-      tbl_oorder(warehouse_id)
-          ->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo), valptr, nullptr,
-                      &oorder_schema);
+      oorder_table_index->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo),
+                                    valptr, nullptr, &oorder_schema);
       TryCatchCondAbort(rc);
       v_oo = Decode(valptr, v_oo_temp);
 #ifndef NDEBUG
       checker::SanityCheckOOrder(&k_oo, v_oo);
 #endif
     } else {
-#ifdef COPYDDL
-      ermia::ConcurrentMasstreeIndex *oorder_table_index = (ermia::ConcurrentMasstreeIndex *) oorder_schema.index;
-#endif
       oorder_table_index->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo),
                                     valptr, nullptr, &oorder_schema);
       TryCatchCondAbort(rc);
@@ -794,25 +789,15 @@ rc_t tpcc_worker::txn_delivery() {
     if (oorder_schema.v == 0) {
       oorder::value v_oo_new(*v_oo);
       v_oo_new.o_carrier_id = o_carrier_id;
-      TryCatch(tbl_oorder(warehouse_id)
-                   ->UpdateRecord(txn, Encode(str(Size(k_oo)), k_oo),
-                                  Encode(str(Size(v_oo_new)), v_oo_new),
-                                  &oorder_schema));
+      TryCatch(oorder_table_index->UpdateRecord(
+          txn, Encode(str(Size(k_oo)), k_oo),
+          Encode(str(Size(v_oo_new)), v_oo_new), &oorder_schema));
     } else {
       oorder_precompute_aggregate::value v_oo_pa_new(*v_oo_pa);
       v_oo_pa_new.o_carrier_id = o_carrier_id;
-#ifdef COPYDDL
-      ermia::ConcurrentMasstreeIndex *oorder_table_index = (ermia::ConcurrentMasstreeIndex *) oorder_schema.index;
-#endif
-#ifdef LAZYDDL
       TryCatch(oorder_table_index->UpdateRecord(
           txn, Encode(str(Size(k_oo)), k_oo),
           Encode(str(Size(v_oo_pa_new)), v_oo_pa_new), &oorder_schema));
-#else
-      TryCatch(oorder_table_index->UpdateRecord(
-          txn, Encode(str(Size(k_oo)), k_oo),
-          Encode(str(Size(v_oo_pa_new)), v_oo_pa_new), &oorder_schema));
-#endif
     }
 
     uint c_id;
@@ -1346,6 +1331,13 @@ rc_t tpcc_worker::txn_credit_check() {
 
   double sum = 0;
 
+#ifdef COPYDDL
+  ermia::ConcurrentMasstreeIndex *order_line_table_index =
+      (ermia::ConcurrentMasstreeIndex *)order_line_schema.index;
+  ermia::ConcurrentMasstreeIndex *oorder_table_index =
+      (ermia::ConcurrentMasstreeIndex *)oorder_schema.index;
+#endif
+
   if (oorder_schema.v == 0) {
     for (auto &k : c_no.output) {
       new_order::key k_no_temp;
@@ -1368,11 +1360,6 @@ rc_t tpcc_worker::txn_credit_check() {
       credit_check_order_line_scan_callback c_ol(order_line_schema.v);
       const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
       const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
-
-#ifdef COPYDDL
-      ermia::ConcurrentMasstreeIndex *order_line_table_index =
-          (ermia::ConcurrentMasstreeIndex *)order_line_schema.index;
-#endif
 
       TryCatch(order_line_table_index->Scan(
           txn, Encode(str(Size(k_ol_0)), k_ol_0),
@@ -1397,15 +1384,8 @@ rc_t tpcc_worker::txn_credit_check() {
       const oorder_precompute_aggregate::key k_oo(warehouse_id, districtID, k_no->no_o_id);
       oorder_precompute_aggregate::value v;
       rc = rc_t{RC_INVALID};
-#ifdef COPYDDL
-      ermia::ConcurrentMasstreeIndex *oorder_table_index = (ermia::ConcurrentMasstreeIndex *) oorder_schema.index;
-#endif
-#ifdef LAZYDDL
       oorder_table_index->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo),
                                     valptr, nullptr, &oorder_schema);
-#else
-      oorder_table_index->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo), valptr);
-#endif
       TryCatchCond(rc, continue);
       auto *vv = Decode(valptr, v);
       sum += vv->o_total_amount;
@@ -2134,6 +2114,9 @@ rc_t tpcc_worker::txn_ddl() {
     };
 
     uint64_t scan_reformat_idx = ermia::ddl::reformats.size();
+#ifdef LAZYDDL
+    oorder_schema.reformat_idx = ermia::ddl::reformats.size();
+#endif
     ermia::ddl::reformats.push_back(precompute_aggregate_1);
 
     ermia::FID old_oorder_fid = old_oorder_td->GetTupleFid();
@@ -2190,7 +2173,9 @@ rc_t tpcc_worker::txn_ddl() {
       return new_value;
     };
 
+#if !defined(LAZYDDL)
     oorder_schema.reformat_idx = ermia::ddl::reformats.size();
+#endif
     order_line_schema.reformat_idx = oorder_schema.reformat_idx;
     ermia::ddl::reformats.push_back(precompute_aggregate_2);
 

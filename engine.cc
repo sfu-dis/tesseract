@@ -237,10 +237,11 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
     }
 
 #ifdef LAZYDDL
-    if (!found && schema) {
+    if (!found && schema && oid) {
       int total = schema->v;
+      TableDescriptor *old_table_descriptor = nullptr;
     retry:
-      TableDescriptor *old_table_descriptor = schema->old_tds[total - 1];
+      old_table_descriptor = schema->old_tds[total - 1];
       if (old_table_descriptor == nullptr) {
         if (--total > 0) {
           goto retry;
@@ -261,15 +262,33 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
         found = false;
       } else {
         if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
+          auto *key_array = old_table_descriptor->GetKeyArray();
+          fat_ptr *entry = key_array->get(oid);
+          varstr *key = (config::enable_ddl_keys && entry)
+                            ? (varstr *)((*entry).offset())
+                            : nullptr;
+          t->string_allocator().reset();
           varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
-              nullptr, value, &(t->string_allocator()), schema->v,
+              key, value, &(t->string_allocator()), schema->v,
               old_table_descriptor->GetTupleFid(), oid);
-          t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
+          if (!new_tuple_value) {
+            found = false;
+            goto exit;
+          }
+          rc_t r = AWAIT t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
+          if (r._val != RC_TRUE) {
+            found = false;
+            goto exit;
+          }
           found = true;
           tuple = AWAIT oidmgr->oid_get_version(
               table_descriptor->GetTupleArray(), oid, t->xc);
           if (!tuple) {
             found = false;
+          }
+          if (table_descriptor != schema->td) {
+            volatile_write(rc._val, RC_ABORT_INTERNAL);
+            RETURN;
           }
         }
       }
@@ -426,20 +445,22 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
     int total = schema->v;
   retry:
     TableDescriptor *old_table_descriptor = schema->old_tds[total - 1];
-    dbtuple *tuple = AWAIT oidmgr->oid_get_version(
-        old_table_descriptor->GetTupleArray(), oid, t->xc);
-
-    if (!tuple) {
-      total--;
-      if (total > 0) {
-        old_table_descriptor = schema->old_tds[total - 1];
-        ALWAYS_ASSERT(old_table_descriptor != nullptr);
+    if (old_table_descriptor == nullptr) {
+      if (--total > 0) {
         goto retry;
       }
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
-    t->DDLCDCInsert(table_descriptor, oid, &value, 0);
-    RETURN rc_t{RC_TRUE};
+    dbtuple *tuple = AWAIT oidmgr->oid_get_version(
+        old_table_descriptor->GetTupleArray(), oid, t->xc);
+
+    if (!tuple) {
+      if (--total > 0) {
+        goto retry;
+      }
+      RETURN rc_t{RC_ABORT_INTERNAL};
+    }
+    RETURN t->DDLCDCInsert(table_descriptor, oid, &value, 0);
   }
 #endif
 
@@ -567,7 +588,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     return caller_callback->Invoke(k, vv);
   } else if (caller_callback->return_code.IsAbort()) {
 #ifdef LAZYDDL
-    if (schema) {
+    if (schema && oid) {
       int total = schema->v;
     retry:
       TableDescriptor *old_table_descriptor = schema->old_tds[total - 1];
@@ -591,10 +612,19 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
         return false;
       } else {
         if (t->DoTupleRead(tuple, &vv)._val == RC_TRUE) {
+          auto *key_array = old_table_descriptor->GetKeyArray();
+          fat_ptr *entry = key_array->get(oid);
+          varstr *key = (config::enable_ddl_keys && entry)
+                            ? (varstr *)((*entry).offset())
+                            : nullptr;
+          t->string_allocator().reset();
           varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
-              nullptr, vv, &(t->string_allocator()), schema->v,
+              key, vv, &(t->string_allocator()), schema->v,
               old_table_descriptor->GetTupleFid(), oid);
-          t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
+          rc_t rc = AWAIT t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
+          if (rc._val != RC_TRUE) {
+            return false;
+          }
           tuple = AWAIT oidmgr->oid_get_version(schema->td->GetTupleArray(),
                                                 oid, t->xc);
           if (tuple && t->DoTupleRead(tuple, &vv)._val == RC_TRUE) {

@@ -395,6 +395,7 @@ rc_t transaction::si_commit() {
   if (is_ddl()) {
     ddl_running_1 = false;
 #ifdef COPYDDL
+#if !defined(LAZYDDL) && !defined(DCOPYDDL)
     for (auto &v : new_td_map) {
       FID fid = v.second->GetTupleFid();
       auto *new_alloc = oidmgr->get_allocator(fid);
@@ -489,7 +490,7 @@ rc_t transaction::si_commit() {
         thread::PutThread(*it);
       }
     }
-
+#endif
     goto exit;
 #endif
   }
