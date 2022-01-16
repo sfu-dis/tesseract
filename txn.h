@@ -166,8 +166,8 @@ protected:
   void uninitialize();
 
   inline void ensure_active() {
-    // volatile_write(xc->state, TXN::TXN_ACTIVE);
-    // ASSERT(state() == TXN::TXN_ACTIVE);
+    volatile_write(xc->state, TXN::TXN_ACTIVE);
+    ASSERT(state() == TXN::TXN_ACTIVE);
   }
 
   rc_t commit();

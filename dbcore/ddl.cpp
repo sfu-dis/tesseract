@@ -70,13 +70,12 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
     auto parallel_scan = [=](char *) {
       str_arena *arena = new str_arena(config::arena_size_mb);
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
-        fat_ptr *entry = key_array->get(oid);
         dbtuple *tuple =
             AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
         varstr tuple_value;
-        varstr *key = (config::enable_ddl_keys && entry)
-                          ? (varstr *)((*entry).offset())
-                          : nullptr;
+        fat_ptr *entry =
+            config::enable_ddl_keys ? key_array->get(oid) : nullptr;
+        varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
         if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
           for (std::vector<struct ddl_executor_paras *>::const_iterator it =
                    ddl_executor_paras_list.begin();
@@ -127,12 +126,10 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
 
   OID end = scan_threads == 0 ? himark : 2 * num_per_scan_thread;
   for (OID oid = 0; oid <= end; oid++) {
-    fat_ptr *entry = key_array->get(oid);
     dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
     varstr tuple_value;
-    varstr *key = (config::enable_ddl_keys && entry)
-                      ? (varstr *)((*entry).offset())
-                      : nullptr;
+    fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
+    varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
     if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
       for (std::vector<struct ddl_executor_paras *>::const_iterator it =
                ddl_executor_paras_list.begin();
@@ -279,10 +276,9 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
               }
 
               auto *key_array = old_td_map[f]->GetKeyArray();
-              fat_ptr *entry = key_array->get(o);
-              varstr *key = (config::enable_ddl_keys && entry)
-                                ? (varstr *)((*entry).offset())
-                                : nullptr;
+              fat_ptr *entry =
+                  config::enable_ddl_keys ? key_array->get(o) : nullptr;
+              varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
 
               if (logrec->type == dlog::log_record::logrec_type::INSERT) {
                 dbtuple *tuple = (dbtuple *)(logrec->data);

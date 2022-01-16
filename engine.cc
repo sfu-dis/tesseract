@@ -246,7 +246,8 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
         if (--total > 0) {
           goto retry;
         }
-        goto exit;
+        volatile_write(rc._val, RC_ABORT_INTERNAL);
+        RETURN;
       }
       old_table_descriptor->GetTupleArray()->ensure_size(oid);
       tuple = AWAIT oidmgr->oid_get_version(
@@ -256,46 +257,40 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
         if (--total > 0) {
           goto retry;
         }
+        volatile_write(rc._val, RC_ABORT_INTERNAL);
+        RETURN;
       }
 
-      if (!tuple) {
-        found = false;
-      } else {
-        if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
-          auto *key_array = old_table_descriptor->GetKeyArray();
-          fat_ptr *entry = key_array->get(oid);
-          varstr *key = (config::enable_ddl_keys && entry)
-                            ? (varstr *)((*entry).offset())
-                            : nullptr;
-          // t->string_allocator().reset();
-          varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
-              key, value, &(t->string_allocator()), schema->v,
-              old_table_descriptor->GetTupleFid(), oid);
-          if (!new_tuple_value) {
-            found = false;
-            goto exit;
-          }
-          rc_t r = AWAIT t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
-          if (r._val != RC_TRUE) {
-            found = false;
-            goto exit;
-          }
+      if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
+        auto *key_array = old_table_descriptor->GetKeyArray();
+        fat_ptr *entry =
+            config::enable_ddl_keys ? key_array->get(oid) : nullptr;
+        varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
+        // t->string_allocator().reset();
+        varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
+            key, value, &(t->string_allocator()), schema->v,
+            old_table_descriptor->GetTupleFid(), oid);
+        if (!new_tuple_value) {
+          volatile_write(rc._val, RC_ABORT_INTERNAL);
+          RETURN;
+        }
+        rc_t r = AWAIT t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
+        if (r._val != RC_TRUE || table_descriptor != schema->td) {
+          volatile_write(rc._val, RC_ABORT_INTERNAL);
+          RETURN;
+        }
+        tuple = AWAIT oidmgr->oid_get_version(schema->td->GetTupleArray(), oid,
+                                              t->xc);
+        if (tuple && t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
           found = true;
-          tuple = AWAIT oidmgr->oid_get_version(
-              table_descriptor->GetTupleArray(), oid, t->xc);
-          if (!tuple) {
-            found = false;
-          }
-          if (table_descriptor != schema->td) {
-            volatile_write(rc._val, RC_ABORT_INTERNAL);
-            RETURN;
-          }
+        } else {
+          volatile_write(rc._val, RC_ABORT_INTERNAL);
+          RETURN;
         }
       }
     }
 #endif
 
-  exit:
     if (found) {
       volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
     } else if (config::phantom_prot) {
@@ -461,7 +456,12 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
       }
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
-    RETURN t->DDLCDCInsert(table_descriptor, oid, &value, 0);
+    rc_t rc = rc_t{RC_INVALID};
+    rc = AWAIT t->DDLCDCInsert(schema->td, oid, &value, 0);
+    if (table_descriptor != schema->td) {
+      RETURN rc_t{RC_ABORT_INTERNAL};
+    }
+    RETURN rc;
   }
 #endif
 
@@ -608,35 +608,31 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
         if (--total > 0) {
           goto retry;
         }
+        return false;
       }
 
-      if (!tuple) {
-        return false;
-      } else {
-        if (t->DoTupleRead(tuple, &vv)._val == RC_TRUE) {
-          auto *key_array = old_table_descriptor->GetKeyArray();
-          fat_ptr *entry = key_array->get(oid);
-          varstr *key = (config::enable_ddl_keys && entry)
-                            ? (varstr *)((*entry).offset())
-                            : nullptr;
-          // t->string_allocator().reset();
-          varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
-              key, vv, &(t->string_allocator()), schema->v,
-              old_table_descriptor->GetTupleFid(), oid);
-          rc_t rc = AWAIT t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
-          if (rc._val != RC_TRUE) {
-            return false;
-          }
-          tuple = AWAIT oidmgr->oid_get_version(schema->td->GetTupleArray(),
-                                                oid, t->xc);
-          if (table_descriptor != schema->td) {
-            caller_callback->return_code = rc_t{RC_ABORT_SI_CONFLICT};
-            return false;
-          }
-          if (tuple && t->DoTupleRead(tuple, &vv)._val == RC_TRUE) {
-            caller_callback->return_code = rc_t{RC_TRUE};
-            return caller_callback->Invoke(k, vv);
-          }
+      if (t->DoTupleRead(tuple, &vv)._val == RC_TRUE) {
+        auto *key_array = old_table_descriptor->GetKeyArray();
+        fat_ptr *entry =
+            config::enable_ddl_keys ? key_array->get(oid) : nullptr;
+        varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
+        // t->string_allocator().reset();
+        varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
+            key, vv, &(t->string_allocator()), schema->v,
+            old_table_descriptor->GetTupleFid(), oid);
+        rc_t rc = AWAIT t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
+        if (rc._val != RC_TRUE) {
+          return false;
+        }
+        tuple = AWAIT oidmgr->oid_get_version(schema->td->GetTupleArray(), oid,
+                                              t->xc);
+        if (table_descriptor != schema->td) {
+          caller_callback->return_code = rc_t{RC_ABORT_SI_CONFLICT};
+          return false;
+        }
+        if (tuple && t->DoTupleRead(tuple, &vv)._val == RC_TRUE) {
+          caller_callback->return_code = rc_t{RC_TRUE};
+          return caller_callback->Invoke(k, vv);
         }
       }
     }
