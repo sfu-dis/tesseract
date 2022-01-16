@@ -28,9 +28,8 @@ int g_hybrid = 0;
 // 6: TPC-CH query 2 variant - original query 2, but /w marginal stock table update
 // 7: Microbenchmark-random - same as Microbenchmark, but uses random read-set range
 // 8: DDL
-/*unsigned g_txn_workload_mix[8] = {45, 43, 0, 4,
-                                  4,  4,  0, 0};*/ // default TPC-C workload mix
-unsigned g_txn_workload_mix[8] = {41, 43, 4, 4, 4, 4, 0, 0};
+unsigned g_txn_workload_mix[8] = {45, 43, 0, 4,
+                                  4,  4,  0, 0}; // default TPC-C workload mix
 
 // how much % of time a worker should use a random home wh
 // 0 - always use home wh

@@ -267,7 +267,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
           varstr *key = (config::enable_ddl_keys && entry)
                             ? (varstr *)((*entry).offset())
                             : nullptr;
-          t->string_allocator().reset();
+          // t->string_allocator().reset();
           varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
               key, value, &(t->string_allocator()), schema->v,
               old_table_descriptor->GetTupleFid(), oid);
@@ -443,8 +443,9 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   if (rc._val == RC_TRUE && schema &&
       *(table_descriptor->GetTupleArray()->get(oid)) == NULL_PTR) {
     int total = schema->v;
+    TableDescriptor *old_table_descriptor = nullptr;
   retry:
-    TableDescriptor *old_table_descriptor = schema->old_tds[total - 1];
+    old_table_descriptor = schema->old_tds[total - 1];
     if (old_table_descriptor == nullptr) {
       if (--total > 0) {
         goto retry;
@@ -569,12 +570,12 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
 #else
   caller_callback->return_code = t->DoTupleRead(v, &vv);
 #endif
+  if (schema && table_descriptor != schema->td) {
+    caller_callback->return_code = rc_t{RC_ABORT_SI_CONFLICT};
+    return false;
+  }
   if (caller_callback->return_code._val == RC_TRUE) {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-    if (schema && table_descriptor != schema->td) {
-      caller_callback->return_code = rc_t{RC_ABORT_SI_CONFLICT};
-      return false;
-    }
     std::unordered_map<FID, TableDescriptor *> new_td_map = t->get_new_td_map();
     if (t->IsWaitForNewSchema() && schema &&
         (new_td_map.find(table_descriptor->GetTupleFid()) !=
@@ -590,8 +591,9 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
 #ifdef LAZYDDL
     if (schema && oid) {
       int total = schema->v;
+      TableDescriptor *old_table_descriptor = nullptr;
     retry:
-      TableDescriptor *old_table_descriptor = schema->old_tds[total - 1];
+      old_table_descriptor = schema->old_tds[total - 1];
       if (old_table_descriptor == nullptr) {
         if (--total > 0) {
           goto retry;
@@ -617,7 +619,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
           varstr *key = (config::enable_ddl_keys && entry)
                             ? (varstr *)((*entry).offset())
                             : nullptr;
-          t->string_allocator().reset();
+          // t->string_allocator().reset();
           varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
               key, vv, &(t->string_allocator()), schema->v,
               old_table_descriptor->GetTupleFid(), oid);
@@ -627,6 +629,10 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
           }
           tuple = AWAIT oidmgr->oid_get_version(schema->td->GetTupleArray(),
                                                 oid, t->xc);
+          if (table_descriptor != schema->td) {
+            caller_callback->return_code = rc_t{RC_ABORT_SI_CONFLICT};
+            return false;
+          }
           if (tuple && t->DoTupleRead(tuple, &vv)._val == RC_TRUE) {
             caller_callback->return_code = rc_t{RC_TRUE};
             return caller_callback->Invoke(k, vv);

@@ -1893,7 +1893,7 @@ rc_t tpcc_worker::txn_ddl() {
       v_c_private.c_payment_cnt = v_c->c_payment_cnt;
       v_c_private.c_delivery_cnt = v_c->c_delivery_cnt;
       v_c_private.c_data.assign(v_c->c_data.data(), v_c->c_data.size());
-      v_c_private.v = 0;
+      v_c_private.v = schema_version;
 
       const size_t customer_private_sz = ::Size(v_c_private);
       ermia::varstr *new_value = arena->next(customer_private_sz);
