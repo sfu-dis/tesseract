@@ -12,6 +12,7 @@ struct Schema_base {
   ddl::ddl_type ddl_type;
   OrderedIndex *index;
   TableDescriptor *td;
+  bool show_index; // simulate no index
 };
 
 struct Schema_record : public Schema_base {

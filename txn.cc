@@ -1099,6 +1099,17 @@ transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
   RETURN false;
 }
 
+void transaction::table_scan(TableDescriptor *td, const varstr *key, OID oid) {
+  auto *key_array = td->GetKeyArray();
+  for (uint32_t o = 1; o <= oid; o++) {
+    fat_ptr *entry = key_array->get(oid);
+    varstr *k = entry ? (varstr *)((*entry).offset()) : nullptr;
+    if (k && key && memcmp(k, key, key->size())) {
+      break;
+    }
+  }
+}
+
 void transaction::LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key) {
   /*
   // Note: here we log the whole key varstr so that recovery can figure out the

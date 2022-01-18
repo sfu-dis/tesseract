@@ -562,7 +562,6 @@ record_test.v;
 };
 
 void oddlb_do_test(ermia::Engine *db, int argc, char **argv) {
-  std::cerr << RAND_MAX << std::endl;
   oddlb_parse_options(argc, argv);
   oddlb_bench_runner<oddlb_sequential_worker> r(db);
   r.run();

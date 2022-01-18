@@ -169,8 +169,30 @@ ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
 
   if (!unlikely(end_key && *end_key <= start_key)) {
     XctSearchRangeCallback cb(t, &c, schema, table_descriptor);
+    bool need_scan = false;
+#ifdef LAZYDDL
+    if (schema && schema->old_index) {
+      AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
+                                        cb, t->xc);
+      if (c.return_code._val == RC_FALSE) {
+        XctSearchRangeCallback cb1(t, &c, schema, table_descriptor, true);
+        AWAIT((ConcurrentMasstreeIndex *)schema->old_index)
+            ->GetMasstree()
+            .search_range_call(start_key, end_key ? end_key : nullptr, cb1,
+                               t->xc);
+        need_scan = true;
+      }
+    } else {
+      AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
+                                        cb, t->xc);
+    }
+#else
     AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
                                       cb, t->xc);
+#endif
+    if (schema && (!schema->show_index || need_scan)) {
+      t->table_scan(table_descriptor, end_key, c.max_oid);
+    }
   }
   RETURN c.return_code;
 }
@@ -191,8 +213,30 @@ ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
     if (end_key) {
       lowervk = *end_key;
     }
+    bool need_scan = false;
+#ifdef LAZYDDL
+    if (schema && schema->old_index) {
+      AWAIT masstree_.rsearch_range_call(
+          start_key, end_key ? &lowervk : nullptr, cb, t->xc);
+      if (c.return_code._val == RC_FALSE) {
+        XctSearchRangeCallback cb1(t, &c, schema, table_descriptor, true);
+        AWAIT((ConcurrentMasstreeIndex *)schema->old_index)
+            ->GetMasstree()
+            .rsearch_range_call(start_key, end_key ? &lowervk : nullptr, cb1,
+                                t->xc);
+        need_scan = true;
+      }
+    } else {
+      AWAIT masstree_.rsearch_range_call(
+          start_key, end_key ? &lowervk : nullptr, cb, t->xc);
+    }
+#else
     AWAIT masstree_.rsearch_range_call(start_key, end_key ? &lowervk : nullptr,
                                        cb, t->xc);
+#endif
+    if (schema && (!schema->show_index || need_scan)) {
+      t->table_scan(table_descriptor, end_key, c.max_oid);
+    }
   }
   RETURN c.return_code;
 }
@@ -220,6 +264,20 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
     t->ensure_active();
     bool found = AWAIT masstree_.search(key, oid, t->xc->begin_epoch, &sinfo);
 
+#ifdef LAZYDDL
+    if (schema && (!schema->show_index || !found)) {
+      if (schema->old_index) {
+        AWAIT schema->old_index->GetOID(key, rc, t->xc, oid);
+        if (rc._val == RC_TRUE) {
+          AWAIT InsertOID(t, key, oid);
+        }
+      }
+#else
+    if (schema && !schema->show_index) {
+#endif
+      t->table_scan(table_descriptor, &key, oid);
+    }
+
     dbtuple *tuple = nullptr;
     if (found) {
       // Key-OID mapping exists, now try to get the actual tuple to be sure
@@ -239,6 +297,10 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 #ifdef LAZYDDL
     if (!found && schema && oid) {
       int total = schema->v;
+      if (!total) {
+        volatile_write(rc._val, RC_ABORT_INTERNAL);
+        RETURN;
+      }
       TableDescriptor *old_table_descriptor = nullptr;
     retry:
       old_table_descriptor = schema->old_tds[total - 1];
@@ -423,6 +485,20 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   rc_t rc = {RC_INVALID};
   AWAIT GetOID(key, rc, t->xc, oid);
 
+#ifdef LAZYDDL
+  if (schema && (!schema->show_index || rc._val != RC_TRUE)) {
+    if (schema->old_index) {
+      AWAIT schema->old_index->GetOID(key, rc, t->xc, oid);
+      if (rc._val == RC_TRUE) {
+        AWAIT InsertOID(t, key, oid);
+      }
+    }
+#else
+  if (schema && !schema->show_index) {
+#endif
+    t->table_scan(table_descriptor, &key, oid);
+  }
+
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   std::unordered_map<FID, TableDescriptor *> new_td_map = t->get_new_td_map();
   if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
@@ -438,6 +514,9 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   if (rc._val == RC_TRUE && schema &&
       *(table_descriptor->GetTupleArray()->get(oid)) == NULL_PTR) {
     int total = schema->v;
+    if (!total) {
+      RETURN rc_t{RC_ABORT_INTERNAL};
+    }
     TableDescriptor *old_table_descriptor = nullptr;
   retry:
     old_table_descriptor = schema->old_tds[total - 1];
@@ -487,6 +566,20 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
   OID oid = 0;
   rc_t rc = {RC_INVALID};
   AWAIT GetOID(key, rc, t->xc, oid);
+
+#ifdef LAZYDDL
+  if (schema && (!schema->show_index || rc._val != RC_TRUE)) {
+    if (schema->old_index) {
+      AWAIT schema->old_index->GetOID(key, rc, t->xc, oid);
+      if (rc._val == RC_TRUE) {
+        AWAIT InsertOID(t, key, oid);
+      }
+    }
+#else
+  if (schema && !schema->show_index) {
+#endif
+    t->table_scan(table_descriptor, &key, oid);
+  }
 
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
   std::unordered_map<FID, TableDescriptor *> new_td_map = t->get_new_td_map();
@@ -564,6 +657,9 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
                     << std::endl
                     << "  " << *((dbtuple *)v) << std::endl);
   varstr vv;
+  if (oid > caller_callback->max_oid) {
+    caller_callback->max_oid = oid;
+  }
 #ifdef LAZYDDL
   caller_callback->return_code =
       v ? t->DoTupleRead(v, &vv) : rc_t{RC_ABORT_INTERNAL};
@@ -586,11 +682,20 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
       }
     }
 #endif
+#ifdef LAZYDDL
+    if (insert_oid && schema) {
+      const varstr *key = new varstr(k.data(), k.length());
+      schema->index->InsertOID(t, *key, oid);
+    }
+#endif
     return caller_callback->Invoke(k, vv);
   } else if (caller_callback->return_code.IsAbort()) {
 #ifdef LAZYDDL
     if (schema && oid) {
       int total = schema->v;
+      if (!total) {
+        return false;
+      }
       TableDescriptor *old_table_descriptor = nullptr;
     retry:
       old_table_descriptor = schema->old_tds[total - 1];
@@ -612,6 +717,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
       }
 
       if (t->DoTupleRead(tuple, &vv)._val == RC_TRUE) {
+        printf("scan here\n");
         auto *key_array = old_table_descriptor->GetKeyArray();
         fat_ptr *entry =
             config::enable_ddl_keys ? key_array->get(oid) : nullptr;

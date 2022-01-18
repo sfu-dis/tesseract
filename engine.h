@@ -148,7 +148,7 @@ private:
 
   struct SearchRangeCallback {
     SearchRangeCallback(OrderedIndex::ScanCallback &upcall)
-        : upcall(&upcall), return_code(rc_t{RC_FALSE}) {}
+        : upcall(&upcall), return_code(rc_t{RC_FALSE}), max_oid(0) {}
     ~SearchRangeCallback() {}
 
     inline bool Invoke(const ConcurrentMasstree::string_type &k,
@@ -158,15 +158,22 @@ private:
 
     OrderedIndex::ScanCallback *upcall;
     rc_t return_code;
+    OID max_oid;
   };
 
   struct XctSearchRangeCallback
       : public ConcurrentMasstree::low_level_search_range_callback {
     XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback,
                            Schema_record *schema,
+                           TableDescriptor *table_descriptor, bool insert_oid)
+        : t(t), caller_callback(caller_callback), schema(schema),
+          table_descriptor(table_descriptor), insert_oid(insert_oid) {}
+
+    XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback,
+                           Schema_record *schema,
                            TableDescriptor *table_descriptor)
         : t(t), caller_callback(caller_callback), schema(schema),
-          table_descriptor(table_descriptor) {}
+          table_descriptor(table_descriptor), insert_oid(false) {}
 
     virtual void
     on_resp_node(const typename ConcurrentMasstree::node_opaque_t *n,
@@ -182,6 +189,7 @@ private:
     SearchRangeCallback *const caller_callback;
     Schema_record *schema;
     TableDescriptor *table_descriptor;
+    bool insert_oid;
   };
 
   struct PurgeTreeWalker : public ConcurrentMasstree::tree_walk_callback {

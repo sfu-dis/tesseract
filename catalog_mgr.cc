@@ -39,27 +39,24 @@ void schematable_loader::load() {
   struct ermia::Schema_record order_line_schema;
   order_line_schema.state = 0;
   order_line_schema.old_td = nullptr;
-#ifdef LAZYDDL
   order_line_schema.old_index = nullptr;
-#elif DCOPYDDL
+#ifdef DCOPYDDL
   order_line_schema.old_v = -1;
 #endif
 
   struct ermia::Schema_record oorder_schema;
   oorder_schema.state = 0;
   oorder_schema.old_td = nullptr;
-#ifdef LAZYDDL
   oorder_schema.old_index = nullptr;
-#elif DCOPYDDL
+#ifdef DCOPYDDL
   oorder_schema.old_v = -1;
 #endif
 
   struct ermia::Schema_record customer_schema;
   customer_schema.state = 0;
   customer_schema.old_td = nullptr;
-#ifdef LAZYDDL
   customer_schema.old_index = nullptr;
-#elif DCOPYDDL
+#ifdef DCOPYDDL
   customer_schema.old_v = -1;
 #endif
 
@@ -79,6 +76,7 @@ void schematable_loader::load() {
   order_line_schema.index =
       ermia::Catalog::GetTable("order_line")->GetPrimaryIndex();
   order_line_schema.td = ermia::Catalog::GetTable("order_line");
+  order_line_schema.show_index = ermia::config::ddl_example == 3 ? false : true;
   memcpy(schema_str1, &order_line_schema, sizeof(schema_str1));
   ermia::varstr &v1 = str(sizeof(schema_str1));
   v1.copy_from(schema_str1, sizeof(schema_str1));
@@ -86,6 +84,7 @@ void schematable_loader::load() {
   oorder_schema.v = 0;
   oorder_schema.index = ermia::Catalog::GetTable("oorder")->GetPrimaryIndex();
   oorder_schema.td = ermia::Catalog::GetTable("oorder");
+  oorder_schema.show_index = true;
   memcpy(schema_str2, &oorder_schema, sizeof(schema_str2));
   ermia::varstr &v2 = str(sizeof(schema_str2));
   v2.copy_from(schema_str2, sizeof(schema_str2));
@@ -96,6 +95,7 @@ void schematable_loader::load() {
   customer_schema.index =
       ermia::Catalog::GetTable("customer")->GetPrimaryIndex();
   customer_schema.td = ermia::Catalog::GetTable("customer");
+  customer_schema.show_index = true;
   memcpy(schema_str3, &customer_schema, sizeof(schema_str3));
   ermia::varstr &v3 = str(sizeof(schema_str3));
   v3.copy_from(schema_str3, sizeof(schema_str3));
@@ -260,9 +260,8 @@ void microbenchmark_schematable_loader::load() {
     usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
     ermia::ddl::reformats.push_back(add_column_4);
   }
-#ifdef LAZYDDL
   usertable_schema.old_index = nullptr;
-#elif DCOPYDDL
+#ifdef DCOPYDDL
   usertable_schema.old_v = -1;
 #endif
 
