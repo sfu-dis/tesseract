@@ -1936,7 +1936,7 @@ rc_t tpcc_worker::txn_ddl() {
     txn->add_new_td_map(customer_schema.td);
 
     // Now let us build a new table for public customer records
-    /*char str5[] = "customer_public";
+    char str5[] = "customer_public";
     db->CreateTable(str5);
 
     auto *old_public_customer_table_index = new ermia::ConcurrentMasstreeIndex(
@@ -2011,7 +2011,7 @@ rc_t tpcc_worker::txn_ddl() {
     TryVerifyStrict(schema_index->InsertRecord(txn, k2, v4));
 
     txn->add_new_td_map(public_customer_schema.td);
-*/
+
     // New a ddl executor
     ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
     ddl_exe->add_ddl_executor_paras(
@@ -2019,13 +2019,12 @@ rc_t tpcc_worker::txn_ddl() {
         customer_schema.reformat_idx, customer_schema.constraint_idx,
         customer_schema.td, customer_schema.old_td, customer_schema.index,
         customer_schema.state);
-    /*ddl_exe->add_ddl_executor_paras(
+    ddl_exe->add_ddl_executor_paras(
         public_customer_schema.v, public_customer_schema.old_v,
         public_customer_schema.ddl_type, public_customer_schema.reformat_idx,
         public_customer_schema.constraint_idx, public_customer_schema.td,
         public_customer_schema.old_td, public_customer_schema.index,
         public_customer_schema.state);
-    */
     txn->set_ddl_executor(ddl_exe);
 
 #if !defined(LAZYDDL)

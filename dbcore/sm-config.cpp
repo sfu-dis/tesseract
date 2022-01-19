@@ -73,6 +73,7 @@ uint32_t ddl_start_time = 1;
 uint32_t no_copy_verification_version_add = 1;
 uint32_t ddl_example = 0;
 bool enable_ddl_keys = false;
+bool enable_lazy_background = false;
 bool always_load = false;
 bool kStateRunning = false;
 bool iouring_read_log = false;

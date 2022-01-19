@@ -394,8 +394,18 @@ rc_t transaction::si_commit() {
 
   if (is_ddl()) {
     ddl_running_1 = false;
+
 #ifdef COPYDDL
-#if !defined(LAZYDDL) && !defined(DCOPYDDL)
+#ifdef LAZYDDL
+    // Background migration
+    if (!config::enable_lazy_background) {
+      goto exit;
+    }
+    volatile_write(xc->state, TXN::TXN_CMMTD);
+    varstr *v = new varstr();
+    ddl_exe->scan(this, &(string_allocator()), *v);
+#endif
+
     for (auto &v : new_td_map) {
       FID fid = v.second->GetTupleFid();
       auto *new_alloc = oidmgr->get_allocator(fid);
@@ -444,7 +454,11 @@ rc_t transaction::si_commit() {
                   CSN::from_ptr(csn).offset() > xc->end) {
                 break;
               } else if (csn.asi_type() == fat_ptr::ASI_CSN &&
+#ifdef LAZYDDL
+                         CSN::from_ptr(csn).offset() <= xc->end &&
+#else
                          CSN::from_ptr(csn).offset() < xc->end &&
+#endif
                          CSN::from_ptr(csn).offset() > xc->begin) {
                 dbtuple *tuple = (dbtuple *)cur_obj->GetPayload();
                 uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
@@ -490,7 +504,6 @@ rc_t transaction::si_commit() {
         thread::PutThread(*it);
       }
     }
-#endif
     goto exit;
 #endif
   }

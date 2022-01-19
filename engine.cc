@@ -717,7 +717,6 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
       }
 
       if (t->DoTupleRead(tuple, &vv)._val == RC_TRUE) {
-        printf("scan here\n");
         auto *key_array = old_table_descriptor->GetKeyArray();
         fat_ptr *entry =
             config::enable_ddl_keys ? key_array->get(oid) : nullptr;

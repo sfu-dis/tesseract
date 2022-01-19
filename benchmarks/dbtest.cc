@@ -116,6 +116,8 @@ DEFINE_uint64(no_copy_verification_version_add, 1,
               "verification");
 DEFINE_uint64(ddl_example, 0, "DDL example");
 DEFINE_bool(enable_ddl_keys, false, "Whether need maintain key arrays");
+DEFINE_bool(enable_lazy_background, false,
+            "Whether enable background migration for lazy DDL");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -161,6 +163,7 @@ int main(int argc, char **argv) {
       FLAGS_no_copy_verification_version_add;
   ermia::config::ddl_example = FLAGS_ddl_example;
   ermia::config::enable_ddl_keys = FLAGS_enable_ddl_keys;
+  ermia::config::enable_lazy_background = FLAGS_enable_lazy_background;
 
   if (ermia::config::physical_workers_only) {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
@@ -338,6 +341,8 @@ int main(int argc, char **argv) {
             << ermia::config::ddl_example << std::endl;
   std::cerr << "  enable_ddl_keys			: "
             << ermia::config::enable_ddl_keys << std::endl;
+  std::cerr << "  enable_lazy_background		: "
+            << ermia::config::enable_lazy_background << std::endl;
 #endif
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");

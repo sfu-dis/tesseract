@@ -100,8 +100,11 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
               if (!new_tuple_value)
                 continue;
 #ifdef COPYDDL
-              t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->begin,
-                              nullptr);
+#ifdef LAZYDDL
+              t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end);
+#else
+              t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->begin);
+#endif
 #elif BLOCKDDL
               t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value);
 #elif SIDDL
@@ -153,8 +156,11 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
           if (!new_tuple_value)
             continue;
 #ifdef COPYDDL
-          t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->begin,
-                          nullptr);
+#ifdef LAZYDDL
+          t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end);
+#else
+          t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->begin);
+#endif
 #elif BLOCKDDL
           t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value);
 #elif SIDDL
