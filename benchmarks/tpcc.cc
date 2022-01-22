@@ -794,6 +794,8 @@ rc_t tpcc_worker::txn_delivery() {
           Encode(str(Size(v_oo_new)), v_oo_new), &oorder_schema));
     } else {
       oorder_precompute_aggregate::value v_oo_pa_new(*v_oo_pa);
+      // if (v_oo_pa->o_total_amount != sum) printf("%f ",
+      // v_oo_pa->o_total_amount);
       v_oo_pa_new.o_carrier_id = o_carrier_id;
       TryCatch(oorder_table_index->UpdateRecord(
           txn, Encode(str(Size(k_oo)), k_oo),
@@ -2089,8 +2091,9 @@ rc_t tpcc_worker::txn_ddl() {
       const oorder::value *v_oo = Decode(value, v_oo_temp);
 
       credit_check_order_line_scan_callback c_ol(schema_version - 1);
-      const order_line::key k_ol_0(k_oo->o_w_id, k_oo->o_d_id, k_oo->o_id, 1);
-      const order_line::key k_ol_1(k_oo->o_w_id, k_oo->o_d_id, k_oo->o_id, 15);
+      const order_line::key k_ol_0(k_oo->o_w_id, k_oo->o_d_id, k_oo->o_id, 0);
+      const order_line::key k_ol_1(k_oo->o_w_id, k_oo->o_d_id, k_oo->o_id,
+                                   std::numeric_limits<int32_t>::max());
 
       ermia::varstr *k_ol_0_str = arena->next(Size(k_ol_0));
       ermia::varstr *k_ol_1_str = arena->next(Size(k_ol_1));
@@ -2176,7 +2179,7 @@ rc_t tpcc_worker::txn_ddl() {
 #if !defined(LAZYDDL)
     oorder_schema.reformat_idx = ermia::ddl::reformats.size();
 #endif
-    order_line_schema.reformat_idx = oorder_schema.reformat_idx;
+    order_line_schema.reformat_idx = ermia::ddl::reformats.size();
     ermia::ddl::reformats.push_back(precompute_aggregate_2);
 
     /*auto build_key_sum_map = [=](ermia::varstr *key, ermia::varstr &value,

@@ -27,6 +27,11 @@ ddl_type ddl_type_map(uint32_t type) {
 }
 
 rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
+#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+  printf("First CDC begins\n");
+  cdc_workers = t->changed_data_capture();
+#endif
+
   rc_t r;
   TXN::xid_context *xc = t->GetXIDContext();
 
@@ -43,16 +48,19 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   // uint32_t scan_threads = (thread::cpu_cores.size() / 2) * config::numa_nodes
   // -
   //                         config::cdc_threads - config::worker_threads;
+#ifdef LAZYDDL
+  uint32_t scan_threads = config::scan_threads + config::cdc_threads;
+#else
   uint32_t scan_threads = config::scan_threads;
-  uint32_t num_per_scan_thread = himark / (scan_threads + 2);
-  printf("scan_threads: %d, num_per_scan_thread: %d\n", scan_threads + 1,
+#endif
+  uint32_t num_per_scan_thread = himark / scan_threads;
+  printf("scan_threads: %d, num_per_scan_thread: %d\n", scan_threads,
          num_per_scan_thread);
 
-  std::vector<thread::Thread *> scan_workers;
-  for (uint32_t i = 1; i <= scan_threads; i++) {
-    uint32_t begin = (i + 1) * num_per_scan_thread;
-    uint32_t end = (i + 2) * num_per_scan_thread;
-    if (i == scan_threads)
+  for (uint32_t i = 1; i < scan_threads; i++) {
+    uint32_t begin = i * num_per_scan_thread;
+    uint32_t end = (i + 1) * num_per_scan_thread;
+    if (i == scan_threads - 1)
       end = himark;
   retry:
     thread::Thread *thread =
@@ -68,6 +76,16 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
     }*/
     scan_workers.push_back(thread);
     auto parallel_scan = [=](char *) {
+      dlog::log_block *lb = nullptr;
+      /*dlog::tls_log *log = GetLog();
+      log->set_normal(false);
+      log->reset_logbuf(25);
+      dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
+      uint64_t segnum = -1;
+      uint64_t logbuf_size =
+          log->get_logbuf_size() - sizeof(dlog::log_block);
+      lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
+      */
       str_arena *arena = new str_arena(config::arena_size_mb);
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
         dbtuple *tuple =
@@ -103,7 +121,8 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
 #ifdef LAZYDDL
               t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end);
 #else
-              t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->begin);
+              t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value,
+                              !xc->end ? xc->begin : xc->end, lb);
 #endif
 #elif BLOCKDDL
               t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value);
@@ -122,12 +141,12 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
     thread->StartTask(parallel_scan);
   }
 
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
-  printf("First CDC begins\n");
-  cdc_workers = t->changed_data_capture();
-#endif
+  /*#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+    printf("First CDC begins\n");
+    cdc_workers = t->changed_data_capture();
+  #endif*/
 
-  OID end = scan_threads == 0 ? himark : 2 * num_per_scan_thread;
+  OID end = scan_threads == 0 ? himark : num_per_scan_thread;
   for (OID oid = 0; oid <= end; oid++) {
     dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
     varstr tuple_value;
@@ -159,7 +178,8 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
 #ifdef LAZYDDL
           t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end);
 #else
-          t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->begin);
+          t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value,
+                          !xc->end ? xc->begin : xc->end);
 #endif
 #elif BLOCKDDL
           t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value);
@@ -177,11 +197,9 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   uint64_t current_csn = dlog::current_csn.load(std::memory_order_relaxed);
   printf("DDL main thread scan ends, current csn: %lu\n", current_csn);
 
-  for (std::vector<thread::Thread *>::const_iterator it = scan_workers.begin();
-       it != scan_workers.end(); ++it) {
-    (*it)->Join();
-    thread::PutThread(*it);
-  }
+#ifdef LAZYDDL
+  join_scan_workers();
+#endif
 
   current_csn = dlog::current_csn.load(std::memory_order_relaxed);
   printf("DDL scan ends, current csn: %lu\n", current_csn);

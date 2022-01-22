@@ -126,6 +126,9 @@ private:
   // Whether do normal operations
   bool normal;
 
+  // Whether doing DDL
+  bool doing_ddl;
+
 private:
   // Get the currently open segment
   inline segment *current_segment() { return &segments[segments.size() - 1]; }
@@ -162,6 +165,8 @@ public:
   inline void set_dirty(bool _dirty) { dirty = _dirty; }
 
   inline void set_normal(bool _normal) { normal = _normal; }
+
+  inline void set_doing_ddl(bool _doing_ddl) { doing_ddl = _doing_ddl; }
 
   inline std::vector<segment> *get_segments() { return &segments; }
 

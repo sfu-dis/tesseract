@@ -90,6 +90,9 @@ private:
   // CDC workers
   std::vector<ermia::thread::Thread *> cdc_workers;
 
+  // Scan workers
+  std::vector<ermia::thread::Thread *> scan_workers;
+
 public:
   // Constructor and destructor
   ddl_executor() {}
@@ -112,6 +115,15 @@ public:
 
   inline std::vector<ermia::thread::Thread *> get_cdc_workers() {
     return cdc_workers;
+  }
+
+  inline void join_scan_workers() {
+    for (std::vector<thread::Thread *>::const_iterator it =
+             scan_workers.begin();
+         it != scan_workers.end(); ++it) {
+      (*it)->Join();
+      thread::PutThread(*it);
+    }
   }
 
   // Scan and do operations (copy, verification)

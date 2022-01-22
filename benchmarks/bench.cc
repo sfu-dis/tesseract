@@ -330,14 +330,14 @@ void bench_runner::start_measurement() {
 
   double total_util = 0;
   double sec_util = 0;
-  uint32_t sleep_time = 1;
-  // uint32_t sleep_time = 500;
+  // uint32_t sleep_time = 1;
+  uint32_t sleep_time = 1000 * 1000;
   auto gather_stats = [&]() {
-    if (slept == ermia::config::ddl_start_time) {
+    if (slept == ermia::config::ddl_start_time * 1000000) {
       ddl_start = true;
     }
-    sleep(1);
-    // usleep(1000 * sleep_time);
+    // sleep(1);
+    usleep(sleep_time);
     uint64_t sec_commits = 0, sec_aborts = 0;
     for (size_t i = 0; i < ermia::config::worker_threads; i++) {
       sec_commits += workers[i]->get_ntxn_commits();
@@ -351,15 +351,17 @@ void bench_runner::start_measurement() {
     if (ermia::config::print_cpu_util) {
       sec_util = get_cpu_util();
       total_util += sec_util;
-      printf("%lu,%lu,%lu,%.2f%%\n", slept + sleep_time, sec_commits, sec_aborts, sec_util);
+      printf("%.1f,%lu,%lu,%.2f%%\n", double(slept + sleep_time) / 1000000,
+             sec_commits, sec_aborts, sec_util);
     } else {
-      printf("%lu,%lu,%lu\n", slept + sleep_time, sec_commits, sec_aborts);
+      printf("%.1f,%lu,%lu\n", double(slept + sleep_time) / 1000000,
+             sec_commits, sec_aborts);
     }
     slept += sleep_time;
   };
 
   // Backups run forever until told to stop.
-  while (slept < ermia::config::benchmark_seconds) {
+  while (slept < ermia::config::benchmark_seconds * 1000000) {
     gather_stats();
   }
   running = false;
@@ -388,7 +390,7 @@ void bench_runner::start_measurement() {
   size_t n_query_commits = 0;
   uint64_t latency_numer_us = 0;
   for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-#if defined(COPYDDL) && !defined(LAZYDDL)
+#if defined(COPYDDL)
     if (i == ddl_worker_id) {
       continue;
     }

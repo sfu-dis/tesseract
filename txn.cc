@@ -83,7 +83,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   // to go through the queue as well
   if (ermia::config::pcommit) {
     log = GetLog();
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+#if defined(COPYDDL)
     if (is_ddl()) {
       for (uint32_t i = 0; i < ermia::dlog::tlogs.size(); i++) {
         dlog::tls_log *tlog = dlog::tlogs[i];
@@ -92,6 +92,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
           _tls_durable_lsn[i] = tlog->get_durable_lsn();
         }
       }
+      log->set_doing_ddl(true);
     }
 #endif
   }
@@ -305,8 +306,7 @@ rc_t transaction::si_commit() {
     }
     std::cerr << "DDL schema commit with size " << write_set.size()
               << std::endl;
-    ;
-    log->set_dirty(false);
+    // log->set_dirty(false);
 
     if (config::ddl_type != 4) {
       for (auto &v : new_td_map) {
@@ -355,8 +355,10 @@ rc_t transaction::si_commit() {
     while (ddl_end.load() != config::cdc_threads && !ddl_failed) {
     }
     join_changed_data_capture_threads(cdc_workers);
+    // join_changed_data_capture_threads(ddl_exe->get_cdc_workers());
     ddl_running_2 = false;
     std::cerr << "Second CDC ends" << std::endl;
+    ddl_exe->join_scan_workers();
     if (ddl_failed) {
       printf("DDL failed\n");
       for (auto &v : new_td_map) {
@@ -394,14 +396,13 @@ rc_t transaction::si_commit() {
 
   if (is_ddl()) {
     ddl_running_1 = false;
-
+    volatile_write(xc->state, TXN::TXN_CMMTD);
 #ifdef COPYDDL
 #ifdef LAZYDDL
     // Background migration
     if (!config::enable_lazy_background) {
-      goto exit;
+      return rc_t{RC_TRUE};
     }
-    volatile_write(xc->state, TXN::TXN_CMMTD);
     varstr *v = new varstr();
     ddl_exe->scan(this, &(string_allocator()), *v);
 #endif
@@ -412,7 +413,7 @@ rc_t transaction::si_commit() {
       uint32_t himark = new_alloc->head.hiwater_mark;
       auto *new_tuple_array = v.second->GetTupleArray();
 
-      uint32_t ddl_log_threads = 5;
+      uint32_t ddl_log_threads = config::scan_threads + config::cdc_threads;
       uint32_t num_per_scan_thread = himark / ddl_log_threads;
 
       std::vector<thread::Thread *> ddl_log_workers;
@@ -430,7 +431,7 @@ rc_t transaction::si_commit() {
         auto ddl_log = [=](char *) {
           dlog::tls_log *log = GetLog();
           log->set_normal(false);
-          log->reset_logbuf(50);
+          log->reset_logbuf(25);
           dlog::log_block *lb = nullptr;
           dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
           uint64_t segnum = -1;
@@ -492,7 +493,6 @@ rc_t transaction::si_commit() {
               ptr = tentative_next;
             }
           }
-          // printf("count: %d\n", count);
         };
         thread->StartTask(ddl_log);
       }
@@ -504,8 +504,10 @@ rc_t transaction::si_commit() {
         thread::PutThread(*it);
       }
     }
-    goto exit;
 #endif
+    log->set_dirty(false);
+    log->set_doing_ddl(false);
+    return rc_t{RC_TRUE};
   }
 
   // Normally, we'd generate each version's persitent address along the way or
@@ -565,7 +567,6 @@ rc_t transaction::si_commit() {
   // ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
   log->set_dirty(false);
 
-exit:
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!
   // This is when (committed) tuple data are made visible to readers
@@ -993,7 +994,7 @@ void transaction::DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value,
 
 PROMISE(rc_t)
 transaction::DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value,
-                          uint64_t tuple_csn, dlog::log_block *block) {
+                          uint64_t tuple_csn, dlog::log_block *lb) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
@@ -1029,6 +1030,24 @@ retry:
     add_to_write_set(tuple_fid == schema_td->GetTupleFid(),
                      tuple_array->get(oid), tuple_fid, oid, new_tuple->size,
                      dlog::log_record::logrec_type::INSERT);
+  }
+
+  if (lb) {
+    dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
+    uint64_t segnum = -1;
+    uint64_t logbuf_size = log->get_logbuf_size() - sizeof(dlog::log_block);
+    expected = *entry_ptr;
+    obj = (Object *)expected.offset();
+    dbtuple *tuple = (dbtuple *)obj->GetPayload();
+    uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
+    uint32_t off = lb->payload_size;
+    if (off + align_up(log_tuple_size + sizeof(dlog::log_record)) >
+        lb->capacity) {
+      lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
+      off = lb->payload_size;
+    }
+    auto ret_off =
+        dlog::log_insert(lb, tuple_fid, oid, (char *)tuple, log_tuple_size);
   }
 
   RETURN rc_t{RC_TRUE};

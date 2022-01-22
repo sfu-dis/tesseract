@@ -87,7 +87,7 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
   id = log_id;
   numa_node = node;
   flushing = false;
-  logbuf_size = logbuf_mb * uint32_t{1024 * 1024};
+  logbuf_size = logbuf_mb * uint32_t{1024};
   logbuf[0] = (char *)numa_alloc_onnode(logbuf_size, numa_node);
   LOG_IF(FATAL, !logbuf[0]) << "Unable to allocate log buffer";
   logbuf[1] = (char *)numa_alloc_onnode(logbuf_size, numa_node);
@@ -101,6 +101,7 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
   current_lsn = 0;
   dirty = false;
   normal = true;
+  doing_ddl = false;
 
   // Create a new segment
   create_segment();
@@ -161,10 +162,10 @@ void tls_log::last_flush() {
     flushing = false;
   }
 
-  while (is_dirty()) {
-  }
+  // while (is_dirty()) {
+  //}
 
-  if (logbuf_offset) {
+  if (logbuf_offset && !is_dirty()) {
     issue_flush(active_logbuf, logbuf_offset);
     switch_log_buffers();
     poll_flush();
@@ -256,7 +257,7 @@ void tls_log::poll_flush() {
     current_segment()->size += size;
   }
 
-  if (!normal)
+  if (!normal || (doing_ddl && dirty))
     return;
 
   // get last tls durable csn

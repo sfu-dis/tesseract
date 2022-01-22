@@ -118,6 +118,10 @@ DEFINE_uint64(ddl_example, 0, "DDL example");
 DEFINE_bool(enable_ddl_keys, false, "Whether need maintain key arrays");
 DEFINE_bool(enable_lazy_background, false,
             "Whether enable background migration for lazy DDL");
+DEFINE_bool(enable_late_scan_join, false,
+            "Whether enable join scan workers after commit");
+DEFINE_bool(enable_check_ddl_latency, false,
+            "whether enable check latency during DDL");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -164,6 +168,8 @@ int main(int argc, char **argv) {
   ermia::config::ddl_example = FLAGS_ddl_example;
   ermia::config::enable_ddl_keys = FLAGS_enable_ddl_keys;
   ermia::config::enable_lazy_background = FLAGS_enable_lazy_background;
+  ermia::config::enable_late_scan_join = FLAGS_enable_late_scan_join;
+  ermia::config::enable_check_ddl_latency = FLAGS_enable_check_ddl_latency;
 
   if (ermia::config::physical_workers_only) {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
@@ -172,7 +178,7 @@ int main(int argc, char **argv) {
       ermia::config::threads += ermia::config::cdc_threads;
     }
     if (ermia::config::scan_physical_workers_only) {
-      ermia::config::threads += ermia::config::scan_threads;
+      ermia::config::threads += ermia::config::scan_threads - 1;
     }
 #else
     ermia::config::threads = FLAGS_threads;
@@ -343,6 +349,10 @@ int main(int argc, char **argv) {
             << ermia::config::enable_ddl_keys << std::endl;
   std::cerr << "  enable_lazy_background		: "
             << ermia::config::enable_lazy_background << std::endl;
+  std::cerr << "  enable_late_scan_join			: "
+            << ermia::config::enable_late_scan_join << std::endl;
+  std::cerr << "  enable_check_ddl_latency		: "
+            << ermia::config::enable_check_ddl_latency << std::endl;
 #endif
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");
