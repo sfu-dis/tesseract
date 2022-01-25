@@ -170,17 +170,19 @@ ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
   if (!unlikely(end_key && *end_key <= start_key)) {
     XctSearchRangeCallback cb(t, &c, schema, table_descriptor);
     bool need_scan = false;
-#ifdef LAZYDDL
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
     if (schema && schema->old_index) {
       AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
                                         cb, t->xc);
       if (c.return_code._val == RC_FALSE) {
-        XctSearchRangeCallback cb1(t, &c, schema, table_descriptor, true);
+        /*XctSearchRangeCallback cb1(t, &c, schema, table_descriptor, true);
         AWAIT((ConcurrentMasstreeIndex *)schema->old_index)
             ->GetMasstree()
             .search_range_call(start_key, end_key ? end_key : nullptr, cb1,
                                t->xc);
         need_scan = true;
+        */
+        RETURN rc_t{RC_ABORT_INTERNAL};
       }
     } else {
       AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
@@ -214,17 +216,19 @@ ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
       lowervk = *end_key;
     }
     bool need_scan = false;
-#ifdef LAZYDDL
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
     if (schema && schema->old_index) {
       AWAIT masstree_.rsearch_range_call(
           start_key, end_key ? &lowervk : nullptr, cb, t->xc);
       if (c.return_code._val == RC_FALSE) {
-        XctSearchRangeCallback cb1(t, &c, schema, table_descriptor, true);
+        /*XctSearchRangeCallback cb1(t, &c, schema, table_descriptor, true);
         AWAIT((ConcurrentMasstreeIndex *)schema->old_index)
             ->GetMasstree()
             .rsearch_range_call(start_key, end_key ? &lowervk : nullptr, cb1,
                                 t->xc);
         need_scan = true;
+        */
+        RETURN rc_t{RC_ABORT_INTERNAL};
       }
     } else {
       AWAIT masstree_.rsearch_range_call(
@@ -264,14 +268,36 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
     t->ensure_active();
     bool found = AWAIT masstree_.search(key, oid, t->xc->begin_epoch, &sinfo);
 
-#ifdef LAZYDDL
-    if (schema && (!schema->show_index || !found)) {
-      if (schema->old_index) {
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    if (schema && schema->old_index && !found) {
+      /*if (schema->old_index) {
         AWAIT schema->old_index->GetOID(key, rc, t->xc, oid);
         if (rc._val == RC_TRUE) {
           AWAIT InsertOID(t, key, oid);
         }
+      }*/
+      ((ConcurrentMasstreeIndex *)(schema->old_index))
+          ->GetRecord(t, rc, key, value, out_oid, schema);
+      if (rc._val == RC_TRUE) {
+        auto *key_array = schema->old_td->GetKeyArray();
+        fat_ptr *entry =
+            config::enable_ddl_keys ? key_array->get(oid) : nullptr;
+        varstr *k = entry ? (varstr *)((*entry).offset()) : nullptr;
+        varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
+            k, value, &(t->string_allocator()), schema->v,
+            schema->old_td->GetTupleFid(), *out_oid);
+        if (!new_tuple_value) {
+          volatile_write(rc._val, RC_ABORT_INTERNAL);
+          RETURN;
+        }
+        rc_t r = AWAIT InsertRecord(t, key, *new_tuple_value, out_oid, schema);
+        value.p = new_tuple_value->p;
+        value.l = new_tuple_value->l;
+        volatile_write(rc._val, r._val);
+      } else {
+        volatile_write(rc._val, RC_ABORT_INTERNAL);
       }
+      RETURN;
 #else
     if (schema && !schema->show_index) {
 #endif
@@ -294,7 +320,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
       }
     }
 
-#ifdef LAZYDDL
+#ifdef OPTLAZYDDL
     if (!found && schema && oid) {
       int total = schema->v;
       if (!total) {
@@ -355,6 +381,22 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 
     if (found) {
       volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
+      if (rc._val == RC_TRUE && schema && schema->v != tuple->schema_version &&
+          schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION) {
+        auto *key_array = table_descriptor->GetKeyArray();
+        fat_ptr *entry =
+            config::enable_ddl_keys ? key_array->get(oid) : nullptr;
+        varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
+        varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
+            key, value, &(t->string_allocator()), schema->v,
+            table_descriptor->GetTupleFid(), oid);
+        if (!new_tuple_value) {
+          volatile_write(rc._val, RC_ABORT_INTERNAL);
+          RETURN;
+        }
+        value.p = new_tuple_value->p;
+        value.l = new_tuple_value->l;
+      }
     } else if (config::phantom_prot) {
       volatile_write(rc._val, DoNodeRead(t, sinfo.first, sinfo.second)._val);
     } else {
@@ -438,7 +480,7 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
 
   // Insert to the table first
   dbtuple *tuple = nullptr;
-  OID oid = t->Insert(table_descriptor, &value, &tuple);
+  OID oid = t->Insert(table_descriptor, &value, &tuple, schema ? schema->v : 0);
 
   // Done with table record, now set up index
   ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
@@ -485,14 +527,17 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   rc_t rc = {RC_INVALID};
   AWAIT GetOID(key, rc, t->xc, oid);
 
-#ifdef LAZYDDL
-  if (schema && (!schema->show_index || rc._val != RC_TRUE)) {
-    if (schema->old_index) {
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+  if (schema && schema->old_index && rc._val != RC_TRUE) {
+    /*if (schema->old_index) {
       AWAIT schema->old_index->GetOID(key, rc, t->xc, oid);
       if (rc._val == RC_TRUE) {
         AWAIT InsertOID(t, key, oid);
       }
-    }
+    }*/
+    OID out_oid = INVALID_OID;
+    rc = AWAIT InsertRecord(t, key, value, &out_oid, schema);
+    RETURN rc;
 #else
   if (schema && !schema->show_index) {
 #endif
@@ -510,7 +555,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   }
 #endif
 
-#ifdef LAZYDDL
+#ifdef OPTLAZYDDL
   if (rc._val == RC_TRUE && schema &&
       *(table_descriptor->GetTupleArray()->get(oid)) == NULL_PTR) {
     int total = schema->v;
@@ -536,7 +581,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
     rc_t rc = rc_t{RC_INVALID};
-    rc = AWAIT t->DDLCDCInsert(schema->td, oid, &value, 0);
+    rc = AWAIT t->DDLCDCInsert(schema->td, oid, &value, 0, nullptr, schema->v);
     if (table_descriptor != schema->td) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
@@ -546,7 +591,8 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
 
   if (rc._val == RC_TRUE) {
     rc_t rc = rc_t{RC_INVALID};
-    rc = AWAIT t->Update(table_descriptor, oid, &key, &value);
+    rc = AWAIT t->Update(table_descriptor, oid, &key, &value,
+                         schema ? schema->v : 0);
     if (schema && table_descriptor != schema->td) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
@@ -567,14 +613,15 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
   rc_t rc = {RC_INVALID};
   AWAIT GetOID(key, rc, t->xc, oid);
 
-#ifdef LAZYDDL
-  if (schema && (!schema->show_index || rc._val != RC_TRUE)) {
-    if (schema->old_index) {
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+  if (schema && schema->old_index && rc._val != RC_TRUE) {
+    /*if (schema->old_index) {
       AWAIT schema->old_index->GetOID(key, rc, t->xc, oid);
       if (rc._val == RC_TRUE) {
         AWAIT InsertOID(t, key, oid);
       }
-    }
+    }*/
+    RETURN rc_t{RC_TRUE};
 #else
   if (schema && !schema->show_index) {
 #endif
@@ -591,7 +638,7 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
   }
 #endif
 
-#ifdef LAZYDDL
+#ifdef OPTLAZYDDL
   if (rc._val != RC_TRUE && schema->old_td) {
     return rc_t{RC_TRUE};
   }
@@ -660,7 +707,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
   if (oid > caller_callback->max_oid) {
     caller_callback->max_oid = oid;
   }
-#ifdef LAZYDDL
+#ifdef OPTLAZYDDL
   caller_callback->return_code =
       v ? t->DoTupleRead(v, &vv) : rc_t{RC_ABORT_INTERNAL};
 #else
@@ -671,7 +718,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     return false;
   }
   if (caller_callback->return_code._val == RC_TRUE) {
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+#if defined(COPYDDL) && !defined(LAZYDDL)
     std::unordered_map<FID, TableDescriptor *> new_td_map = t->get_new_td_map();
     if (t->IsWaitForNewSchema() && schema &&
         (new_td_map.find(table_descriptor->GetTupleFid()) !=
@@ -682,15 +729,28 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
       }
     }
 #endif
+    auto *key_array = table_descriptor->GetKeyArray();
+    fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
+    varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
 #ifdef LAZYDDL
     if (insert_oid && schema) {
-      const varstr *key = new varstr(k.data(), k.length());
       schema->index->InsertOID(t, *key, oid);
     }
 #endif
+    if (schema && schema->v != ((dbtuple *)v)->schema_version &&
+        schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION) {
+      varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
+          key, vv, &(t->string_allocator()), schema->v,
+          table_descriptor->GetTupleFid(), oid);
+      if (!new_tuple_value) {
+        return false;
+      }
+      vv.p = new_tuple_value->p;
+      vv.l = new_tuple_value->l;
+    }
     return caller_callback->Invoke(k, vv);
   } else if (caller_callback->return_code.IsAbort()) {
-#ifdef LAZYDDL
+#ifdef OPTLAZYDDL
     if (schema && oid) {
       int total = schema->v;
       if (!total) {
@@ -725,7 +785,8 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
         varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
             key, vv, &(t->string_allocator()), schema->v,
             old_table_descriptor->GetTupleFid(), oid);
-        rc_t rc = AWAIT t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
+        rc_t rc = AWAIT t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0,
+                                        nullptr, schema->v);
         if (rc._val != RC_TRUE) {
           return false;
         }

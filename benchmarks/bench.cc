@@ -113,20 +113,24 @@ void bench_worker::MyWork(char *) {
   if (is_worker) {
     tlog = ermia::GetLog();
     tlog->reset_committer(false);
+    if (ddl_worker_id == worker_id) {
+      tlog->set_normal(false);
+    }
     workload = get_workload();
     txn_counts.resize(workload.size());
     barrier_a->count_down();
     barrier_b->wait_for();
 
     while (running) {
-      if (worker_id == ddl_worker_id &&
-          ddl_num < ermia::config::ddl_num_total && ddl_start) {
-        util::timer ddl_timer;
-        do_workload_function(workload.size() - 1);
-        std::cerr << "DDL duration: " << double(ddl_timer.lap()) / 1000000.0
-                  << "s" << std::endl;
-        ddl_num++;
-        ddl_start = false;
+      if (worker_id == ddl_worker_id) {
+        if (ddl_num < ermia::config::ddl_num_total && ddl_start) {
+          util::timer ddl_timer;
+          do_workload_function(workload.size() - 1);
+          std::cerr << "DDL duration: " << double(ddl_timer.lap()) / 1000000.0
+                    << "s" << std::endl;
+          ddl_num++;
+          ddl_start = false;
+        }
       } else {
         uint32_t workload_idx = fetch_workload();
         do_workload_function(workload_idx);
@@ -234,6 +238,7 @@ void bench_runner::start_measurement() {
 #ifdef DDL
   util::fast_random r(2343352);
   ddl_worker_id = r.next() % workers.size() - 1;
+  printf("ddl_worker_id: %d\n", ddl_worker_id);
 #endif
   for (std::vector<bench_worker *>::const_iterator it = workers.begin();
        it != workers.end(); ++it) {

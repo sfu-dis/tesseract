@@ -83,8 +83,10 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   // to go through the queue as well
   if (ermia::config::pcommit) {
     log = GetLog();
-#if defined(COPYDDL)
     if (is_ddl()) {
+      log->set_normal(true);
+      log->set_doing_ddl(true);
+#if defined(COPYDDL)
       for (uint32_t i = 0; i < ermia::dlog::tlogs.size(); i++) {
         dlog::tls_log *tlog = dlog::tlogs[i];
         if (tlog && tlog != log &&
@@ -92,9 +94,8 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
           _tls_durable_lsn[i] = tlog->get_durable_lsn();
         }
       }
-      log->set_doing_ddl(true);
-    }
 #endif
+    }
   }
 
 #ifdef DCOPYDDL
@@ -400,6 +401,9 @@ rc_t transaction::si_commit() {
 #ifdef COPYDDL
 #ifdef LAZYDDL
     // Background migration
+    log->set_dirty(false);
+    log->set_doing_ddl(false);
+    log->set_normal(false);
     if (!config::enable_lazy_background) {
       return rc_t{RC_TRUE};
     }
@@ -408,7 +412,8 @@ rc_t transaction::si_commit() {
 #endif
 
     for (auto &v : new_td_map) {
-      FID fid = v.second->GetTupleFid();
+      // FID fid = v.second->GetTupleFid();
+      FID fid = old_td->GetTupleFid();
       auto *new_alloc = oidmgr->get_allocator(fid);
       uint32_t himark = new_alloc->head.hiwater_mark;
       auto *new_tuple_array = v.second->GetTupleArray();
@@ -431,14 +436,13 @@ rc_t transaction::si_commit() {
         auto ddl_log = [=](char *) {
           dlog::tls_log *log = GetLog();
           log->set_normal(false);
-          log->reset_logbuf(25);
+          log->reset_logbuf(40);
           dlog::log_block *lb = nullptr;
           dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
           uint64_t segnum = -1;
           uint64_t logbuf_size =
               log->get_logbuf_size() - sizeof(dlog::log_block);
 
-          uint32_t count = 0;
           lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
           for (uint32_t oid = 0; oid <= himark; ++oid) {
             if (oid % ddl_log_threads != i)
@@ -469,7 +473,6 @@ rc_t transaction::si_commit() {
                   lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum,
                                                xc->end);
                   off = lb->payload_size;
-                  count++;
                 }
                 auto ret_off = dlog::log_insert(lb, fid, oid, (char *)tuple,
                                                 log_tuple_size);
@@ -507,6 +510,7 @@ rc_t transaction::si_commit() {
 #endif
     log->set_dirty(false);
     log->set_doing_ddl(false);
+    log->set_normal(false);
     return rc_t{RC_TRUE};
   }
 
@@ -517,19 +521,26 @@ rc_t transaction::si_commit() {
 
   // Post-commit: install CSN to tuples (traverse write-tuple), generate log
   // records, etc.
+  uint32_t current_log_size = 0;
   for (uint32_t i = 0; i < write_set.size(); ++i) {
     write_record_t w = write_set.get(is_ddl(), i);
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
 
     uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
-    if (lb->payload_size + align_up(log_tuple_size + sizeof(dlog::log_record)) >
-        lb->capacity) {
-      lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
-    }
 
     // Populate log block and obtain persistent address
     uint32_t off = lb->payload_size;
+    if (lb->payload_size + align_up(log_tuple_size + sizeof(dlog::log_record)) >
+        lb->capacity) {
+      if (log_size - current_log_size > logbuf_size) {
+        lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
+      } else {
+        lb = log->allocate_log_block(log_size - current_log_size, &lb_lsn,
+                                     &segnum, xc->end);
+      }
+      off = lb->payload_size;
+    }
     if (w.type == dlog::log_record::logrec_type::INSERT) {
       auto ret_off =
           dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
@@ -540,6 +551,7 @@ rc_t transaction::si_commit() {
       ALWAYS_ASSERT(ret_off == off);
     }
     ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
+    current_log_size += align_up(log_tuple_size + sizeof(dlog::log_record));
 
     // This aligned_size should match what was calculated during
     // add_to_write_set, and the size_code calculated based on this aligned size
@@ -716,14 +728,15 @@ bool transaction::MasstreeCheckPhantom() {
 }
 
 PROMISE(rc_t)
-transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v) {
+transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
+                    uint64_t schema_version) {
   oid_array *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
 
   // first *updater* wins
   fat_ptr new_obj_ptr = NULL_PTR;
-  fat_ptr prev_obj_ptr = oidmgr->UpdateTuple(
-      tuple_array, oid, v, xc, &new_obj_ptr, IsWaitForNewSchema());
+  fat_ptr prev_obj_ptr = oidmgr->UpdateTuple(tuple_array, oid, v, xc,
+                                             &new_obj_ptr, schema_version);
   Object *prev_obj = (Object *)prev_obj_ptr.offset();
 
   if (prev_obj) {  // succeeded
@@ -854,12 +867,12 @@ transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v) {
   }
 }
 
-OID transaction::Insert(TableDescriptor *td, varstr *value,
-                        dbtuple **out_tuple) {
+OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple,
+                        uint64_t schema_version) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
 
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   auto *tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
@@ -886,14 +899,42 @@ OID transaction::Insert(TableDescriptor *td, varstr *value,
   return oid;
 }
 
+OID transaction::DDLInsert(TableDescriptor *td, varstr *value,
+                           fat_ptr **out_entry, uint64_t schema_version) {
+  auto *tuple_array = td->GetTupleArray();
+  FID tuple_fid = td->GetTupleFid();
+
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
+  ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
+  ASSERT(new_head.asi_type() == 0);
+  auto *tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
+  ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
+  tuple->GetObject()->SetCSN(xid.to_ptr());
+  OID oid = oidmgr->alloc_oid(tuple_fid);
+  ALWAYS_ASSERT(oid != INVALID_OID);
+  tuple_array->ensure_size(oid);
+  oidmgr->oid_put_new(tuple_array, oid, new_head);
+
+  ASSERT(tuple->size == value->size());
+  add_to_write_set(tuple_fid == schema_td->GetTupleFid(), tuple_array->get(oid),
+                   tuple_fid, oid, tuple->size,
+                   dlog::log_record::logrec_type::INSERT);
+
+  if (out_entry) {
+    *out_entry = tuple_array->get(oid);
+  }
+  return oid;
+}
+
 PROMISE(rc_t)
 transaction::DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value,
-                          uint64_t tuple_csn, dlog::log_block *block) {
+                          uint64_t tuple_csn, dlog::log_block *block,
+                          uint64_t schema_version) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
 
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   Object *new_object = (Object *)new_head.offset();
@@ -947,12 +988,13 @@ retry:
 }
 
 void transaction::DDLScanInsert(TableDescriptor *td, OID oid, varstr *value,
-                                dlog::log_block *block) {
+                                dlog::log_block *block,
+                                uint64_t schema_version) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
 
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   auto *new_tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
@@ -968,12 +1010,13 @@ void transaction::DDLScanInsert(TableDescriptor *td, OID oid, varstr *value,
 }
 
 void transaction::DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value,
-                                dlog::log_block *block) {
+                                dlog::log_block *block,
+                                uint64_t schema_version) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
 
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   auto *new_tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
@@ -994,12 +1037,13 @@ void transaction::DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value,
 
 PROMISE(rc_t)
 transaction::DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value,
-                          uint64_t tuple_csn, dlog::log_block *lb) {
+                          uint64_t tuple_csn, dlog::log_block *lb,
+                          uint64_t schema_version) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
 
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   Object *new_object = (Object *)new_head.offset();
@@ -1055,12 +1099,12 @@ retry:
 
 PROMISE(rc_t)
 transaction::DDLSchemaUnblock(TableDescriptor *td, OID oid, varstr *value,
-                              uint64_t tuple_csn) {
+                              uint64_t tuple_csn, uint64_t schema_version) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
 
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   Object *new_object = (Object *)new_head.offset();

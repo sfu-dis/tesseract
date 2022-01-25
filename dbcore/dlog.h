@@ -164,7 +164,11 @@ public:
 
   inline void set_dirty(bool _dirty) { dirty = _dirty; }
 
+  inline bool is_normal() { return normal; }
+
   inline void set_normal(bool _normal) { normal = _normal; }
+
+  inline bool is_doing_ddl() { return doing_ddl; }
 
   inline void set_doing_ddl(bool _doing_ddl) { doing_ddl = _doing_ddl; }
 

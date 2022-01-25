@@ -614,8 +614,7 @@ fat_ptr sm_oid_mgr::free_oid(FID f, OID o) {
 
 fat_ptr sm_oid_mgr::UpdateTuple(oid_array *oa, OID o, const varstr *value,
                                 TXN::xid_context *updater_xc,
-                                fat_ptr *new_obj_ptr,
-                                bool wait_for_new_schema) {
+                                fat_ptr *new_obj_ptr, uint64_t schema_version) {
   auto *ptr = oa->get(o);
 start_over:
   fat_ptr head = volatile_read(*ptr);
@@ -711,7 +710,7 @@ install:
   // Note for this to be correct we shouldn't allow multiple txs
   // working on the same tuple at the same time.
 
-  *new_obj_ptr = Object::Create(value, updater_xc->begin_epoch);
+  *new_obj_ptr = Object::Create(value, updater_xc->begin_epoch, schema_version);
   ASSERT(new_obj_ptr->asi_type() == 0);
   Object *new_object = (Object *)new_obj_ptr->offset();
   new_object->SetCSN(updater_xc->owner.to_ptr());

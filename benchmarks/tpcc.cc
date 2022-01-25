@@ -1775,42 +1775,56 @@ rc_t tpcc_worker::txn_ddl() {
     order_line_schema.v = schema_version;
     order_line_schema.old_v = old_schema_version;
     order_line_schema.state = 0;
-    order_line_schema.old_td = old_order_line_td;
 
-    rc = rc_t{RC_INVALID};
+    if (ermia::config::ddl_type != 4) {
+      order_line_schema.old_td = old_order_line_td;
 
-    std::stringstream ss;
-    ss << schema_version;
+      rc = rc_t{RC_INVALID};
 
-    std::string str3 = std::string(str1);
-    str3 += ss.str();
+      std::stringstream ss;
+      ss << schema_version;
 
-    db->CreateTable(str3.c_str());
+      std::string str3 = std::string(str1);
+      str3 += ss.str();
+
+      db->CreateTable(str3.c_str());
+      order_line_schema.td = ermia::Catalog::GetTable(str3.c_str());
 
 #ifdef LAZYDDL
-    order_line_schema.old_index = old_order_line_table_index;
-    order_line_schema.old_tds[old_schema_version] = old_order_line_td;
-    order_line_schema.state = 2;
+      order_line_schema.old_index = old_order_line_table_index;
+      order_line_schema.old_tds[old_schema_version] = old_order_line_td;
+      order_line_schema.state = 2;
 #elif DCOPYDDL
-    order_line_schema.state = 1;
+      order_line_schema.state = 1;
 #else
-    order_line_schema.state = 2;
+      order_line_schema.state = 2;
 #endif
-    ermia::Catalog::GetTable(str3.c_str())
-        ->SetPrimaryIndex(old_order_line_table_index, std::string(str1));
-    order_line_schema.index =
-        ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
-    order_line_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
-    ALWAYS_ASSERT(old_order_line_table_index == order_line_schema.index);
-    order_line_schema.td = ermia::Catalog::GetTable(str3.c_str());
+
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+      auto *new_order_line_table_index =
+          new ermia::ConcurrentMasstreeIndex(str3.c_str(), true);
+      new_order_line_table_index->SetArrays(true);
+      order_line_schema.td->SetPrimaryIndex(new_order_line_table_index);
+      order_line_schema.index = new_order_line_table_index;
+#else
+      ermia::Catalog::GetTable(str3.c_str())
+          ->SetPrimaryIndex(old_order_line_table_index, std::string(str1));
+      order_line_schema.index =
+          ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
+      ALWAYS_ASSERT(old_order_line_table_index == order_line_schema.index);
+#endif
+
+      txn->set_old_td(old_order_line_td);
+      txn->add_new_td_map(order_line_schema.td);
+      txn->add_old_td_map(old_order_line_td);
+    }
+
+    order_line_schema.ddl_type =
+        ermia::ddl::ddl_type_map(ermia::config::ddl_type);
     char str4[sizeof(ermia::Schema_record)];
     ALWAYS_ASSERT(sizeof(ermia::Schema_record) == sizeof(order_line_schema));
     memcpy(str4, &order_line_schema, sizeof(str4));
     ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
-
-    txn->set_old_td(old_order_line_td);
-    txn->add_new_td_map(order_line_schema.td);
-    txn->add_old_td_map(old_order_line_td);
 
     schema_index->WriteSchemaTable(txn, rc, k1, v3);
     TryCatch(rc);
@@ -1825,19 +1839,12 @@ rc_t tpcc_worker::txn_ddl() {
         order_line_schema.state);
     txn->set_ddl_executor(ddl_exe);
 
+    if (ermia::config::ddl_type != 4) {
 #if !defined(LAZYDDL)
-    rc = ddl_exe->scan(txn, arena, v3);
-    TryCatch(rc);
-
-#ifdef DCOPYDDL
-    order_line_schema.state = 0;
-    memcpy(str4, &order_line_schema, sizeof(str4));
-    v3 = Encode_(str(sizeof(str4)), str4);
-
-    schema_index->WriteSchemaTable(txn, rc, k1, v3);
-    TryCatch(rc);
+      rc = ddl_exe->scan(txn, arena, v3);
+      TryCatch(rc);
 #endif
-#endif
+    }
   } else if (ermia::config::ddl_example == 1) {
     char str1[] = "customer";
     ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1);
@@ -1916,6 +1923,21 @@ rc_t tpcc_worker::txn_ddl() {
 #else
     customer_schema.state = 2;
 #endif
+
+    customer_schema.td = ermia::Catalog::GetTable(str3.c_str());
+
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    auto *new_private_customer_table_index =
+        new ermia::ConcurrentMasstreeIndex(str3.c_str(), true);
+    new_private_customer_table_index->SetArrays(true);
+    auto *new_private_customer_table_secondary_index =
+        new ermia::ConcurrentMasstreeIndex(str3.c_str(), false);
+    new_private_customer_table_secondary_index->SetArrays(false);
+    customer_schema.td->SetPrimaryIndex(new_private_customer_table_index);
+    customer_schema.td->AddSecondaryIndex(
+        new_private_customer_table_secondary_index);
+    customer_schema.index = new_private_customer_table_index;
+#else
     ermia::Catalog::GetTable(str3.c_str())
         ->SetPrimaryIndex(old_customer_table_index, std::string(str1));
     ermia::Catalog::GetTable(str3.c_str())
@@ -1924,9 +1946,11 @@ rc_t tpcc_worker::txn_ddl() {
                   old_customer_td->GetSecIndexes().at(0));
     customer_schema.index =
         ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
-    customer_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
     ALWAYS_ASSERT(old_customer_table_index == customer_schema.index);
-    customer_schema.td = ermia::Catalog::GetTable(str3.c_str());
+#endif
+
+    customer_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
+
     char str4[sizeof(ermia::Schema_record)];
     ALWAYS_ASSERT(sizeof(ermia::Schema_record) == sizeof(customer_schema));
     memcpy(str4, &customer_schema, sizeof(str4));
@@ -1996,14 +2020,25 @@ rc_t tpcc_worker::txn_ddl() {
     public_customer_schema.reformat_idx = ermia::ddl::reformats.size();
     ermia::ddl::reformats.push_back(split_customer_public);
 
+    public_customer_schema.td = ermia::Catalog::GetTable(str5);
+
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    auto *new_public_customer_table_index =
+        new ermia::ConcurrentMasstreeIndex(str5, true);
+    new_public_customer_table_index->SetArrays(true);
+    public_customer_schema.td->SetPrimaryIndex(new_public_customer_table_index);
+    public_customer_schema.index = new_public_customer_table_index;
+#else
     ermia::Catalog::GetTable(str5)->SetPrimaryIndex(
         old_public_customer_table_index, std::string(str5));
     public_customer_schema.index =
         ermia::Catalog::GetTable(str5)->GetPrimaryIndex();
-    public_customer_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
     ALWAYS_ASSERT(old_public_customer_table_index ==
                   public_customer_schema.index);
-    public_customer_schema.td = ermia::Catalog::GetTable(str5);
+#endif
+
+    public_customer_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
+
     char str6[sizeof(ermia::Schema_record)];
     ALWAYS_ASSERT(sizeof(ermia::Schema_record) ==
                   sizeof(public_customer_schema));
@@ -2221,15 +2256,27 @@ rc_t tpcc_worker::txn_ddl() {
 #else
     oorder_schema.state = 2;
 #endif
+
+    oorder_schema.td = ermia::Catalog::GetTable(str3.c_str());
+
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    auto *new_oorder_table_index =
+        new ermia::ConcurrentMasstreeIndex(str3.c_str(), true);
+    new_oorder_table_index->SetArrays(true);
+    oorder_schema.td->SetPrimaryIndex(new_oorder_table_index);
+    oorder_schema.index = new_oorder_table_index;
+#else
     ermia::Catalog::GetTable(str3.c_str())
         ->SetPrimaryIndex(old_oorder_table_index, std::string(str1));
     ermia::Catalog::GetTable(str3.c_str())
         ->AddSecondaryIndex(old_oorder_td->GetSecIndexes().at(0));
     oorder_schema.index =
         ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
-    oorder_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
     ALWAYS_ASSERT(old_oorder_table_index == oorder_schema.index);
-    oorder_schema.td = ermia::Catalog::GetTable(str3.c_str());
+#endif
+
+    oorder_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
+
     char str4[sizeof(ermia::Schema_record)];
     ALWAYS_ASSERT(sizeof(ermia::Schema_record) == sizeof(oorder_schema));
     memcpy(str4, &oorder_schema, sizeof(str4));
@@ -2418,6 +2465,8 @@ rc_t tpcc_worker::txn_ddl() {
     order_line_schema.reformat_idx = ermia::ddl::reformats.size();
     ermia::ddl::reformats.push_back(order_line_stock_join);
 
+    order_line_schema.td = ermia::Catalog::GetTable(str3.c_str());
+
 #ifdef LAZYDDL
     order_line_schema.old_index = old_order_line_table_index;
     order_line_schema.old_tds[old_schema_version] = old_order_line_td;
@@ -2427,13 +2476,22 @@ rc_t tpcc_worker::txn_ddl() {
 #else
     order_line_schema.state = 2;
 #endif
+
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    auto *new_order_line_table_index =
+        new ermia::ConcurrentMasstreeIndex(str3.c_str(), true);
+    new_order_line_table_index->SetArrays(true);
+    order_line_schema.td->SetPrimaryIndex(new_order_line_table_index);
+    order_line_schema.index = new_order_line_table_index;
+#else
     ermia::Catalog::GetTable(str3.c_str())
         ->SetPrimaryIndex(old_order_line_table_index, std::string(str1));
     order_line_schema.index =
         ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
-    order_line_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
     ALWAYS_ASSERT(old_order_line_table_index == order_line_schema.index);
-    order_line_schema.td = ermia::Catalog::GetTable(str3.c_str());
+#endif
+
+    order_line_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
     char str4[sizeof(ermia::Schema_record)];
     ALWAYS_ASSERT(sizeof(ermia::Schema_record) == sizeof(order_line_schema));
     memcpy(str4, &order_line_schema, sizeof(str4));

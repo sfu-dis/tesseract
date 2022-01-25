@@ -35,11 +35,13 @@ void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush,
 }
 
 void commit_queue::extend() {
+  CRITICAL_SECTION(cs, lock);
   Entry *new_queue = new Entry[length * 2];
-  memcpy(new_queue, queue, sizeof(Entry) * length);
+  memcpy(new_queue, &(queue[start]), sizeof(Entry) * items);
   length *= 2;
   delete[] queue;
   queue = new_queue;
+  start = 0;
 }
 
 void tls_committer::initialize(uint32_t id) {
@@ -64,6 +66,8 @@ uint64_t tls_committer::get_global_durable_csn() {
   uint64_t min_dirty = std::numeric_limits<uint64_t>::max();
   uint64_t max_clean = 0;
   for (uint32_t i = 0; i < ermia::dlog::tlogs.size(); i++) {
+    if (!ermia::dlog::tlogs.at(i)->is_normal())
+      continue;
     uint64_t csn = volatile_read(_tls_durable_csn[i]);
     if (csn) {
       if (csn & DIRTY_FLAG) {

@@ -118,16 +118,35 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
               if (!new_tuple_value)
                 continue;
 #ifdef COPYDDL
-#ifdef LAZYDDL
-              t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end);
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+              fat_ptr *out_entry = nullptr;
+              OID o = t->DDLInsert((*it)->new_td, new_tuple_value, &out_entry,
+                                   (*it)->new_v);
+              if (!(*it)->index->InsertOID(t, *key, o)) {
+                Object *obj = (Object *)out_entry->offset();
+                fat_ptr entry = *out_entry;
+                obj->SetCSN(NULL_PTR);
+                // oidmgr->UnlinkTuple(entry);
+                ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
+                MM::deallocate(entry);
+              } else {
+                Object *obj = (Object *)out_entry->offset();
+                obj->SetCSN(obj->GenerateCsnPtr(xc->end));
+              }
+#elif OPTLAZYDDL
+              t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end, lb,
+                              (*it)->new_v);
+              // (*it)->index->InsertRecord(t, *key, tuple_value);
 #else
               t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value,
-                              !xc->end ? xc->begin : xc->end, lb);
+                              !xc->end ? xc->begin : xc->end, lb, (*it)->new_v);
 #endif
 #elif BLOCKDDL
-              t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value);
+              t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value, lb,
+                               (*it)->new_v);
 #elif SIDDL
-              rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value);
+              rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value,
+                                 (*it)->new_v);
               if (r._val != RC_TRUE) {
                 return rc_t{RC_ABORT_INTERNAL};
               }
@@ -175,16 +194,36 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
           if (!new_tuple_value)
             continue;
 #ifdef COPYDDL
-#ifdef LAZYDDL
-          t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end);
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+          fat_ptr *out_entry = nullptr;
+          OID o = t->DDLInsert((*it)->new_td, new_tuple_value, &out_entry,
+                               (*it)->new_v);
+          if (!(*it)->index->InsertOID(t, *key, o)) {
+            Object *obj = (Object *)out_entry->offset();
+            fat_ptr entry = *out_entry;
+            obj->SetCSN(NULL_PTR);
+            // oidmgr->UnlinkTuple(entry);
+            ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
+            MM::deallocate(entry);
+          } else {
+            Object *obj = (Object *)out_entry->offset();
+            obj->SetCSN(obj->GenerateCsnPtr(xc->end));
+          }
+#elif OPTLAZYDDL
+          t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end, nullptr,
+                          (*it)->new_v);
+          // (*it)->index->InsertRecord(t, *key, tuple_value);
 #else
           t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value,
-                          !xc->end ? xc->begin : xc->end);
+                          !xc->end ? xc->begin : xc->end, nullptr,
+                          (*it)->new_v);
 #endif
 #elif BLOCKDDL
-          t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value);
+          t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value, nullptr,
+                           (*it)->new_v);
 #elif SIDDL
-          rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value);
+          rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value,
+                             (*it)->new_v);
           if (r._val != RC_TRUE) {
             return rc_t{RC_ABORT_INTERNAL};
           }
@@ -289,6 +328,9 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                   (dlog::log_record *)(data_buf + offset_increment + block_sz +
                                        offset_in_block);
 
+              if (logrec->csn != header->csn)
+                printf("bug, logrec->csn: %lu, header->csn: %lu\n", logrec->csn,
+                       header->csn);
               ALWAYS_ASSERT(header->csn == logrec->csn);
 
               FID f = logrec->fid;
@@ -333,7 +375,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                       continue;
                     }
                     if (t->DDLCDCInsert((*it)->new_td, o, new_value,
-                                        logrec->csn)
+                                        logrec->csn, nullptr, (*it)->new_v)
                             ._val != RC_TRUE) {
                       insert_fail++;
                     }
@@ -369,7 +411,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                       continue;
                     }
                     if (t->DDLCDCUpdate((*it)->new_td, o, new_value,
-                                        logrec->csn)
+                                        logrec->csn, nullptr, (*it)->new_v)
                             ._val != RC_TRUE) {
                       update_fail++;
                     }

@@ -199,41 +199,50 @@ protected:
   void Abort();
 
   // Insert a record to the underlying table
-  OID Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple = nullptr);
+  OID Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple = nullptr,
+             uint64_t schema_version = 0);
+
+  // DDL insert used for unoptimized lazy DDL
+  OID DDLInsert(TableDescriptor *td, varstr *value,
+                fat_ptr **out_entry = nullptr, uint64_t schema_version = 0);
 
   // DDL scan insert
   void DDLScanInsert(TableDescriptor *td, OID oid, varstr *value,
-                     dlog::log_block *block = nullptr);
+                     dlog::log_block *block = nullptr,
+                     uint64_t schema_version = 0);
 
   // DDL scan update
   void DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value,
-                     dlog::log_block *block = nullptr);
+                     dlog::log_block *block = nullptr,
+                     uint64_t schema_version = 0);
 
   // DDL CDC insert
   PROMISE(rc_t)
   DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
-               dlog::log_block *block = nullptr);
+               dlog::log_block *block = nullptr, uint64_t schema_version = 0);
 
   // DDL CDC update
   PROMISE(rc_t)
   DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
-               dlog::log_block *block = nullptr);
+               dlog::log_block *block = nullptr, uint64_t schema_version = 0);
 
   // DDL schema unblock
   PROMISE(rc_t)
   DDLSchemaUnblock(TableDescriptor *td, OID oid, varstr *value,
-                   uint64_t tuple_csn);
+                   uint64_t tuple_csn, uint64_t schema_version = 0);
 
   // DML & DDL overlap check
   PROMISE(bool)
   OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td, OID oid);
 
   PROMISE(rc_t)
-  Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
+  Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
+         uint64_t schema_version = 0);
 
   // Same as Update but without support for logging key
-  inline PROMISE(rc_t) Update(TableDescriptor *td, OID oid, varstr *v) {
-    auto rc = AWAIT Update(td, oid, nullptr, v);
+  inline PROMISE(rc_t) Update(TableDescriptor *td, OID oid, varstr *v,
+                              uint64_t schema_version = 0) {
+    auto rc = AWAIT Update(td, oid, nullptr, v, schema_version);
     RETURN rc;
   }
 

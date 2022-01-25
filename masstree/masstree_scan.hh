@@ -403,7 +403,7 @@ PROMISE(int) basic_table<P>::scan(H helper, Str firstkey, bool emit_firstkey, F 
         if (!scanner.visit_value(ka, v, o))
           goto done;
       }
-#ifdef LAZYDDL
+#ifdef OPTLAZYDDL
       else {
         if (!scanner.visit_value(ka, v, o))
           goto done;
