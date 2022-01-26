@@ -76,6 +76,7 @@ bool enable_ddl_keys = false;
 bool enable_lazy_background = false;
 bool enable_late_scan_join = false;
 bool enable_check_ddl_latency = false;
+bool enable_ddl_offloading = false;
 bool always_load = false;
 bool kStateRunning = false;
 bool iouring_read_log = false;

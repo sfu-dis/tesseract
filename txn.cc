@@ -359,7 +359,7 @@ rc_t transaction::si_commit() {
     // join_changed_data_capture_threads(ddl_exe->get_cdc_workers());
     ddl_running_2 = false;
     std::cerr << "Second CDC ends" << std::endl;
-    ddl_exe->join_scan_workers();
+    // ddl_exe->join_scan_workers();
     if (ddl_failed) {
       printf("DDL failed\n");
       for (auto &v : new_td_map) {
@@ -436,7 +436,7 @@ rc_t transaction::si_commit() {
         auto ddl_log = [=](char *) {
           dlog::tls_log *log = GetLog();
           log->set_normal(false);
-          log->reset_logbuf(40);
+          log->reset_logbuf(20);
           dlog::log_block *lb = nullptr;
           dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
           uint64_t segnum = -1;
@@ -617,8 +617,15 @@ std::vector<thread::Thread *> transaction::changed_data_capture() {
       end_log = normal_workers[--j];
 
   retry:
-    thread::Thread *thread =
-        thread::GetThread(config::cdc_physical_workers_only);
+    thread::Thread *thread = nullptr;
+    if (config::enable_ddl_offloading) {
+      thread = thread::GetThread(config::numa_nodes - 1,
+                                 config::cdc_physical_workers_only);
+    } else {
+      thread = thread::GetThread(config::cdc_physical_workers_only);
+    }
+    if (!thread)
+      printf("thread null in cdc\n");
     ALWAYS_ASSERT(thread);
     if (!config::cdc_physical_workers_only) {
       for (auto &sib : ddl::ddl_worker_logical_threads) {
@@ -631,6 +638,7 @@ std::vector<thread::Thread *> transaction::changed_data_capture() {
     cdc_workers.push_back(thread);
 
     auto parallel_changed_data_capture = [=](char *) {
+      printf("numa node: %d\n", GetLog()->get_numa_node());
       bool ddl_end_local = false;
       str_arena *arena = new str_arena(config::arena_size_mb);
       rc_t rc;

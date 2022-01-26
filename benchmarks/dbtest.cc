@@ -122,6 +122,7 @@ DEFINE_bool(enable_late_scan_join, false,
             "Whether enable join scan workers after commit");
 DEFINE_bool(enable_check_ddl_latency, false,
             "whether enable check latency during DDL");
+DEFINE_bool(enable_ddl_offloading, false, "Whether enable offloading for DDL");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -170,15 +171,22 @@ int main(int argc, char **argv) {
   ermia::config::enable_lazy_background = FLAGS_enable_lazy_background;
   ermia::config::enable_late_scan_join = FLAGS_enable_late_scan_join;
   ermia::config::enable_check_ddl_latency = FLAGS_enable_check_ddl_latency;
+  ermia::config::enable_ddl_offloading = FLAGS_enable_ddl_offloading;
 
   if (ermia::config::physical_workers_only) {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
     ermia::config::threads = ermia::config::worker_threads;
     if (ermia::config::cdc_physical_workers_only) {
       ermia::config::threads += ermia::config::cdc_threads;
+      if (ermia::config::enable_ddl_offloading) {
+        ermia::config::threads += ermia::config::cdc_threads;
+      }
     }
     if (ermia::config::scan_physical_workers_only) {
       ermia::config::threads += ermia::config::scan_threads - 1;
+      if (ermia::config::enable_ddl_offloading) {
+        ermia::config::threads += ermia::config::scan_threads;
+      }
     }
 #else
     ermia::config::threads = FLAGS_threads;
@@ -353,6 +361,8 @@ int main(int argc, char **argv) {
             << ermia::config::enable_late_scan_join << std::endl;
   std::cerr << "  enable_check_ddl_latency		: "
             << ermia::config::enable_check_ddl_latency << std::endl;
+  std::cerr << "  enable_ddl_offloading			: "
+            << ermia::config::enable_ddl_offloading << std::endl;
 #endif
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");

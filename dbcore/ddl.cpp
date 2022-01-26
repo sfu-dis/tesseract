@@ -57,14 +57,25 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   printf("scan_threads: %d, num_per_scan_thread: %d\n", scan_threads,
          num_per_scan_thread);
 
-  for (uint32_t i = 1; i < scan_threads; i++) {
+  uint32_t start = 1;
+  /*if (config::enable_ddl_offloading) {
+    start = 0;
+  }*/
+  for (uint32_t i = start; i < scan_threads; i++) {
     uint32_t begin = i * num_per_scan_thread;
     uint32_t end = (i + 1) * num_per_scan_thread;
     if (i == scan_threads - 1)
       end = himark;
   retry:
-    thread::Thread *thread =
-        thread::GetThread(config::scan_physical_workers_only);
+    thread::Thread *thread = nullptr;
+    if (config::enable_ddl_offloading) {
+      thread = thread::GetThread(ermia::config::numa_nodes - 1,
+                                 config::scan_physical_workers_only);
+    } else {
+      thread = thread::GetThread(config::scan_physical_workers_only);
+    }
+    if (!thread)
+      printf("thread null in scan\n");
     ALWAYS_ASSERT(thread);
     /*if (!config::scan_physical_workers_only) {
       for (auto &sib : ddl_worker_logical_threads) {
@@ -166,6 +177,9 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   #endif*/
 
   OID end = scan_threads == 0 ? himark : num_per_scan_thread;
+  /*if (config::enable_ddl_offloading) {
+    end = 0;
+  }*/
   for (OID oid = 0; oid <= end; oid++) {
     dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
     varstr tuple_value;
@@ -236,9 +250,9 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   uint64_t current_csn = dlog::current_csn.load(std::memory_order_relaxed);
   printf("DDL main thread scan ends, current csn: %lu\n", current_csn);
 
-#ifdef LAZYDDL
+  //#ifdef LAZYDDL
   join_scan_workers();
-#endif
+  //#endif
 
   current_csn = dlog::current_csn.load(std::memory_order_relaxed);
   printf("DDL scan ends, current csn: %lu\n", current_csn);

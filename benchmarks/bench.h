@@ -101,7 +101,14 @@ class bench_worker : public ermia::thread::Runner {
       LOG(INFO) << "Worker " << worker_id << " going to node " << worker_id % ermia::config::numa_nodes;
       TryImpersonate(worker_id % ermia::config::numa_nodes);
     } else {
-      TryImpersonate();
+      if (ermia::config::enable_ddl_offloading &&
+          worker_id == ermia::config::worker_threads -
+                           2 * (ermia::config::scan_threads +
+                                ermia::config::cdc_threads - 1)) {
+        ALWAYS_ASSERT(TryImpersonate(ermia::config::numa_nodes - 1, true));
+      } else {
+        TryImpersonate();
+      }
     }
 
     if (ermia::config::coro_tx) {

@@ -86,6 +86,7 @@ extern bool enable_ddl_keys;
 extern bool enable_lazy_background;
 extern bool enable_late_scan_join;
 extern bool enable_check_ddl_latency;
+extern bool enable_ddl_offloading;
 
 // Create an object for each version and install directly on the main
 // indirection arrays only; for experimental purpose only to see the
