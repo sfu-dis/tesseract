@@ -280,6 +280,7 @@ void microbenchmark_schematable_loader::load() {
   usertable_schema.index =
       ermia::Catalog::GetTable("USERTABLE")->GetPrimaryIndex();
   usertable_schema.td = ermia::Catalog::GetTable("USERTABLE");
+  usertable_schema.show_index = true;
   memcpy(str2, &usertable_schema, sizeof(str2));
   ermia::varstr &v1 = str(sizeof(str2));
   v1.copy_from(str2, sizeof(str2));

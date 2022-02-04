@@ -74,8 +74,6 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
     } else {
       thread = thread::GetThread(config::scan_physical_workers_only);
     }
-    if (!thread)
-      printf("thread null in scan\n");
     ALWAYS_ASSERT(thread);
     /*if (!config::scan_physical_workers_only) {
       for (auto &sib : ddl_worker_logical_threads) {
@@ -250,9 +248,9 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   uint64_t current_csn = dlog::current_csn.load(std::memory_order_relaxed);
   printf("DDL main thread scan ends, current csn: %lu\n", current_csn);
 
-  //#ifdef LAZYDDL
-  join_scan_workers();
-  //#endif
+  if (!config::enable_late_scan_join) {
+    join_scan_workers();
+  }
 
   current_csn = dlog::current_csn.load(std::memory_order_relaxed);
   printf("DDL scan ends, current csn: %lu\n", current_csn);
@@ -280,7 +278,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   printf("Now go to grab a t4\n");
   if (config::enable_cdc_verification_test) {
     cdc_test = true;
-    usleep(10);
+    usleep(100);
   }
   ddl_td_set = false;
 #endif

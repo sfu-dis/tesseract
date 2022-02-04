@@ -99,10 +99,14 @@ public:
     std::cerr << "Change to a new schema, version: " << schema_version
               << std::endl;
     schema.v = schema_version;
+    schema.old_v = old_schema_version;
+    schema.old_td = old_td;
+    schema.state = 0;
+    schema.ddl_type = ermia::ddl::ddl_type_map(ermia::config::ddl_type);
 
     rc = rc_t{RC_INVALID};
 
-    if (ermia::config::ddl_type != 4) {
+    if (ermia::config::ddl_type == 1 || ermia::config::ddl_type == 3) {
       std::stringstream ss;
       ss << schema_version;
 
@@ -115,63 +119,59 @@ public:
       // schema.index =
       // ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
 
-      ermia::Catalog::GetTable(str3.c_str())
-          ->SetPrimaryIndex(old_table_index, std::string(str1));
-      schema.index = ermia::Catalog::GetTable(str1)->GetPrimaryIndex();
       schema.td = ermia::Catalog::GetTable(str3.c_str());
-      schema.old_td = old_td;
-      schema.ddl_type = ermia::ddl::ddl_type_map(ermia::config::ddl_type);
-      schema.state = 0;
+      schema.state = 2;
 #ifdef LAZYDDL
       schema.old_index = old_table_index;
       schema.old_tds[old_schema_version] = old_td;
-      schema.state = 2;
-#elif DCOPYDDL
-      schema.state = 1;
-#else
-      schema.state = 2;
 #endif
+
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+      auto *new_table_index =
+          new ermia::ConcurrentMasstreeIndex(str3.c_str(), true);
+      new_table_index->SetArrays(true);
+      schema.td->SetPrimaryIndex(new_table_index);
+      schema.index = new_table_index;
+#else
+      ermia::Catalog::GetTable(str3.c_str())
+          ->SetPrimaryIndex(old_table_index, std::string(str1));
+      schema.index = ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
+      ALWAYS_ASSERT(old_table_index == schema.index);
+#endif
+
+      txn->set_old_td(old_td);
+      txn->add_new_td_map(schema.td);
+      txn->add_old_td_map(old_td);
     } else {
       schema_version =
           old_schema_version + ermia::config::no_copy_verification_version_add;
       schema.v = schema_version;
-      schema.ddl_type = ermia::ddl::ddl_type_map(ermia::config::ddl_type);
-      schema.state = 0;
+      schema.state = ermia::config::ddl_type == 2 ? 2 : 0;
+      txn->set_old_td(old_td);
+      txn->add_old_td_map(old_td);
+      ALWAYS_ASSERT(schema.ddl_type == ermia::ddl::ddl_type::VERIFICATION_ONLY);
     }
     memcpy(str2, &schema, sizeof(str2));
     ermia::varstr &v2 = str(sizeof(str2));
     v2.copy_from(str2, sizeof(str2));
 
-    // if (ermia::config::ddl_type == 1 || ermia::config::ddl_type == 4) {
     rc = rc_t{RC_INVALID};
     schema_index->WriteSchemaTable(txn, rc, k1, v2);
     TryCatch(rc);
-    //}
+
+    // New a ddl executor
+    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
+    ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
+                                    schema.reformat_idx, schema.constraint_idx,
+                                    schema.td, schema.old_td, schema.index,
+                                    schema.state);
+    txn->set_ddl_executor(ddl_exe);
 
     if (ermia::config::ddl_type != 4) {
-      txn->set_old_td(old_td);
 #if !defined(LAZYDDL)
-      // New a ddl executor
-      ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
-      ddl_exe->add_ddl_executor_paras(
-          schema.v, schema.old_v, schema.ddl_type, schema.reformat_idx,
-          schema.constraint_idx, schema.td, schema.old_td, schema.index,
-          schema.state);
-      txn->set_ddl_executor(ddl_exe);
-
-      ermia::ConcurrentMasstreeIndex *table_index =
-          (ermia::ConcurrentMasstreeIndex *)schema.index;
       rc = rc_t{RC_INVALID};
       rc = ddl_exe->scan(txn, arena, v2);
       TryCatch(rc);
-#ifdef DCOPYDDL
-      schema.state = 0;
-      memcpy(str2, &schema, sizeof(str2));
-      v2 = Encode_(str(sizeof(str2)), str2);
-
-      schema_index->WriteSchemaTable(txn, rc, k1, v2);
-      TryCatch(rc);
-#endif
 #endif
     }
 
@@ -322,10 +322,10 @@ public:
 #else
     ermia::transaction *txn = db->NewTransaction(
         ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+#endif
 #ifdef BLOCKDDL
     txn->register_locked_tables(schema_fid);
     txn->register_locked_tables(table_fid);
-#endif
 #endif
 
     char str1[] = "USERTABLE";
@@ -361,7 +361,7 @@ public:
         (ermia::ConcurrentMasstreeIndex *)schema.index;
 #endif
 
-#ifdef LAZYDDL
+#ifdef COPYDDL
     table_index->GetRecord(txn, rc, k2, v2, &oid, &schema);
 #else
     table_index->GetRecord(txn, rc, k2, v2, &oid);
@@ -379,6 +379,7 @@ public:
 #endif
 
     if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION &&
+        schema.ddl_type != ermia::ddl::ddl_type::VERIFICATION_ONLY &&
         record_test.v != schema_version) {
       // LOG(FATAL) << "Read: It should get " << schema_version << " ,but get "
       //            << record_test.v;
@@ -392,14 +393,22 @@ public:
       ALWAYS_ASSERT(record1_test.a == a);
       ALWAYS_ASSERT(record1_test.b == a || record1_test.b == 20000000);
     } else {
-      if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
+      if (schema.ddl_type == ermia::ddl::ddl_type::COPY_VERIFICATION ||
+          schema.ddl_type == ermia::ddl::ddl_type::COPY_ONLY) {
         struct ermia::Schema2 record2_test;
         memcpy(&record2_test, (char *)v2.data(), sizeof(record2_test));
 
         ALWAYS_ASSERT(record2_test.a == a);
         ALWAYS_ASSERT(record2_test.b == schema_version);
         ALWAYS_ASSERT(record2_test.c == schema_version);
-      } else {
+      } else if (schema.ddl_type == ermia::ddl::ddl_type::VERIFICATION_ONLY) {
+        struct ermia::Schema1 record1_test;
+        memcpy(&record1_test, (char *)v2.data(), sizeof(record1_test));
+
+        ALWAYS_ASSERT(record1_test.a == a);
+        ALWAYS_ASSERT(record1_test.b == a || record1_test.b == 20000000);
+      } else if (schema.ddl_type ==
+                 ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
         if (record_test.v != schema_version) {
 #ifdef COPYDDL
           no_copy_verification_op(&schema, v2, &(txn->string_allocator()));
@@ -501,7 +510,7 @@ record_test.v;
       struct ermia::Schema1 record1;
       record1.v = schema_version;
       record1.a = a;
-      if (ermia::cdc_test) {
+      if (unlikely(ermia::cdc_test)) {
         record1.b = 20000000;
       } else {
         record1.b = a;
@@ -515,7 +524,8 @@ record_test.v;
       TryCatch(table_index->UpdateRecord(txn, k1, v2));
     } else {
       ermia::varstr v2;
-      if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
+      if (schema.ddl_type == ermia::ddl::ddl_type::COPY_VERIFICATION ||
+          schema.ddl_type == ermia::ddl::ddl_type::COPY_ONLY) {
         struct ermia::Schema2 record2;
 
         record2.v = schema_version;
@@ -527,7 +537,18 @@ record_test.v;
         memcpy(str2, &record2, sizeof(str2));
         v2 = str(sizeof(str2));
         v2.copy_from(str2, sizeof(str2));
-      } else {
+      } else if (schema.ddl_type == ermia::ddl::ddl_type::VERIFICATION_ONLY) {
+        struct ermia::Schema1 record1;
+        record1.v = schema_version;
+        record1.a = a;
+        record1.b = a;
+
+        char str2[sizeof(ermia::Schema1)];
+        memcpy(str2, &record1, sizeof(str2));
+        ermia::varstr &v2 = str(sizeof(str2));
+        v2.copy_from(str2, sizeof(str2));
+      } else if (schema.ddl_type ==
+                 ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
         struct ermia::Schema6 record2;
 
         record2.v = schema_version;
@@ -545,7 +566,7 @@ record_test.v;
         v2.copy_from(str2, sizeof(str2));
       }
 
-#ifdef LAZYDDL
+#ifdef COPYDDL
       TryCatch(table_index->UpdateRecord(txn, k1, v2, &schema));
 #else
       TryCatch(table_index->UpdateRecord(txn, k1, v2));

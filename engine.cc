@@ -65,7 +65,11 @@ retry:
     struct Schema_record schema;
     memcpy(&schema, (char *)value.data(), sizeof(schema));
     if (schema.state == 2) {
-      if (!ddl_td_set || config::enable_cdc_schema_lock) {
+      if (schema.ddl_type != ddl::ddl_type::COPY_ONLY ||
+          config::enable_cdc_schema_lock) {
+        goto retry;
+      }
+      if (!ddl_td_set) {
         goto retry;
       } else {
         t->SetWaitForNewSchema(true);
@@ -731,14 +735,15 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
 #endif
     auto *key_array = table_descriptor->GetKeyArray();
     fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
-    varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
 #ifdef LAZYDDL
     if (insert_oid && schema) {
+      varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
       schema->index->InsertOID(t, *key, oid);
     }
 #endif
     if (schema && schema->v != ((dbtuple *)v)->schema_version &&
         schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION) {
+      varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
       varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
           key, vv, &(t->string_allocator()), schema->v,
           table_descriptor->GetTupleFid(), oid);

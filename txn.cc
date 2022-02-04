@@ -337,10 +337,6 @@ rc_t transaction::si_commit() {
         }
       }
       ddl_td_set = true;
-
-      if (config::enable_cdc_verification_test) {
-        cdc_test = false;
-      }
     }
   }
 #endif
@@ -359,7 +355,9 @@ rc_t transaction::si_commit() {
     // join_changed_data_capture_threads(ddl_exe->get_cdc_workers());
     ddl_running_2 = false;
     std::cerr << "Second CDC ends" << std::endl;
-    // ddl_exe->join_scan_workers();
+    if (config::enable_late_scan_join) {
+      ddl_exe->join_scan_workers();
+    }
     if (ddl_failed) {
       printf("DDL failed\n");
       for (auto &v : new_td_map) {
@@ -624,8 +622,6 @@ std::vector<thread::Thread *> transaction::changed_data_capture() {
     } else {
       thread = thread::GetThread(config::cdc_physical_workers_only);
     }
-    if (!thread)
-      printf("thread null in cdc\n");
     ALWAYS_ASSERT(thread);
     if (!config::cdc_physical_workers_only) {
       for (auto &sib : ddl::ddl_worker_logical_threads) {
@@ -714,7 +710,9 @@ bool transaction::DMLConsistencyHandler() {
       }
       struct Schema_record schema;
       memcpy(&schema, (char *)tuple_v.data(), sizeof(schema));
-      if (schema.td != v.first) {
+      if ((schema.ddl_type == ddl::ddl_type::COPY_ONLY ||
+           schema.ddl_type == ddl::ddl_type::COPY_VERIFICATION) &&
+          schema.td != v.first) {
         tmp_xc->begin = begin;
         return true;
       }
