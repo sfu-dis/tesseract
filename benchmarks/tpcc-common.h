@@ -1251,7 +1251,12 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
          oorder_table_index(
              (ermia::ConcurrentMasstreeIndex *)open_tables.at("oorder_0")),
          oorder_table_secondary_index((ermia::ConcurrentMasstreeIndex *)
-                                          open_tables.at("oorder_c_id_idx_0"))
+                                          open_tables.at("oorder_c_id_idx_0")),
+         customer_table_index(
+             (ermia::ConcurrentMasstreeIndex *)open_tables.at("customer_0")),
+         customer_table_secondary_index(
+             (ermia::ConcurrentMasstreeIndex *)open_tables.at(
+                 "customer_name_idx_0"))
 #endif
 #ifdef BLOCKDDL
          ,
@@ -1335,6 +1340,8 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   ermia::ConcurrentMasstreeIndex *order_line_table_index;
   ermia::ConcurrentMasstreeIndex *oorder_table_index;
   ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index;
+  ermia::ConcurrentMasstreeIndex *customer_table_index;
+  ermia::ConcurrentMasstreeIndex *customer_table_secondary_index;
 #endif
 #ifdef BLOCKDDL
   ermia::FID schema_fid;

@@ -35,6 +35,7 @@ DEFINE_string(tmpfs_dir, "/dev/shm",
               "Path to a tmpfs location. Used by log buffer.");
 DEFINE_string(log_data_dir, "/tmpfs/ermia-log", "Log directory.");
 DEFINE_uint64(log_buffer_mb, 16, "Log buffer size in MB.");
+DEFINE_uint64(log_buffer_kb, 256, "Log buffer size in KB");
 DEFINE_uint64(log_segment_mb, 16384, "Log segment size in MB.");
 DEFINE_bool(phantom_prot, false, "Whether to enable phantom protection.");
 DEFINE_bool(print_cpu_util, false, "Whether to print CPU utilization.");
@@ -201,6 +202,7 @@ int main(int argc, char **argv) {
   ermia::config::tmpfs_dir = FLAGS_tmpfs_dir;
   ermia::config::log_dir = FLAGS_log_data_dir;
   ermia::config::log_buffer_mb = FLAGS_log_buffer_mb;
+  ermia::config::log_buffer_kb = FLAGS_log_buffer_kb;
   ermia::config::log_segment_mb = FLAGS_log_segment_mb;
   ermia::config::phantom_prot = FLAGS_phantom_prot;
   //ermia::config::recover_functor = new ermia::parallel_oid_replay(FLAGS_threads);
@@ -305,6 +307,8 @@ int main(int argc, char **argv) {
   std::cerr << "  index-probe-only  : " << FLAGS_index_probe_only << std::endl;
   std::cerr << "  iouring-read-log  : " << FLAGS_iouring_read_log << std::endl;
   std::cerr << "  log-buffer-mb     : " << ermia::config::log_buffer_mb << std::endl;
+  std::cerr << "  log_buffer_kb     : " << ermia::config::log_buffer_kb
+            << std::endl;
   std::cerr << "  log-dir           : " << ermia::config::log_dir << std::endl;
   std::cerr << "  log-segment-mb    : " << ermia::config::log_segment_mb << std::endl;
   std::cerr << "  masstree_internal_node_size: " << ermia::ConcurrentMasstree::InternalNodeSize() << std::endl;

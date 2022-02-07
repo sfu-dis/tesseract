@@ -31,6 +31,7 @@ int enable_safesnap = 0;
 int enable_ssi_read_only_opt = 0;
 uint64_t ssn_read_opt_threshold = SSN_READ_OPT_DISABLED;
 uint64_t log_buffer_mb = 4;
+uint64_t log_buffer_kb = 256;
 uint64_t log_segment_mb = 16384;
 std::string log_dir("");
 bool null_log_device = false;

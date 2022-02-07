@@ -25,7 +25,7 @@ dlog::tls_log *GetLog() {
   if (!initialized) {
     std::lock_guard<std::mutex> guard(tlog_lock);
     tlog.initialize(config::log_dir.c_str(), dlog::tlogs.size(),
-                    numa_node_of_cpu(sched_getcpu()), config::log_buffer_mb,
+                    numa_node_of_cpu(sched_getcpu()), config::log_buffer_kb,
                     config::log_segment_mb);
     initialized = true;
     dlog::tlogs.push_back(&tlog);

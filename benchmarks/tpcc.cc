@@ -96,13 +96,18 @@ rc_t tpcc_worker::txn_new_order() {
 
   const customer::key k_c(warehouse_id, districtID, customerID);
   ermia::varstr valptr;
+
+#ifdef COPYDDL
+  ermia::ConcurrentMasstreeIndex *customer_table_index =
+      (ermia::ConcurrentMasstreeIndex *)customer_schema.index;
+#endif
+
   if (customer_schema.v == 0) {
     customer::value v_c_temp;
 
     rc = rc_t{RC_INVALID};
-    tbl_customer(warehouse_id)
-        ->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr, nullptr,
-                    &customer_schema);
+    customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
+                                    valptr, nullptr, &customer_schema);
     // TryVerifyRelaxed(rc);
     TryCatch(rc);
 
@@ -114,9 +119,8 @@ rc_t tpcc_worker::txn_new_order() {
     customer_private::value v_c_temp;
 
     rc = rc_t{RC_INVALID};
-    tbl_customer(warehouse_id)
-        ->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr, nullptr,
-                    &customer_schema);
+    customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
+                                    valptr, nullptr, &customer_schema);
     // TryVerifyRelaxed(rc);
     TryCatch(rc);
 
@@ -389,6 +393,14 @@ rc_t tpcc_worker::txn_payment() {
   struct ermia::Schema_record customer_schema;
   memcpy(&customer_schema, (char *)v2.data(), sizeof(customer_schema));
 
+#ifdef COPYDDL
+  ermia::ConcurrentMasstreeIndex *customer_table_index =
+      (ermia::ConcurrentMasstreeIndex *)customer_schema.index;
+  ermia::ConcurrentMasstreeIndex *customer_table_secondary_index =
+      (ermia::ConcurrentMasstreeIndex *)(*(
+          (customer_schema.td)->GetSecIndexes().begin()));
+#endif
+
   rc = rc_t{RC_INVALID};
   ermia::varstr valptr;
   const warehouse::key k_w(warehouse_id);
@@ -456,10 +468,11 @@ rc_t tpcc_worker::txn_payment() {
 
     if (ermia::config::scan_with_it) {
       auto iter =
-          ermia::ConcurrentMasstree::ScanIterator</*IsRerverse=*/false>::factory(
-              &tbl_customer_name_idx(customerWarehouseID)->GetMasstree(),
-              txn->GetXIDContext(), Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-              &Encode(str(Size(k_c_idx_1)), k_c_idx_1));
+          ermia::ConcurrentMasstree::ScanIterator</*IsRerverse=*/false>::
+              factory(&customer_table_secondary_index->GetMasstree(),
+                      txn->GetXIDContext(),
+                      Encode(str(Size(k_c_idx_0)), k_c_idx_0),
+                      &Encode(str(Size(k_c_idx_1)), k_c_idx_1));
       ermia::dbtuple* tuple = nullptr;
       bool more = iter.init_or_next</*IsNext=*/false>();
       while (more) {
@@ -474,10 +487,9 @@ rc_t tpcc_worker::txn_payment() {
         more = iter.init_or_next</*IsNext=*/true>();
       }
     } else {
-      TryCatch(tbl_customer_name_idx(customerWarehouseID)
-                   ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-                          &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
-                          &customer_schema));
+      TryCatch(customer_table_secondary_index->Scan(
+          txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
+          &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c, &customer_schema));
     }
 
     ALWAYS_ASSERT(c.size() > 0);
@@ -501,9 +513,8 @@ rc_t tpcc_worker::txn_payment() {
     k_c.c_d_id = customerDistrictID;
     k_c.c_id = customerID;
     rc = rc_t{RC_INVALID};
-    tbl_customer(customerWarehouseID)
-        ->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr, nullptr,
-                    &customer_schema);
+    customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
+                                    valptr, nullptr, &customer_schema);
     // TryVerifyRelaxed(rc);
     TryCatch(rc);
     if (customer_schema.v == 0) {
@@ -531,10 +542,9 @@ rc_t tpcc_worker::txn_payment() {
       memcpy((void *)v_c_new.c_data.data(), &buf[0], v_c_new.c_data.size());
     }
 
-    TryCatch(tbl_customer(customerWarehouseID)
-                 ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
-                                Encode(str(Size(v_c_new)), v_c_new),
-                                &customer_schema));
+    TryCatch(customer_table_index->UpdateRecord(
+        txn, Encode(str(Size(k_c)), k_c), Encode(str(Size(v_c_new)), v_c_new),
+        &customer_schema));
   } else {
     customer_private::value v_c_new(v_c_private);
 
@@ -551,10 +561,9 @@ rc_t tpcc_worker::txn_payment() {
       memcpy((void *)v_c_new.c_data.data(), &buf[0], v_c_new.c_data.size());
     }
 
-    TryCatch(tbl_customer(customerWarehouseID)
-                 ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
-                                Encode(str(Size(v_c_new)), v_c_new),
-                                &customer_schema));
+    TryCatch(customer_table_index->UpdateRecord(
+        txn, Encode(str(Size(k_c)), k_c), Encode(str(Size(v_c_new)), v_c_new),
+        &customer_schema));
   }
 
   const history::key k_h(k_c.c_d_id, k_c.c_w_id, k_c.c_id, districtID,
@@ -646,6 +655,8 @@ rc_t tpcc_worker::txn_delivery() {
 #ifdef COPYDDL
   ermia::ConcurrentMasstreeIndex *oorder_table_index =
       (ermia::ConcurrentMasstreeIndex *)oorder_schema.index;
+  ermia::ConcurrentMasstreeIndex *customer_table_index =
+      (ermia::ConcurrentMasstreeIndex *)customer_schema.index;
 #endif
 
   for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
@@ -819,36 +830,32 @@ rc_t tpcc_worker::txn_delivery() {
       customer::value v_c_temp;
 
       rc = rc_t{RC_INVALID};
-      tbl_customer(warehouse_id)
-          ->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr, nullptr,
-                      &customer_schema);
+      customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
+                                      valptr, nullptr, &customer_schema);
       // TryVerifyRelaxed(rc);
       TryCatch(rc);
 
       const customer::value *v_c = Decode(valptr, v_c_temp);
       customer::value v_c_new(*v_c);
       v_c_new.c_balance += ol_total;
-      TryCatch(tbl_customer(warehouse_id)
-                   ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
-                                  Encode(str(Size(v_c_new)), v_c_new),
-                                  &customer_schema));
+      TryCatch(customer_table_index->UpdateRecord(
+          txn, Encode(str(Size(k_c)), k_c), Encode(str(Size(v_c_new)), v_c_new),
+          &customer_schema));
     } else {
       customer_private::value v_c_temp;
 
       rc = rc_t{RC_INVALID};
-      tbl_customer(warehouse_id)
-          ->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr, nullptr,
-                      &customer_schema);
+      customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
+                                      valptr, nullptr, &customer_schema);
       // TryVerifyRelaxed(rc);
       TryCatch(rc);
 
       const customer_private::value *v_c = Decode(valptr, v_c_temp);
       customer_private::value v_c_new(*v_c);
       v_c_new.c_balance += ol_total;
-      TryCatch(tbl_customer(warehouse_id)
-                   ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
-                                  Encode(str(Size(v_c_new)), v_c_new),
-                                  &customer_schema));
+      TryCatch(customer_table_index->UpdateRecord(
+          txn, Encode(str(Size(k_c)), k_c), Encode(str(Size(v_c_new)), v_c_new),
+          &customer_schema));
     }
   }
   TryCatch(db->Commit(txn));
@@ -921,6 +928,14 @@ rc_t tpcc_worker::txn_order_status() {
   struct ermia::Schema_record customer_schema;
   memcpy(&customer_schema, (char *)v3.data(), sizeof(customer_schema));
 
+#ifdef COPYDDL
+  ermia::ConcurrentMasstreeIndex *customer_table_index =
+      (ermia::ConcurrentMasstreeIndex *)customer_schema.index;
+  ermia::ConcurrentMasstreeIndex *customer_table_secondary_index =
+      (ermia::ConcurrentMasstreeIndex *)(*(
+          (customer_schema.td)->GetSecIndexes().begin()));
+#endif
+
   customer::key k_c;
   ermia::varstr valptr;
   if (RandomNumber(r, 1, 100) <= 60) {
@@ -947,10 +962,9 @@ rc_t tpcc_worker::txn_order_status() {
 
     static_limit_callback<NMaxCustomerIdxScanElems> c(
         s_arena.get(), true);  // probably a safe bet for now
-    TryCatch(tbl_customer_name_idx(warehouse_id)
-                 ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-                        &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
-                        &customer_schema));
+    TryCatch(customer_table_secondary_index->Scan(
+        txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
+        &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c, &customer_schema));
 
     ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
@@ -976,9 +990,8 @@ rc_t tpcc_worker::txn_order_status() {
     k_c.c_id = customerID;
 
     rc = rc_t{RC_INVALID};
-    tbl_customer(warehouse_id)
-        ->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr, nullptr,
-                    &customer_schema);
+    customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
+                                    valptr, nullptr, &customer_schema);
     // TryVerifyRelaxed(rc);
     TryCatch(rc);
 
@@ -1292,6 +1305,14 @@ rc_t tpcc_worker::txn_credit_check() {
   struct ermia::Schema_record customer_schema;
   memcpy(&customer_schema, (char *)v3.data(), sizeof(customer_schema));
 
+#ifdef COPYDDL
+  ermia::ConcurrentMasstreeIndex *customer_table_index =
+      (ermia::ConcurrentMasstreeIndex *)customer_schema.index;
+  ermia::ConcurrentMasstreeIndex *customer_table_secondary_index =
+      (ermia::ConcurrentMasstreeIndex *)(*(
+          (customer_schema.td)->GetSecIndexes().begin()));
+#endif
+
   // select * from customer with random C_ID
   customer::key k_c;
   ermia::varstr valptr;
@@ -1301,9 +1322,8 @@ rc_t tpcc_worker::txn_credit_check() {
   k_c.c_id = customerID;
 
   rc = rc_t{RC_INVALID};
-  tbl_customer(customerWarehouseID)
-      ->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr, nullptr,
-                  &customer_schema);
+  customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr,
+                                  nullptr, &customer_schema);
   // TryVerifyRelaxed(rc);
   TryCatch(rc);
 
@@ -1404,20 +1424,18 @@ rc_t tpcc_worker::txn_credit_check() {
       v_c_new.c_credit.assign("BC");
     else
       v_c_new.c_credit.assign("GC");
-    TryCatch(tbl_customer(customerWarehouseID)
-                 ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
-                                Encode(str(Size(v_c_new)), v_c_new),
-                                &customer_schema));
+    TryCatch(customer_table_index->UpdateRecord(
+        txn, Encode(str(Size(k_c)), k_c), Encode(str(Size(v_c_new)), v_c_new),
+        &customer_schema));
   } else {
     customer_private::value v_c_new(*v_c_private);
     if (v_c_new.c_balance + sum >= 5000) // Threshold = 5K
       v_c_new.c_credit.assign("BC");
     else
       v_c_new.c_credit.assign("GC");
-    TryCatch(tbl_customer(customerWarehouseID)
-                 ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
-                                Encode(str(Size(v_c_new)), v_c_new),
-                                &customer_schema));
+    TryCatch(customer_table_index->UpdateRecord(
+        txn, Encode(str(Size(k_c)), k_c), Encode(str(Size(v_c_new)), v_c_new),
+        &customer_schema));
   }
 
   TryCatch(db->Commit(txn));
