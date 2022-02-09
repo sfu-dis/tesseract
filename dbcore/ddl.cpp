@@ -27,7 +27,7 @@ ddl_type ddl_type_map(uint32_t type) {
 }
 
 rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+#if defined(COPYDDL) && !defined(LAZYDDL)
   printf("First CDC begins\n");
   cdc_workers = t->changed_data_capture();
 #endif
@@ -95,6 +95,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
           log->get_logbuf_size() - sizeof(dlog::log_block);
       lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
       */
+      int fail = 0;
       str_arena *arena = new str_arena(config::arena_size_mb);
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
         dbtuple *tuple =
@@ -138,7 +139,15 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
                 // oidmgr->UnlinkTuple(entry);
                 ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
                 MM::deallocate(entry);
+                fail++;
               } else {
+                ConcurrentMasstreeIndex *secondary_index =
+                    (ConcurrentMasstreeIndex
+                         *)((*it)->new_td->GetSecIndexes().front());
+                if ((*it)->new_td->GetSecIndexes().size() &&
+                    !secondary_index->InsertOID(t, *key, o)) {
+                  continue;
+                }
                 Object *obj = (Object *)out_entry->offset();
                 obj->SetCSN(obj->GenerateCsnPtr(xc->end));
               }
@@ -164,12 +173,13 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
           }
         }
       }
+      printf("fail: %d\n", fail);
       return rc_t{RC_TRUE};
     };
     thread->StartTask(parallel_scan);
   }
 
-  /*#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+  /*#if defined(COPYDDL) && !defined(LAZYDDL)
     printf("First CDC begins\n");
     cdc_workers = t->changed_data_capture();
   #endif*/
@@ -255,7 +265,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   current_csn = dlog::current_csn.load(std::memory_order_relaxed);
   printf("DDL scan ends, current csn: %lu\n", current_csn);
 
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+#if defined(COPYDDL) && !defined(LAZYDDL)
   printf("t->get_cdc_smallest_csn(): %lu\n", t->get_cdc_smallest_csn());
   // while (t->get_cdc_smallest_csn() <
   //   dlog::current_csn.load(std::memory_order_relaxed) - 100000 &&

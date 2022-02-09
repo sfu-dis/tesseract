@@ -98,12 +98,6 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     }
   }
 
-#ifdef DCOPYDDL
-  if (is_ddl()) {
-    volatile_write(xc->state, TXN::TXN_DDL);
-  }
-#endif
-
   xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
   if (config::enable_dml_slow_down && ddl_running_1 && is_dml()) {
     util::fast_random r(xc->begin);
@@ -343,7 +337,7 @@ rc_t transaction::si_commit() {
 
 #ifdef COPYDDL
   if (is_ddl() && config::ddl_type != 4) {
-#if !defined(LAZYDDL) && !defined(DCOPYDDL)
+#if !defined(LAZYDDL)
     // Start the second round of CDC
     std::cerr << "Second CDC begins" << std::endl;
     ddl_running_2 = true;
@@ -586,7 +580,7 @@ rc_t transaction::si_commit() {
 #endif
 
 #ifdef COPYDDL
-#if !defined(LAZYDDL) && !defined(DCOPYDDL)
+#if !defined(LAZYDDL)
 std::vector<thread::Thread *> transaction::changed_data_capture() {
   ddl_failed = false;
   cdc_running = true;
@@ -1183,7 +1177,7 @@ transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
 
 void transaction::table_scan(TableDescriptor *td, const varstr *key, OID oid) {
   auto *key_array = td->GetKeyArray();
-  for (uint32_t o = 1; o <= oid; o++) {
+  for (OID o = 1; o <= oid; o++) {
     fat_ptr *entry = key_array->get(oid);
     varstr *k = entry ? (varstr *)((*entry).offset()) : nullptr;
     if (k && key && memcmp(k, key, key->size())) {

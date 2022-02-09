@@ -40,25 +40,16 @@ void schematable_loader::load() {
   order_line_schema.state = 0;
   order_line_schema.old_td = nullptr;
   order_line_schema.old_index = nullptr;
-#ifdef DCOPYDDL
-  order_line_schema.old_v = -1;
-#endif
 
   struct ermia::Schema_record oorder_schema;
   oorder_schema.state = 0;
   oorder_schema.old_td = nullptr;
   oorder_schema.old_index = nullptr;
-#ifdef DCOPYDDL
-  oorder_schema.old_v = -1;
-#endif
 
   struct ermia::Schema_record customer_schema;
   customer_schema.state = 0;
   customer_schema.old_td = nullptr;
   customer_schema.old_index = nullptr;
-#ifdef DCOPYDDL
-  customer_schema.old_v = -1;
-#endif
 
   char schema_str1[sizeof(ermia::Schema_record)],
       schema_str2[sizeof(ermia::Schema_record)],
@@ -261,9 +252,6 @@ void microbenchmark_schematable_loader::load() {
     ermia::ddl::reformats.push_back(add_column_4);
   }
   usertable_schema.old_index = nullptr;
-#ifdef DCOPYDDL
-  usertable_schema.old_v = -1;
-#endif
 
   char str2[sizeof(ermia::Schema_record)];
 #else

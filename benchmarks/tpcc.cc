@@ -1792,7 +1792,7 @@ rc_t tpcc_worker::txn_ddl() {
               << schema_version << std::endl;
     order_line_schema.v = schema_version;
     order_line_schema.old_v = old_schema_version;
-    order_line_schema.state = 0;
+    order_line_schema.state = 2;
 
     if (ermia::config::ddl_type != 4) {
       order_line_schema.old_td = old_order_line_td;
@@ -1811,11 +1811,6 @@ rc_t tpcc_worker::txn_ddl() {
 #ifdef LAZYDDL
       order_line_schema.old_index = old_order_line_table_index;
       order_line_schema.old_tds[old_schema_version] = old_order_line_td;
-      order_line_schema.state = 2;
-#elif DCOPYDDL
-      order_line_schema.state = 1;
-#else
-      order_line_schema.state = 2;
 #endif
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
@@ -1889,7 +1884,7 @@ rc_t tpcc_worker::txn_ddl() {
 
     customer_schema.v = schema_version;
     customer_schema.old_v = old_schema_version;
-    customer_schema.state = 0;
+    customer_schema.state = 2;
     customer_schema.old_td = old_customer_td;
 
     rc = rc_t{RC_INVALID};
@@ -1935,11 +1930,6 @@ rc_t tpcc_worker::txn_ddl() {
 #ifdef LAZYDDL
     customer_schema.old_index = old_customer_table_index;
     customer_schema.old_tds[old_schema_version] = old_customer_td;
-    customer_schema.state = 2;
-#elif DCOPYDDL
-    customer_schema.state = 1;
-#else
-    customer_schema.state = 2;
 #endif
 
     customer_schema.td = ermia::Catalog::GetTable(str3.c_str());
@@ -1993,16 +1983,11 @@ rc_t tpcc_worker::txn_ddl() {
     struct ermia::Schema_record public_customer_schema;
     public_customer_schema.v = schema_version;
     public_customer_schema.old_v = old_schema_version;
-    public_customer_schema.state = 0;
+    public_customer_schema.state = 2;
     public_customer_schema.old_td = old_customer_td;
 #ifdef LAZYDDL
     public_customer_schema.old_index = old_customer_table_index;
     public_customer_schema.old_tds[old_schema_version] = old_customer_td;
-    public_customer_schema.state = 2;
-#elif DCOPYDDL
-    public_customer_schema.state = 1;
-#else
-    public_customer_schema.state = 2;
 #endif
 
     auto split_customer_public = [=](ermia::varstr *key, ermia::varstr &value,
@@ -2119,7 +2104,7 @@ rc_t tpcc_worker::txn_ddl() {
               << schema_version << std::endl;
     oorder_schema.v = schema_version;
     oorder_schema.old_v = old_schema_version;
-    oorder_schema.state = 0;
+    oorder_schema.state = 2;
     oorder_schema.old_td = old_oorder_td;
 
     rc = rc_t{RC_INVALID};
@@ -2268,11 +2253,6 @@ rc_t tpcc_worker::txn_ddl() {
 #ifdef LAZYDDL
     oorder_schema.old_index = old_oorder_table_index;
     oorder_schema.old_tds[old_schema_version] = old_oorder_td;
-    oorder_schema.state = 2;
-#elif DCOPYDDL
-    oorder_schema.state = 1;
-#else
-    oorder_schema.state = 2;
 #endif
 
     oorder_schema.td = ermia::Catalog::GetTable(str3.c_str());
@@ -2352,7 +2332,7 @@ rc_t tpcc_worker::txn_ddl() {
               << schema_version << std::endl;
     order_line_schema.v = old_schema_version;
     order_line_schema.old_v = old_schema_version;
-    order_line_schema.state = 0;
+    order_line_schema.state = 2;
     order_line_schema.old_td = old_order_line_td;
 
     rc = rc_t{RC_INVALID};
@@ -2375,11 +2355,6 @@ rc_t tpcc_worker::txn_ddl() {
 #ifdef LAZYDDL
     order_line_schema.old_index = old_order_line_table_index;
     // order_line_schema.old_tds[old_schema_version] = old_order_line_td;
-    order_line_schema.state = 2;
-#elif DCOPYDDL
-    order_line_schema.state = 1;
-#else
-    order_line_schema.state = 2;
 #endif
     new_order_line_table_index->SetArrays(true);
     order_line_schema.td->SetPrimaryIndex(new_order_line_table_index);
@@ -2435,7 +2410,7 @@ rc_t tpcc_worker::txn_ddl() {
               << schema_version << std::endl;
     order_line_schema.v = schema_version;
     order_line_schema.old_v = old_schema_version;
-    order_line_schema.state = 0;
+    order_line_schema.state = 2;
     order_line_schema.old_td = old_order_line_td;
 
     rc = rc_t{RC_INVALID};
@@ -2488,11 +2463,6 @@ rc_t tpcc_worker::txn_ddl() {
 #ifdef LAZYDDL
     order_line_schema.old_index = old_order_line_table_index;
     order_line_schema.old_tds[old_schema_version] = old_order_line_td;
-    order_line_schema.state = 2;
-#elif DCOPYDDL
-    order_line_schema.state = 1;
-#else
-    order_line_schema.state = 2;
 #endif
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)

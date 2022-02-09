@@ -548,7 +548,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
     t->table_scan(table_descriptor, &key, oid);
   }
 
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+#if defined(COPYDDL) && !defined(LAZYDDL)
   std::unordered_map<FID, TableDescriptor *> new_td_map = t->get_new_td_map();
   if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
       new_td_map[table_descriptor->GetTupleFid()]) {
@@ -632,7 +632,7 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
     t->table_scan(table_descriptor, &key, oid);
   }
 
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+#if defined(COPYDDL) && !defined(LAZYDDL)
   std::unordered_map<FID, TableDescriptor *> new_td_map = t->get_new_td_map();
   if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
       (new_td_map.find(table_descriptor->GetTupleFid()) != new_td_map.end())) {
