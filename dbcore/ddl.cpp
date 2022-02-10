@@ -184,7 +184,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
     cdc_workers = t->changed_data_capture();
   #endif*/
 
-  OID end = scan_threads == 0 ? himark : num_per_scan_thread;
+  OID end = scan_threads == 1 ? himark : num_per_scan_thread;
   /*if (config::enable_ddl_offloading) {
     end = 0;
   }*/
@@ -228,6 +228,13 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
             ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
             MM::deallocate(entry);
           } else {
+            ConcurrentMasstreeIndex *secondary_index =
+                (ConcurrentMasstreeIndex
+                     *)((*it)->new_td->GetSecIndexes().front());
+            if ((*it)->new_td->GetSecIndexes().size() &&
+                !secondary_index->InsertOID(t, *key, o)) {
+              continue;
+            }
             Object *obj = (Object *)out_entry->offset();
             obj->SetCSN(obj->GenerateCsnPtr(xc->end));
           }

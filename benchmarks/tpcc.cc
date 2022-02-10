@@ -1702,7 +1702,7 @@ std::get<1>(y) && std::get<2>(x) == std::get<2>(y));
   }
 };*/
 
-template <class T1, class T2, class T3> struct key_tuple {
+template <typename T1, typename T2, typename T3> struct key_tuple {
   struct hash {
     std::size_t operator()(const key_tuple<T1, T2, T3> &key) const {
       return key.t1 ^ key.t2 ^ key.t3;
@@ -1792,7 +1792,7 @@ rc_t tpcc_worker::txn_ddl() {
               << schema_version << std::endl;
     order_line_schema.v = schema_version;
     order_line_schema.old_v = old_schema_version;
-    order_line_schema.state = 2;
+    order_line_schema.state = ermia::config::ddl_type == 4 ? 0 : 2;
 
     if (ermia::config::ddl_type != 4) {
       order_line_schema.old_td = old_order_line_td;
@@ -2261,7 +2261,11 @@ rc_t tpcc_worker::txn_ddl() {
     auto *new_oorder_table_index =
         new ermia::ConcurrentMasstreeIndex(str3.c_str(), true);
     new_oorder_table_index->SetArrays(true);
+    auto *new_oorder_table_secondary_index =
+        new ermia::ConcurrentMasstreeIndex(str3.c_str(), false);
+    new_oorder_table_secondary_index->SetArrays(false);
     oorder_schema.td->SetPrimaryIndex(new_oorder_table_index);
+    oorder_schema.td->AddSecondaryIndex(new_oorder_table_secondary_index);
     oorder_schema.index = new_oorder_table_index;
 #else
     ermia::Catalog::GetTable(str3.c_str())
@@ -2410,55 +2414,56 @@ rc_t tpcc_worker::txn_ddl() {
               << schema_version << std::endl;
     order_line_schema.v = schema_version;
     order_line_schema.old_v = old_schema_version;
-    order_line_schema.state = 2;
-    order_line_schema.old_td = old_order_line_td;
+    order_line_schema.state = ermia::config::ddl_type == 4 ? 0 : 2;
+    if (ermia::config::ddl_type != 4) {
+      order_line_schema.old_td = old_order_line_td;
 
-    rc = rc_t{RC_INVALID};
+      rc = rc_t{RC_INVALID};
 
-    std::stringstream ss;
-    ss << schema_version;
+      std::stringstream ss;
+      ss << schema_version;
 
-    std::string str3 = std::string(str1);
-    str3 += ss.str();
+      std::string str3 = std::string(str1);
+      str3 += ss.str();
 
-    db->CreateTable(str3.c_str());
+      db->CreateTable(str3.c_str());
 
-    auto order_line_stock_join =
-        [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
-            uint64_t schema_version, ermia::FID fid, ermia::OID oid) {
-          const char *keyp = (const char *)(key->p);
-          order_line::key k_ol_temp;
-          const order_line::key *k_ol = Decode(keyp, k_ol_temp);
+      auto order_line_stock_join =
+          [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
+              uint64_t schema_version, ermia::FID fid, ermia::OID oid) {
+            const char *keyp = (const char *)(key->p);
+            order_line::key k_ol_temp;
+            const order_line::key *k_ol = Decode(keyp, k_ol_temp);
 
-          order_line::value v_ol_temp;
-          const order_line::value *v_ol = Decode(value, v_ol_temp);
+            order_line::value v_ol_temp;
+            const order_line::value *v_ol = Decode(value, v_ol_temp);
 
-          ermia::OID o = 0;
-          rc_t rc = {RC_INVALID};
-          const stock::key k_s(k_ol->ol_w_id, v_ol->ol_i_id);
-          const size_t stock_sz = ::Size(k_s);
-          ermia::varstr *stock_key = arena->next(stock_sz);
-          AWAIT tbl_stock(1)->GetOID(*stock_key, rc, txn->GetXIDContext(), o);
+            ermia::OID o = 0;
+            rc_t rc = {RC_INVALID};
+            const stock::key k_s(k_ol->ol_w_id, v_ol->ol_i_id);
+            const size_t stock_sz = ::Size(k_s);
+            ermia::varstr *stock_key = arena->next(stock_sz);
+            AWAIT tbl_stock(1)->GetOID(*stock_key, rc, txn->GetXIDContext(), o);
 
-          order_line_stock::value v_ol_stock;
-          v_ol_stock.ol_i_id = v_ol->ol_i_id;
-          v_ol_stock.ol_delivery_d = v_ol->ol_delivery_d;
-          v_ol_stock.ol_amount = v_ol->ol_amount;
-          v_ol_stock.ol_supply_w_id = v_ol->ol_supply_w_id;
-          v_ol_stock.ol_quantity = v_ol->ol_quantity;
-          v_ol_stock.s_oid = o;
+            order_line_stock::value v_ol_stock;
+            v_ol_stock.ol_i_id = v_ol->ol_i_id;
+            v_ol_stock.ol_delivery_d = v_ol->ol_delivery_d;
+            v_ol_stock.ol_amount = v_ol->ol_amount;
+            v_ol_stock.ol_supply_w_id = v_ol->ol_supply_w_id;
+            v_ol_stock.ol_quantity = v_ol->ol_quantity;
+            v_ol_stock.s_oid = o;
 
-          const size_t order_line_sz = ::Size(v_ol_stock);
-          ermia::varstr *new_value = arena->next(order_line_sz);
-          new_value = &Encode(*new_value, v_ol_stock);
+            const size_t order_line_sz = ::Size(v_ol_stock);
+            ermia::varstr *new_value = arena->next(order_line_sz);
+            new_value = &Encode(*new_value, v_ol_stock);
 
-          return new_value;
-        };
+            return new_value;
+          };
 
-    order_line_schema.reformat_idx = ermia::ddl::reformats.size();
-    ermia::ddl::reformats.push_back(order_line_stock_join);
+      order_line_schema.reformat_idx = ermia::ddl::reformats.size();
+      ermia::ddl::reformats.push_back(order_line_stock_join);
 
-    order_line_schema.td = ermia::Catalog::GetTable(str3.c_str());
+      order_line_schema.td = ermia::Catalog::GetTable(str3.c_str());
 
 #ifdef LAZYDDL
     order_line_schema.old_index = old_order_line_table_index;
@@ -2479,15 +2484,16 @@ rc_t tpcc_worker::txn_ddl() {
     ALWAYS_ASSERT(old_order_line_table_index == order_line_schema.index);
 #endif
 
+    txn->set_old_td(old_order_line_td);
+    txn->add_new_td_map(order_line_schema.td);
+    txn->add_old_td_map(old_order_line_td);
+    }
+
     order_line_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
     char str4[sizeof(ermia::Schema_record)];
     ALWAYS_ASSERT(sizeof(ermia::Schema_record) == sizeof(order_line_schema));
     memcpy(str4, &order_line_schema, sizeof(str4));
     ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
-
-    txn->set_old_td(old_order_line_td);
-    txn->add_new_td_map(order_line_schema.td);
-    txn->add_old_td_map(old_order_line_td);
 
     schema_index->WriteSchemaTable(txn, rc, k1, v3);
     TryCatch(rc);
@@ -2502,10 +2508,12 @@ rc_t tpcc_worker::txn_ddl() {
         order_line_schema.state);
     txn->set_ddl_executor(ddl_exe);
 
+    if (ermia::config::ddl_type != 4) {
 #if !defined(LAZYDDL)
     rc = ddl_exe->scan(txn, arena, v3);
     TryCatch(rc);
 #endif
+    }
   }
 
   TryCatch(db->Commit(txn));

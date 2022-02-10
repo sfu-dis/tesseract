@@ -393,10 +393,10 @@ rc_t transaction::si_commit() {
 #ifdef COPYDDL
 #ifdef LAZYDDL
     // Background migration
-    log->set_dirty(false);
-    log->set_doing_ddl(false);
-    log->set_normal(false);
     if (!config::enable_lazy_background) {
+      log->set_dirty(false);
+      log->set_doing_ddl(false);
+      log->set_normal(false);
       return rc_t{RC_TRUE};
     }
     varstr *v = new varstr();
@@ -428,7 +428,7 @@ rc_t transaction::si_commit() {
         auto ddl_log = [=](char *) {
           dlog::tls_log *log = GetLog();
           log->set_normal(false);
-          log->reset_logbuf(20);
+          log->reset_logbuf(50);
           dlog::log_block *lb = nullptr;
           dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
           uint64_t segnum = -1;

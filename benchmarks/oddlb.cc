@@ -15,7 +15,7 @@ public:
                           barrier_b) {
   }
 
-  double read_ratio = 0.2, write_ratio = 0.8;
+  double read_ratio = 1, write_ratio = 0;
 
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
@@ -143,13 +143,14 @@ public:
       txn->add_new_td_map(schema.td);
       txn->add_old_td_map(old_td);
     } else {
-      schema_version =
-          old_schema_version + ermia::config::no_copy_verification_version_add;
-      schema.v = schema_version;
+      if (ermia::config::ddl_type == 4) {
+        schema_version = old_schema_version +
+                         ermia::config::no_copy_verification_version_add;
+        schema.v = schema_version;
+      }
       schema.state = ermia::config::ddl_type == 2 ? 2 : 0;
       txn->set_old_td(old_td);
       txn->add_old_td_map(old_td);
-      ALWAYS_ASSERT(schema.ddl_type == ermia::ddl::ddl_type::VERIFICATION_ONLY);
     }
     memcpy(str2, &schema, sizeof(str2));
     ermia::varstr &v2 = str(sizeof(str2));
@@ -381,9 +382,9 @@ public:
     if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION &&
         schema.ddl_type != ermia::ddl::ddl_type::VERIFICATION_ONLY &&
         record_test.v != schema_version) {
-      // LOG(FATAL) << "Read: It should get " << schema_version << " ,but get "
-      //            << record_test.v;
-      TryCatch(rc_t{RC_ABORT_USER});
+      LOG(FATAL) << "Read: It should get " << schema_version << " ,but get "
+                 << record_test.v;
+      // TryCatch(rc_t{RC_ABORT_USER});
     }
 
     if (schema_version == 0) {
@@ -402,12 +403,12 @@ public:
         ALWAYS_ASSERT(record2_test.b == schema_version);
         ALWAYS_ASSERT(record2_test.c == schema_version);
       } else if (schema.ddl_type == ermia::ddl::ddl_type::VERIFICATION_ONLY) {
-        struct ermia::Schema1 record1_test;
+        /*struct ermia::Schema1 record1_test;
         memcpy(&record1_test, (char *)v2.data(), sizeof(record1_test));
 
         ALWAYS_ASSERT(record1_test.a == a);
         ALWAYS_ASSERT(record1_test.b == a || record1_test.b == 20000000);
-      } else if (schema.ddl_type ==
+      */} else if (schema.ddl_type ==
                  ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
         if (record_test.v != schema_version) {
 #ifdef COPYDDL
@@ -506,6 +507,7 @@ record_test.v;
     }
 #endif*/
 
+    ermia::varstr v2;
     if (schema_version == 0) {
       struct ermia::Schema1 record1;
       record1.v = schema_version;
@@ -518,12 +520,9 @@ record_test.v;
 
       char str2[sizeof(ermia::Schema1)];
       memcpy(str2, &record1, sizeof(str2));
-      ermia::varstr &v2 = str(sizeof(str2));
+      v2 = str(sizeof(str2));
       v2.copy_from(str2, sizeof(str2));
-
-      TryCatch(table_index->UpdateRecord(txn, k1, v2));
     } else {
-      ermia::varstr v2;
       if (schema.ddl_type == ermia::ddl::ddl_type::COPY_VERIFICATION ||
           schema.ddl_type == ermia::ddl::ddl_type::COPY_ONLY) {
         struct ermia::Schema2 record2;
@@ -545,7 +544,7 @@ record_test.v;
 
         char str2[sizeof(ermia::Schema1)];
         memcpy(str2, &record1, sizeof(str2));
-        ermia::varstr &v2 = str(sizeof(str2));
+        v2 = str(sizeof(str2));
         v2.copy_from(str2, sizeof(str2));
       } else if (schema.ddl_type ==
                  ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
@@ -565,13 +564,13 @@ record_test.v;
         v2 = str(sizeof(str2));
         v2.copy_from(str2, sizeof(str2));
       }
+    }
 
 #ifdef COPYDDL
-      TryCatch(table_index->UpdateRecord(txn, k1, v2, &schema));
+    TryCatch(table_index->UpdateRecord(txn, k1, v2, &schema));
 #else
-      TryCatch(table_index->UpdateRecord(txn, k1, v2));
+    TryCatch(table_index->UpdateRecord(txn, k1, v2));
 #endif
-    }
 
     TryCatch(db->Commit(txn));
 #ifdef BLOCKDDL
