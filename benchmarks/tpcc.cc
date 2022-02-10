@@ -487,9 +487,17 @@ rc_t tpcc_worker::txn_payment() {
         more = iter.init_or_next</*IsNext=*/true>();
       }
     } else {
+    retry:
       TryCatch(customer_table_secondary_index->Scan(
           txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
           &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c, &customer_schema));
+
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+      if (c.size() <= 0) {
+        // goto retry;
+        TryCatch(rc_t{RC_ABORT_USER});
+      }
+#endif
     }
 
     ALWAYS_ASSERT(c.size() > 0);
@@ -966,6 +974,12 @@ rc_t tpcc_worker::txn_order_status() {
         txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
         &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c, &customer_schema));
 
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    if (c.size() <= 0) {
+      TryCatch(rc_t{RC_ABORT_USER});
+    }
+#endif
+
     ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
     int index = c.size() / 2;
@@ -1039,6 +1053,12 @@ rc_t tpcc_worker::txn_order_status() {
             txn, Encode(str(Size(k_oo_idx_0)), k_oo_idx_0),
             &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), c_oorder,
             &oorder_schema));
+
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+        if (!c_oorder.size()) {
+          TryCatch(rc_t{RC_ABORT_USER});
+        }
+#endif
       }
     }
     ALWAYS_ASSERT(c_oorder.size());
@@ -1059,6 +1079,12 @@ rc_t tpcc_worker::txn_order_status() {
       TryCatch(oorder_table_secondary_index->ReverseScan(
           txn, Encode(str(Size(k_oo_idx_hi)), k_oo_idx_hi), nullptr, c_oorder,
           &oorder_schema));
+
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+      if (c_oorder.size() != 1) {
+        TryCatch(rc_t{RC_ABORT_USER});
+      }
+#endif
     }
     ALWAYS_ASSERT(c_oorder.size() == 1);
   }
@@ -1927,6 +1953,37 @@ rc_t tpcc_worker::txn_ddl() {
     customer_schema.reformat_idx = ermia::ddl::reformats.size();
     ermia::ddl::reformats.push_back(split_customer_private);
 
+    auto create_secondary_index_key =
+        [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
+            uint64_t schema_version, ermia::FID fid, ermia::OID oid) {
+          const char *keyp = (const char *)(key->p);
+          customer::key k_c_temp;
+          const customer::key *k_c = Decode(keyp, k_c_temp);
+
+          customer::value v_c_temp;
+          const customer::value *v_c = Decode(value, v_c_temp);
+
+          /*customer_name_idx::key k_idx;
+          k_idx.c_w_id = k_c->c_w_id;
+          k_idx.c_d_id = k_c->c_d_id;
+          k_idx.c_last.assign(v_c->c_last.data(), v_c->c_last.size());
+          k_idx.c_first.assign(v_c->c_first.data(), v_c->c_first.size());
+          */
+          const customer_name_idx::key k_idx(k_c->c_w_id, k_c->c_d_id,
+                                             v_c->c_last.str(true),
+                                             v_c->c_first.str(true));
+
+          const size_t customer_name_idx_sz = ::Size(k_idx);
+          ermia::varstr *new_key = arena->next(customer_name_idx_sz);
+          new_key = &Encode(*new_key, k_idx);
+
+          return new_key;
+        };
+
+    customer_schema.secondary_index_key_create_idx =
+        ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(create_secondary_index_key);
+
 #ifdef LAZYDDL
     customer_schema.old_index = old_customer_table_index;
     customer_schema.old_tds[old_schema_version] = old_customer_td;
@@ -2058,7 +2115,7 @@ rc_t tpcc_worker::txn_ddl() {
         customer_schema.v, customer_schema.old_v, customer_schema.ddl_type,
         customer_schema.reformat_idx, customer_schema.constraint_idx,
         customer_schema.td, customer_schema.old_td, customer_schema.index,
-        customer_schema.state);
+        customer_schema.state, customer_schema.secondary_index_key_create_idx);
     ddl_exe->add_ddl_executor_paras(
         public_customer_schema.v, public_customer_schema.old_v,
         public_customer_schema.ddl_type, public_customer_schema.reformat_idx,
@@ -2250,6 +2307,29 @@ rc_t tpcc_worker::txn_ddl() {
     ermia::ddl::reformats.push_back(build_key_sum_map);
     */
 
+    auto create_secondary_index_key =
+        [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
+            uint64_t schema_version, ermia::FID fid, ermia::OID oid) {
+          const char *keyp = (const char *)(key->p);
+          oorder::key k_oo_temp;
+          const oorder::key *k_oo = Decode(keyp, k_oo_temp);
+
+          oorder::value v_oo_temp;
+          const oorder::value *v_oo = Decode(value, v_oo_temp);
+
+          const oorder_c_id_idx::key k_oo_idx(k_oo->o_w_id, k_oo->o_d_id,
+                                              v_oo->o_c_id, k_oo->o_id);
+
+          const size_t oorder_c_id_idx_sz = ::Size(k_oo_idx);
+          ermia::varstr *new_key = arena->next(oorder_c_id_idx_sz);
+          new_key = &Encode(*new_key, k_oo_idx);
+
+          return new_key;
+        };
+
+    oorder_schema.secondary_index_key_create_idx = ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(create_secondary_index_key);
+
 #ifdef LAZYDDL
     oorder_schema.old_index = old_oorder_table_index;
     oorder_schema.old_tds[old_schema_version] = old_oorder_td;
@@ -2298,12 +2378,13 @@ rc_t tpcc_worker::txn_ddl() {
         oorder_schema.v, oorder_schema.old_v, oorder_schema.ddl_type,
         oorder_schema.reformat_idx, oorder_schema.constraint_idx,
         oorder_schema.td, oorder_schema.old_td, oorder_schema.index,
-        oorder_schema.state, true, true, scan_reformat_idx);
+        oorder_schema.state, oorder_schema.secondary_index_key_create_idx, true,
+        true, scan_reformat_idx);
     ddl_exe->add_ddl_executor_paras(
         oorder_schema.v, oorder_schema.old_v, oorder_schema.ddl_type,
         order_line_schema.reformat_idx, oorder_schema.constraint_idx,
         oorder_schema.td, order_line_schema.td, oorder_schema.index,
-        oorder_schema.state, true, false, order_line_schema.reformat_idx);
+        oorder_schema.state, -1, true, false, order_line_schema.reformat_idx);
     txn->set_ddl_executor(ddl_exe);
 
 #if !defined(LAZYDDL)
@@ -2384,7 +2465,7 @@ rc_t tpcc_worker::txn_ddl() {
         order_line_schema.ddl_type, order_line_schema.reformat_idx,
         order_line_schema.constraint_idx, order_line_schema.td,
         order_line_schema.old_td, order_line_schema.index,
-        order_line_schema.state, true, false, -1);
+        order_line_schema.state, -1, true, false, -1);
     txn->set_ddl_executor(ddl_exe);
 
 #if !defined(LAZYDDL)

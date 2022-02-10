@@ -173,30 +173,9 @@ ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
 
   if (!unlikely(end_key && *end_key <= start_key)) {
     XctSearchRangeCallback cb(t, &c, schema, table_descriptor);
-    bool need_scan = false;
-#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
-    if (schema && schema->old_index) {
-      AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
-                                        cb, t->xc);
-      if (c.return_code._val == RC_FALSE) {
-        /*XctSearchRangeCallback cb1(t, &c, schema, table_descriptor, true);
-        AWAIT((ConcurrentMasstreeIndex *)schema->old_index)
-            ->GetMasstree()
-            .search_range_call(start_key, end_key ? end_key : nullptr, cb1,
-                               t->xc);
-        need_scan = true;
-        */
-        RETURN rc_t{RC_ABORT_INTERNAL};
-      }
-    } else {
-      AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
-                                        cb, t->xc);
-    }
-#else
     AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
                                       cb, t->xc);
-#endif
-    if (schema && (!schema->show_index || need_scan)) {
+    if (schema && !schema->show_index) {
       t->table_scan(table_descriptor, end_key, c.max_oid);
     }
   }
@@ -219,30 +198,9 @@ ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
     if (end_key) {
       lowervk = *end_key;
     }
-    bool need_scan = false;
-#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
-    if (schema && schema->old_index) {
-      AWAIT masstree_.rsearch_range_call(
-          start_key, end_key ? &lowervk : nullptr, cb, t->xc);
-      if (c.return_code._val == RC_FALSE) {
-        /*XctSearchRangeCallback cb1(t, &c, schema, table_descriptor, true);
-        AWAIT((ConcurrentMasstreeIndex *)schema->old_index)
-            ->GetMasstree()
-            .rsearch_range_call(start_key, end_key ? &lowervk : nullptr, cb1,
-                                t->xc);
-        need_scan = true;
-        */
-        RETURN rc_t{RC_ABORT_INTERNAL};
-      }
-    } else {
-      AWAIT masstree_.rsearch_range_call(
-          start_key, end_key ? &lowervk : nullptr, cb, t->xc);
-    }
-#else
     AWAIT masstree_.rsearch_range_call(start_key, end_key ? &lowervk : nullptr,
                                        cb, t->xc);
-#endif
-    if (schema && (!schema->show_index || need_scan)) {
+    if (schema && !schema->show_index) {
       t->table_scan(table_descriptor, end_key, c.max_oid);
     }
   }
@@ -512,6 +470,20 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
   if (schema && table_descriptor != schema->td) {
     RETURN rc_t{RC_ABORT_INTERNAL};
   }
+
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+  if (table_descriptor->GetSecIndexes().size() && schema &&
+      schema->secondary_index_key_create_idx != -1) {
+    ConcurrentMasstreeIndex *secondary_index =
+        (ConcurrentMasstreeIndex *)(table_descriptor->GetSecIndexes().front());
+    varstr *k = new varstr(key.data(), key.size());
+    varstr *new_secondary_index_key =
+        ddl::reformats[schema->secondary_index_key_create_idx](
+            k, value, &(t->string_allocator()), schema->v, 0, oid);
+    if (!AWAIT secondary_index->InsertOID(t, *new_secondary_index_key, oid)) {
+    }
+  }
+#endif
 
   if (out_oid) {
     *out_oid = oid;

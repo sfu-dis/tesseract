@@ -95,7 +95,6 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
           log->get_logbuf_size() - sizeof(dlog::log_block);
       lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
       */
-      int fail = 0;
       str_arena *arena = new str_arena(config::arena_size_mb);
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
         dbtuple *tuple =
@@ -132,24 +131,33 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
               fat_ptr *out_entry = nullptr;
               OID o = t->DDLInsert((*it)->new_td, new_tuple_value, &out_entry,
                                    (*it)->new_v);
-              if (!(*it)->index->InsertOID(t, *key, o)) {
+              if (!o) {
+                continue;
+              }
+              if (!AWAIT(*it)->index->InsertOID(t, *key, o)) {
+                printf("b");
                 Object *obj = (Object *)out_entry->offset();
                 fat_ptr entry = *out_entry;
                 obj->SetCSN(NULL_PTR);
                 // oidmgr->UnlinkTuple(entry);
                 ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
                 MM::deallocate(entry);
-                fail++;
               } else {
                 ConcurrentMasstreeIndex *secondary_index =
                     (ConcurrentMasstreeIndex
                          *)((*it)->new_td->GetSecIndexes().front());
-                if ((*it)->new_td->GetSecIndexes().size() &&
-                    !secondary_index->InsertOID(t, *key, o)) {
-                  continue;
+                if ((*it)->new_td->GetSecIndexes().size()) {
+                  varstr *new_secondary_index_key =
+                      reformats[(*it)->secondary_index_key_create_idx](
+                          key, tuple_value, arena, (*it)->new_v, fid, oid);
+                  if (!AWAIT secondary_index->InsertOID(
+                          t, *new_secondary_index_key, o)) {
+                    continue;
+                  }
                 }
-                Object *obj = (Object *)out_entry->offset();
-                obj->SetCSN(obj->GenerateCsnPtr(xc->end));
+
+                // Object *obj = (Object *)out_entry->offset();
+                // obj->SetCSN(obj->GenerateCsnPtr(xc->end));
               }
 #elif OPTLAZYDDL
               t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end, lb,
@@ -173,7 +181,6 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
           }
         }
       }
-      printf("fail: %d\n", fail);
       return rc_t{RC_TRUE};
     };
     thread->StartTask(parallel_scan);
@@ -220,7 +227,11 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
           fat_ptr *out_entry = nullptr;
           OID o = t->DDLInsert((*it)->new_td, new_tuple_value, &out_entry,
                                (*it)->new_v);
-          if (!(*it)->index->InsertOID(t, *key, o)) {
+          if (!o) {
+            continue;
+          }
+          if (!AWAIT(*it)->index->InsertOID(t, *key, o)) {
+            printf("b");
             Object *obj = (Object *)out_entry->offset();
             fat_ptr entry = *out_entry;
             obj->SetCSN(NULL_PTR);
@@ -231,12 +242,17 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
             ConcurrentMasstreeIndex *secondary_index =
                 (ConcurrentMasstreeIndex
                      *)((*it)->new_td->GetSecIndexes().front());
-            if ((*it)->new_td->GetSecIndexes().size() &&
-                !secondary_index->InsertOID(t, *key, o)) {
-              continue;
+            if ((*it)->new_td->GetSecIndexes().size()) {
+              varstr *new_secondary_index_key =
+                  reformats[(*it)->secondary_index_key_create_idx](
+                      key, tuple_value, arena, (*it)->new_v, fid, oid);
+              if (!AWAIT secondary_index->InsertOID(t, *new_secondary_index_key,
+                                                    o)) {
+                continue;
+              }
             }
-            Object *obj = (Object *)out_entry->offset();
-            obj->SetCSN(obj->GenerateCsnPtr(xc->end));
+            // Object *obj = (Object *)out_entry->offset();
+            // obj->SetCSN(obj->GenerateCsnPtr(xc->end));
           }
 #elif OPTLAZYDDL
           t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end, nullptr,

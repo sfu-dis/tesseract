@@ -60,6 +60,9 @@ struct ddl_executor_paras {
   // State
   uint64_t state;
 
+  // Schema secondary index key creation function index
+  uint64_t secondary_index_key_create_idx;
+
   // Whether handle insert
   bool handle_insert;
 
@@ -72,12 +75,16 @@ struct ddl_executor_paras {
   ddl_executor_paras(uint64_t new_v, uint64_t old_v, ddl_type type,
                      uint64_t reformat_idx, uint64_t constraint_idx,
                      TableDescriptor *new_td, TableDescriptor *old_td,
-                     OrderedIndex *index, uint64_t state, bool handle_insert,
-                     bool handle_update, uint64_t scan_reformat_idx)
+                     OrderedIndex *index, uint64_t state,
+                     uint64_t secondary_index_key_create_idx,
+                     bool handle_insert, bool handle_update,
+                     uint64_t scan_reformat_idx)
       : new_v(new_v), old_v(old_v), type(type), reformat_idx(reformat_idx),
         constraint_idx(constraint_idx), new_td(new_td), old_td(old_td),
-        index(index), state(state), handle_insert(handle_insert),
-        handle_update(handle_update), scan_reformat_idx(scan_reformat_idx) {}
+        index(index), state(state),
+        secondary_index_key_create_idx(secondary_index_key_create_idx),
+        handle_insert(handle_insert), handle_update(handle_update),
+        scan_reformat_idx(scan_reformat_idx) {}
 };
 
 class ddl_executor {
@@ -101,11 +108,13 @@ public:
   inline void add_ddl_executor_paras(
       uint64_t new_v, uint64_t old_v, ddl_type type, uint64_t reformat_idx,
       uint64_t constraint_idx, TableDescriptor *new_td, TableDescriptor *old_td,
-      OrderedIndex *index, uint64_t state, bool handle_insert = true,
+      OrderedIndex *index, uint64_t state,
+      uint64_t secondary_index_key_create_idx = -1, bool handle_insert = true,
       bool handle_update = true, uint64_t scan_reformat_idx = -1) {
     ddl_executor_paras_list.push_back(new ddl_executor_paras(
         new_v, old_v, type, reformat_idx, constraint_idx, new_td, old_td, index,
-        state, handle_insert, handle_update, scan_reformat_idx));
+        state, secondary_index_key_create_idx, handle_insert, handle_update,
+        scan_reformat_idx));
   }
 
   inline void

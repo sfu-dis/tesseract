@@ -101,16 +101,6 @@ target_link_libraries(corobase_DDL_COPY corobase_ddl_copy thread_pool)
 
 set(corobase_COPY_LIB corobase_ddl_copy)
 
-# Non blocking DDL - Double write copy
-add_library(corobase_ddl_double_copy SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_double_copy PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL")
-
-add_executable(corobase_DDL_DOUBLE_COPY ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_DOUBLE_COPY PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL")
-target_link_libraries(corobase_DDL_DOUBLE_COPY corobase_ddl_double_copy thread_pool)
-
-set(corobase_COPY_LIB corobase_ddl_double_copy)
-
 # Non blocking DDL - Lazy copy
 add_library(corobase_ddl_lazy_copy SHARED ${LIB_SRC})
 set_target_properties(corobase_ddl_lazy_copy PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL")

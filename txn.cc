@@ -907,18 +907,38 @@ OID transaction::DDLInsert(TableDescriptor *td, varstr *value,
   fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
-  auto *tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
+  Object *new_object = (Object *)new_head.offset();
+  auto *tuple = (dbtuple *)new_object->GetPayload();
   ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
-  tuple->GetObject()->SetCSN(xid.to_ptr());
+  // tuple->GetObject()->SetCSN(xid.to_ptr());
+  ALWAYS_ASSERT(xc->end != 0);
+  tuple->GetObject()->SetCSN(new_object->GenerateCsnPtr(xc->end));
   OID oid = oidmgr->alloc_oid(tuple_fid);
   ALWAYS_ASSERT(oid != INVALID_OID);
   tuple_array->ensure_size(oid);
-  oidmgr->oid_put_new(tuple_array, oid, new_head);
 
-  ASSERT(tuple->size == value->size());
-  add_to_write_set(tuple_fid == schema_td->GetTupleFid(), tuple_array->get(oid),
-                   tuple_fid, oid, tuple->size,
-                   dlog::log_record::logrec_type::INSERT);
+retry:
+  fat_ptr *entry_ptr = tuple_array->get(oid);
+  fat_ptr expected = *entry_ptr;
+  Object *obj = (Object *)expected.offset();
+  bool overwrite = true;
+  if (expected == NULL_PTR) {
+    overwrite = false;
+    if (!__sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr,
+                                      new_head._ptr)) {
+      goto retry;
+    }
+  } else {
+    MM::deallocate(new_head);
+    return 0;
+  }
+
+  if (!overwrite) {
+    ASSERT(tuple->size == value->size());
+    add_to_write_set(tuple_fid == schema_td->GetTupleFid(),
+                     tuple_array->get(oid), tuple_fid, oid, tuple->size,
+                     dlog::log_record::logrec_type::INSERT);
+  }
 
   if (out_entry) {
     *out_entry = tuple_array->get(oid);
@@ -1177,10 +1197,14 @@ transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
 
 void transaction::table_scan(TableDescriptor *td, const varstr *key, OID oid) {
   auto *key_array = td->GetKeyArray();
+  if (oid == -1) {
+    auto *alloc = oidmgr->get_allocator(td->GetTupleFid());
+    oid = alloc->head.hiwater_mark;
+  }
   for (OID o = 1; o <= oid; o++) {
     fat_ptr *entry = key_array->get(oid);
     varstr *k = entry ? (varstr *)((*entry).offset()) : nullptr;
-    if (k && key && memcmp(k, key, key->size())) {
+    if (k && key && memcmp(k->data(), key->data(), key->size())) {
       break;
     }
   }
