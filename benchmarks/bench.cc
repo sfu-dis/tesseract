@@ -112,6 +112,8 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
 void bench_worker::MyWork(char *) {
   if (is_worker) {
     tlog = ermia::GetLog();
+    // Set _tls_durable_csn to be current global_durable_csn to
+    // mark logs as active for cdc use
     tlog->reset_committer(false);
     workload = get_workload();
     txn_counts.resize(workload.size());
@@ -207,6 +209,9 @@ void bench_runner::run() {
       LOG_IF(FATAL, tlog->get_commit_queue_size() > 0);
     }
 
+    // Set all _tls_durable_csn to be zero first,
+    // later running threads will set its corresponding _tls_durable_csn
+    // to be current global_durable_csn to mark logs as active for cdc use
     ermia::dlog::tlogs[0]->reset_committer(true);
   }
 
