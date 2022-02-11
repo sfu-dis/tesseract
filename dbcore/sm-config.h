@@ -30,7 +30,6 @@ extern bool physical_workers_only;
 extern uint32_t state;
 extern bool enable_chkpt;
 extern uint64_t chkpt_interval;
-extern uint64_t log_buffer_mb;
 extern uint64_t log_buffer_kb;
 extern uint64_t log_segment_mb;
 extern std::string log_dir;
