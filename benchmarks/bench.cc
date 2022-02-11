@@ -123,8 +123,8 @@ void bench_worker::MyWork(char *) {
           ddl_num < ermia::config::ddl_num_total && ddl_start) {
         util::timer ddl_timer;
         do_workload_function(workload.size() - 1);
-        std::cerr << "DDL duration: " << double(ddl_timer.lap()) / 1000000.0
-                  << "s" << std::endl;
+        double lap = ddl_timer.lap();
+        std::cerr << "DDL duration: " << lap / 1000000.0 << "s" << std::endl;
         ddl_num++;
         ddl_start = false;
       } else {
