@@ -126,7 +126,7 @@ void bench_worker::MyWork(char *) {
         util::timer ddl_timer;
         do_workload_function(workload.size() - 1);
         double lap = ddl_timer.lap();
-        std::cerr << "DDL duration: " << lap / 1000000.0 << "s" << std::endl;
+        DLOG(INFO) << "DDL duration: " << lap / 1000000.0 << "s" << std::endl;
         ddl_num++;
         ddl_start = false;
       } else {
@@ -239,7 +239,7 @@ void bench_runner::start_measurement() {
 #ifdef DDL
   util::fast_random r(2343352);
   ddl_worker_id = r.next() % workers.size() - 1;
-  printf("ddl_worker_id: %d\n", ddl_worker_id);
+  DLOG(INFO) << "ddl_worker_id: " << ddl_worker_id;
 #endif
   for (std::vector<bench_worker *>::const_iterator it = workers.begin();
        it != workers.end(); ++it) {

@@ -1711,23 +1711,6 @@ rc_t tpcc_worker::txn_microbench_random() {
   return {RC_TRUE};
 }
 
-/*struct hash_tuple {
-  template <class T1, class T2, class T3>
-  size_t operator() (const std::tuple<T1, T2, T3> &x) const {
-    return std::get<0>(x)
-           ^ std::get<1>(x)
-           ^ std::get<2>(x);
-  }
-};
-
-struct equal_tuple {
-  template <class T1, class T2, class T3>
-  bool operator() (const std::tuple<T1, T2, T3> &x, const std::tuple<T1, T2, T3>
-&y) const { return (std::get<0>(x) == std::get<0>(y) && std::get<1>(x) ==
-std::get<1>(y) && std::get<2>(x) == std::get<2>(y));
-  }
-};*/
-
 template <typename T1, typename T2, typename T3> struct key_tuple {
   struct hash {
     std::size_t operator()(const key_tuple<T1, T2, T3> &key) const {
@@ -1735,7 +1718,6 @@ template <typename T1, typename T2, typename T3> struct key_tuple {
     }
   };
 
-  // int t1, t2, t3;
   T1 t1;
   T2 t2;
   T3 t3;
@@ -1768,7 +1750,7 @@ rc_t tpcc_worker::txn_ddl() {
   memcpy(&schema, (char *)v1.data(), sizeof(schema));
   
   uint64_t schema_version = schema.v + 1;
-  std::cerr << "change to new schema: " << schema_version << std::endl;
+  DLOG(INFO) << "change to new schema: " << schema_version;
   schema.v = schema_version;
   schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
   char str2[sizeof(ermia::Schema_base)];
@@ -1792,7 +1774,6 @@ rc_t tpcc_worker::txn_ddl() {
   db->WriteUnlock(schema_fid);
 #elif COPYDDL
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
-  printf("DDL txn begin: %lu\n", txn->GetXIDContext()->begin);
 
   // Read schema tables first
   if (ermia::config::ddl_example == 0) {
@@ -1814,8 +1795,8 @@ rc_t tpcc_worker::txn_ddl() {
 
     uint64_t old_schema_version = order_line_schema.v;
     uint64_t schema_version = order_line_schema.v + 1;
-    std::cerr << "Order line table changes to a new schema, version: "
-              << schema_version << std::endl;
+    DLOG(INFO) << "Order line table changes to a new schema, version: "
+               << schema_version;
     order_line_schema.v = schema_version;
     order_line_schema.old_v = old_schema_version;
     order_line_schema.state = ermia::config::ddl_type == 4 ? 0 : 2;
@@ -1905,8 +1886,8 @@ rc_t tpcc_worker::txn_ddl() {
 
     uint64_t old_schema_version = customer_schema.v;
     uint64_t schema_version = customer_schema.v + 1;
-    std::cerr << "Customer table changes to a new schema, version: "
-              << schema_version << std::endl;
+    DLOG(INFO) << "Customer table changes to a new schema, version: "
+               << schema_version;
 
     customer_schema.v = schema_version;
     customer_schema.old_v = old_schema_version;
@@ -1963,12 +1944,6 @@ rc_t tpcc_worker::txn_ddl() {
           customer::value v_c_temp;
           const customer::value *v_c = Decode(value, v_c_temp);
 
-          /*customer_name_idx::key k_idx;
-          k_idx.c_w_id = k_c->c_w_id;
-          k_idx.c_d_id = k_c->c_d_id;
-          k_idx.c_last.assign(v_c->c_last.data(), v_c->c_last.size());
-          k_idx.c_first.assign(v_c->c_first.data(), v_c->c_first.size());
-          */
           const customer_name_idx::key k_idx(k_c->c_w_id, k_c->c_d_id,
                                              v_c->c_last.str(true),
                                              v_c->c_first.str(true));
@@ -2157,8 +2132,8 @@ rc_t tpcc_worker::txn_ddl() {
 
     uint64_t old_schema_version = oorder_schema.v;
     uint64_t schema_version = oorder_schema.v + 1;
-    std::cerr << "Oorder table changes to a new schema, version: "
-              << schema_version << std::endl;
+    DLOG(INFO) << "Oorder table changes to a new schema, version: "
+               << schema_version;
     oorder_schema.v = schema_version;
     oorder_schema.old_v = old_schema_version;
     oorder_schema.state = 2;
@@ -2277,36 +2252,6 @@ rc_t tpcc_worker::txn_ddl() {
     order_line_schema.reformat_idx = ermia::ddl::reformats.size();
     ermia::ddl::reformats.push_back(precompute_aggregate_2);
 
-    /*auto build_key_sum_map = [=](ermia::varstr *key, ermia::varstr &value,
-                                 ermia::str_arena *arena,
-                                 uint64_t schema_version, ermia::FID fid,
-                                 ermia::OID oid) {
-      const char *keyp = (const char *)(key->p);
-      order_line::key k_ol_temp;
-      const order_line::key *k_ol = Decode(keyp, k_ol_temp);
-
-      order_line::value v_ol_temp;
-      const order_line::value *v_ol = Decode(value, v_ol_temp);
-
-      thread_local std::unordered_map<key_tuple<int, int, int>, float,
-                                      key_tuple<int, int, int>::hash>
-          key_sum_map;
-      auto it = key_sum_map.find(key_tuple<int, int, int>{
-          k_ol->ol_w_id, k_ol->ol_d_id, k_ol->ol_o_id});
-      if (it != key_sum_map.end()) {
-        it->second += v_ol->ol_amount;
-      } else {
-        key_sum_map.insert(std::make_pair<key_tuple<int, int, int>>(
-            {k_ol->ol_w_id, k_ol->ol_d_id, k_ol->ol_o_id}, v_ol->ol_amount));
-      }
-
-      return nullptr;
-    };
-
-    order_line_schema.reformat_idx = ermia::ddl::reformats.size();
-    ermia::ddl::reformats.push_back(build_key_sum_map);
-    */
-
     auto create_secondary_index_key =
         [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
             uint64_t schema_version, ermia::FID fid, ermia::OID oid) {
@@ -2388,9 +2333,6 @@ rc_t tpcc_worker::txn_ddl() {
     txn->set_ddl_executor(ddl_exe);
 
 #if !defined(LAZYDDL)
-    // rc = ddl_exe->build_map(txn, arena, order_line_schema.td);
-    // TryCatch(rc);
-
     rc = ddl_exe->scan(txn, arena, v3);
     TryCatch(rc);
 #endif
@@ -2413,8 +2355,8 @@ rc_t tpcc_worker::txn_ddl() {
 
     uint64_t old_schema_version = order_line_schema.v;
     uint64_t schema_version = order_line_schema.v + 1;
-    std::cerr << "Order line table changes to a new schema, version: "
-              << schema_version << std::endl;
+    DLOG(INFO) << "Order line table changes to a new schema, version: "
+               << schema_version;
     order_line_schema.v = old_schema_version;
     order_line_schema.old_v = old_schema_version;
     order_line_schema.state = 2;
@@ -2439,7 +2381,6 @@ rc_t tpcc_worker::txn_ddl() {
 
 #ifdef LAZYDDL
     order_line_schema.old_index = old_order_line_table_index;
-    // order_line_schema.old_tds[old_schema_version] = old_order_line_td;
 #endif
     new_order_line_table_index->SetArrays(true);
     order_line_schema.td->SetPrimaryIndex(new_order_line_table_index);
@@ -2491,8 +2432,8 @@ rc_t tpcc_worker::txn_ddl() {
 
     uint64_t old_schema_version = order_line_schema.v;
     uint64_t schema_version = order_line_schema.v + 1;
-    std::cerr << "Order line table changes to a new schema, version: "
-              << schema_version << std::endl;
+    DLOG(INFO) << "Order line table changes to a new schema, version: "
+               << schema_version;
     order_line_schema.v = schema_version;
     order_line_schema.old_v = old_schema_version;
     order_line_schema.state = ermia::config::ddl_type == 4 ? 0 : 2;
@@ -2599,7 +2540,7 @@ rc_t tpcc_worker::txn_ddl() {
 
   TryCatch(db->Commit(txn));
 #endif
-  printf("DDL commit OK\n");
+  DLOG(INFO) << "DDL commit OK";
   return {RC_TRUE};
 }
 

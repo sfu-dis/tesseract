@@ -53,10 +53,10 @@ void tls_committer::reset(bool set_zero) {
   _commit_queue->~commit_queue();
   _commit_queue = new commit_queue();
   if (set_zero) {
-    printf("%u set all 0\n", id);
+    DLOG(INFO) << id << " set all 0";
     memset(_tls_durable_csn, 0, sizeof(uint64_t) * config::MAX_THREADS);
   } else {
-    printf("%u set lowest csn\n", id);
+    DLOG(INFO) << id << " set lowest csn";
     _tls_durable_csn[id] = global_durable_csn.load(std::memory_order_relaxed);
   }
 }

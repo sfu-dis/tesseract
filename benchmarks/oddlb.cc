@@ -52,7 +52,6 @@ public:
     struct ermia::Schema6 record2_test;
     memcpy(&record2_test, (char *)new_value->data(), sizeof(record2_test));
 
-    // ALWAYS_ASSERT(record2_test.a == a);
     ALWAYS_ASSERT(record2_test.b == latest_version);
     ALWAYS_ASSERT(record2_test.c == latest_version);
     ALWAYS_ASSERT(record2_test.d == latest_version);
@@ -79,25 +78,13 @@ public:
     struct ermia::Schema_record schema;
     memcpy(&schema, (char *)v1.data(), sizeof(schema));
 
-    /*if (ermia::config::ddl_type == 2 || ermia::config::ddl_type == 3) {
-      schema.state = 2;
-      memcpy(str2, &schema, sizeof(str2));
-      ermia::varstr &v2 = str(sizeof(str2));
-      v2.copy_from(str2, sizeof(str2));
-
-      rc = rc_t{RC_INVALID};
-      schema_index->WriteSchemaTable(txn, rc, k1, v2);
-      TryCatch(rc);
-    }*/
-
     uint64_t old_schema_version = schema.v;
     ermia::ConcurrentMasstreeIndex *old_table_index =
         (ermia::ConcurrentMasstreeIndex *)schema.index;
     ermia::TableDescriptor *old_td = schema.td;
 
     uint64_t schema_version = old_schema_version + 1;
-    std::cerr << "Change to a new schema, version: " << schema_version
-              << std::endl;
+    DLOG(INFO) << "Change to a new schema, version: " << schema_version;
     schema.v = schema_version;
     schema.old_v = old_schema_version;
     schema.old_td = old_td;
@@ -114,10 +101,6 @@ public:
       str3 += ss.str();
 
       db->CreateTable(str3.c_str());
-      // For create index DDL
-      // db->CreateMasstreePrimaryIndex(str3.c_str(), str3);
-      // schema.index =
-      // ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
 
       schema.td = ermia::Catalog::GetTable(str3.c_str());
       schema.state = 2;
@@ -199,7 +182,7 @@ public:
     memcpy(&schema, (char *)v.data(), sizeof(schema));
 
     uint64_t schema_version = schema.v + 1;
-    std::cerr << "change to new schema: " << schema_version << std::endl;
+    DLOG(INFO) << "change to new schema: " << schema_version;
     schema.v = schema_version;
     memcpy(str2, &schema, sizeof(str2));
     ermia::varstr &v1 = str(sizeof(str2));
@@ -219,7 +202,7 @@ public:
     db->ReadUnlock(table_fid);
     db->WriteUnlock(schema_fid);
 #elif SIDDL
-    std::cerr << "SI DDL begins" << std::endl;
+    DLOG(INFO) << "SI DDL begins";
     int count = 0;
   retry:
     ermia::transaction *txn =
@@ -239,7 +222,7 @@ public:
     memcpy(&schema, (char *)v1.data(), sizeof(schema));
 
     uint64_t schema_version = schema.v + 1;
-    std::cerr << "change to new schema: " << schema_version << std::endl;
+    DLOG(INFO) << "change to new schema: " << schema_version;
     schema.v = schema_version;
     memcpy(str2, &schema, sizeof(str2));
     ermia::varstr &v = str(sizeof(str2));
@@ -268,41 +251,9 @@ public:
     TryCatch(rc);
 
     TryCatch(db->Commit(txn));
-    printf("%d attempts\n", count);
-/*#else
-    ermia::transaction *txn =
-        db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
-
-    char str1[] = "USERTABLE", str2[sizeof(ermia::Schema_base)];
-    ermia::varstr &k = str(sizeof(str1));
-    k.copy_from(str1, sizeof(str1));
-
-    ermia::varstr v1;
-    rc_t rc = rc_t{RC_INVALID};
-    ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaTable(txn, rc, k, v1, &oid);
-    TryVerifyRelaxed(rc);
-
-    struct ermia::Schema_base schema;
-    memcpy(&schema, (char *)v1.data(), sizeof(schema));
-
-    uint64_t schema_version = schema.v + 1;
-    std::cerr << "Change to a new schema, version: " << schema_version
-              << std::endl;
-    schema.v = schema_version;
-    schema.ddl_type = ermia::ddl::ddl_type_map(ermia::config::ddl_type);
-    memcpy(str2, &schema, sizeof(str2));
-    ermia::varstr &v = str(sizeof(str2));
-    v.copy_from(str2, sizeof(str2));
-
-    rc = rc_t{RC_INVALID};
-    rc = schema_index->WriteSchemaTable(txn, rc, k, v);
-    TryCatch(rc);
-
-    TryCatch(db->Commit(txn));
-*/
+    DLOG(INFO) << count << " attempts";
 #endif
-    printf("DDL commit OK\n");
+    DLOG(INFO) << "DDL commit OK";
     return {RC_TRUE};
   }
 
@@ -384,7 +335,6 @@ public:
         record_test.v != schema_version) {
       LOG(FATAL) << "Read: It should get " << schema_version << " ,but get "
                  << record_test.v;
-      // TryCatch(rc_t{RC_ABORT_USER});
     }
 
     if (schema_version == 0) {
@@ -403,12 +353,12 @@ public:
         ALWAYS_ASSERT(record2_test.b == schema_version);
         ALWAYS_ASSERT(record2_test.c == schema_version);
       } else if (schema.ddl_type == ermia::ddl::ddl_type::VERIFICATION_ONLY) {
-        /*struct ermia::Schema1 record1_test;
+        struct ermia::Schema1 record1_test;
         memcpy(&record1_test, (char *)v2.data(), sizeof(record1_test));
 
         ALWAYS_ASSERT(record1_test.a == a);
         ALWAYS_ASSERT(record1_test.b == a || record1_test.b == 20000000);
-      */} else if (schema.ddl_type ==
+      } else if (schema.ddl_type ==
                  ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
         if (record_test.v != schema_version) {
 #ifdef COPYDDL
@@ -487,25 +437,6 @@ public:
 
     rc = rc_t{RC_INVALID};
     oid = ermia::INVALID_OID;
-
-    /*table_index->GetRecord(txn, rc, k1, v1, &oid);
-    TryVerifyRelaxed(rc);
-
-    struct ermia::Schema_base record_test;
-    memcpy(&record_test, (char *)v1.data(), sizeof(record_test));
-
-#ifdef SIDDL
-    if (record_test.v != schema_version) {
-      goto retry;
-    }
-#endif
-
-#if !defined(NONEDDL)
-    if (schema_version != record_test.v) {
-      LOG(FATAL) << "Write: It should get " << schema_version << " ,but get " <<
-record_test.v;
-    }
-#endif*/
 
     ermia::varstr v2;
     if (schema_version == 0) {

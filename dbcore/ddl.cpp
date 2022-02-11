@@ -28,14 +28,14 @@ ddl_type ddl_type_map(uint32_t type) {
 
 rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
-  printf("First CDC begins\n");
+  DLOG(INFO) << "First CDC begins";
   cdc_workers = t->changed_data_capture();
 #endif
 
   rc_t r;
   TXN::xid_context *xc = t->GetXIDContext();
 
-  printf("DDL scan begins\n");
+  DLOG(INFO) << "DDL scan begins";
   uint64_t count = 0;
   TableDescriptor *old_td = t->get_old_td();
   FID fid = old_td->GetTupleFid();
@@ -43,25 +43,18 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
   uint32_t himark = alloc->head.hiwater_mark;
   auto *old_tuple_array = old_td->GetTupleArray();
   auto *key_array = old_td->GetKeyArray();
-  printf("himark: %d\n", himark);
+  DLOG(INFO) << "himark: " << himark;
 
-  // uint32_t scan_threads = (thread::cpu_cores.size() / 2) * config::numa_nodes
-  // -
-  //                         config::cdc_threads - config::worker_threads;
 #ifdef LAZYDDL
   uint32_t scan_threads = config::scan_threads + config::cdc_threads;
 #else
   uint32_t scan_threads = config::scan_threads;
 #endif
   uint32_t num_per_scan_thread = himark / scan_threads;
-  printf("scan_threads: %d, num_per_scan_thread: %d\n", scan_threads,
-         num_per_scan_thread);
+  DLOG(INFO) << "scan_threads: " << scan_threads
+             << ", num_per_scan_thread: " << num_per_scan_thread;
 
-  uint32_t start = 1;
-  /*if (config::enable_ddl_offloading) {
-    start = 0;
-  }*/
-  for (uint32_t i = start; i < scan_threads; i++) {
+  for (uint32_t i = 1; i < scan_threads; i++) {
     uint32_t begin = i * num_per_scan_thread;
     uint32_t end = (i + 1) * num_per_scan_thread;
     if (i == scan_threads - 1)
@@ -75,26 +68,9 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
       thread = thread::GetThread(config::scan_physical_workers_only);
     }
     ALWAYS_ASSERT(thread);
-    /*if (!config::scan_physical_workers_only) {
-      for (auto &sib : ddl_worker_logical_threads) {
-        if (thread->sys_cpu == sib) {
-          thread::PutThread(thread);
-          goto retry;
-        }
-      }
-    }*/
     scan_workers.push_back(thread);
     auto parallel_scan = [=](char *) {
       dlog::log_block *lb = nullptr;
-      /*dlog::tls_log *log = GetLog();
-      log->set_normal(false);
-      log->reset_logbuf(25);
-      dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
-      uint64_t segnum = -1;
-      uint64_t logbuf_size =
-          log->get_logbuf_size() - sizeof(dlog::log_block);
-      lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
-      */
       str_arena *arena = new str_arena(config::arena_size_mb);
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
         dbtuple *tuple =
@@ -113,7 +89,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
                 (*it)->type == COPY_VERIFICATION) {
               if (!constraints[(*it)->constraint_idx](tuple_value,
                                                       (*it)->new_v)) {
-                printf("DDL failed\n");
+                DLOG(INFO) << "DDL failed";
                 return rc_t{RC_ABORT_INTERNAL};
               }
             }
@@ -135,11 +111,9 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
                 continue;
               }
               if (!AWAIT(*it)->index->InsertOID(t, *key, o)) {
-                printf("b");
                 Object *obj = (Object *)out_entry->offset();
                 fat_ptr entry = *out_entry;
                 obj->SetCSN(NULL_PTR);
-                // oidmgr->UnlinkTuple(entry);
                 ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
                 MM::deallocate(entry);
               } else {
@@ -155,14 +129,10 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
                     continue;
                   }
                 }
-
-                // Object *obj = (Object *)out_entry->offset();
-                // obj->SetCSN(obj->GenerateCsnPtr(xc->end));
               }
 #elif OPTLAZYDDL
               t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end, lb,
                               (*it)->new_v);
-              // (*it)->index->InsertRecord(t, *key, tuple_value);
 #else
               t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value,
                               !xc->end ? xc->begin : xc->end, lb, (*it)->new_v);
@@ -186,15 +156,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
     thread->StartTask(parallel_scan);
   }
 
-  /*#if defined(COPYDDL) && !defined(LAZYDDL)
-    printf("First CDC begins\n");
-    cdc_workers = t->changed_data_capture();
-  #endif*/
-
   OID end = scan_threads == 1 ? himark : num_per_scan_thread;
-  /*if (config::enable_ddl_offloading) {
-    end = 0;
-  }*/
   for (OID oid = 0; oid <= end; oid++) {
     dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
     varstr tuple_value;
@@ -209,7 +171,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
         if ((*it)->type == VERIFICATION_ONLY ||
             (*it)->type == COPY_VERIFICATION) {
           if (!constraints[(*it)->constraint_idx](tuple_value, (*it)->new_v)) {
-            printf("DDL failed\n");
+            DLOG(INFO) << "DDL failed";
             return rc_t{RC_ABORT_INTERNAL};
           }
         }
@@ -231,11 +193,9 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
             continue;
           }
           if (!AWAIT(*it)->index->InsertOID(t, *key, o)) {
-            printf("b");
             Object *obj = (Object *)out_entry->offset();
             fat_ptr entry = *out_entry;
             obj->SetCSN(NULL_PTR);
-            // oidmgr->UnlinkTuple(entry);
             ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
             MM::deallocate(entry);
           } else {
@@ -251,13 +211,10 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
                 continue;
               }
             }
-            // Object *obj = (Object *)out_entry->offset();
-            // obj->SetCSN(obj->GenerateCsnPtr(xc->end));
           }
 #elif OPTLAZYDDL
           t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end, nullptr,
                           (*it)->new_v);
-          // (*it)->index->InsertRecord(t, *key, tuple_value);
 #else
           t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value,
                           !xc->end ? xc->begin : xc->end, nullptr,
@@ -278,28 +235,15 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
     }
   }
 
-  uint64_t current_csn = dlog::current_csn.load(std::memory_order_relaxed);
-  printf("DDL main thread scan ends, current csn: %lu\n", current_csn);
-
   if (!config::enable_late_scan_join) {
     join_scan_workers();
   }
 
-  current_csn = dlog::current_csn.load(std::memory_order_relaxed);
-  printf("DDL scan ends, current csn: %lu\n", current_csn);
-
 #if defined(COPYDDL) && !defined(LAZYDDL)
-  printf("t->get_cdc_smallest_csn(): %lu\n", t->get_cdc_smallest_csn());
-  // while (t->get_cdc_smallest_csn() <
-  //   dlog::current_csn.load(std::memory_order_relaxed) - 100000 &&
-  //   !ddl_failed) {
-  // }
   t->join_changed_data_capture_threads(cdc_workers);
-  current_csn = dlog::current_csn.load(std::memory_order_relaxed);
-  printf("current csn: %lu, t->get_cdc_smallest_csn(): %lu\n", current_csn,
-         t->get_cdc_smallest_csn());
+  uint64_t current_csn = dlog::current_csn.load(std::memory_order_relaxed);
   if (ddl_failed) {
-    printf("DDL failed\n");
+    DLOG(INFO) << "DDL failed";
     for (std::vector<struct ddl_executor_paras *>::const_iterator it =
              ddl_executor_paras_list.begin();
          it != ddl_executor_paras_list.end(); ++it) {
@@ -307,8 +251,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
       return rc_t{RC_ABORT_INTERNAL};
     }
   }
-  printf("First CDC ends\n");
-  printf("Now go to grab a t4\n");
+  DLOG(INFO) << "First CDC ends, now go to grab a t4";
   if (config::enable_cdc_verification_test) {
     cdc_test = true;
     usleep(100);
@@ -374,9 +317,6 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                   (dlog::log_record *)(data_buf + offset_increment + block_sz +
                                        offset_in_block);
 
-              if (logrec->csn != header->csn)
-                printf("bug, logrec->csn: %lu, header->csn: %lu\n", logrec->csn,
-                       header->csn);
               ALWAYS_ASSERT(header->csn == logrec->csn);
 
               FID f = logrec->fid;
@@ -481,15 +421,6 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
             (ddl_running_2 && insert_total == 0 && update_total == 0)) {
           count--;
         }
-
-        /*if (update_fail > 0) {
-          printf("CDC update fail, %d\n", update_fail);
-        }
-        if (insert_fail > 0) {
-          printf("CDC insert fail, %d\n", insert_fail);
-        }*/
-
-        // if (ddl_running_2) printf("%d, %d\n", update_total, insert_total);
       }
     }
     if ((!cdc_running && !ddl_running_2) || ddl_failed) {
@@ -506,14 +437,12 @@ rc_t ddl_executor::build_map(transaction *t, str_arena *arena,
   rc_t r;
   TXN::xid_context *xc = t->GetXIDContext();
 
-  printf("DDL build map begins\n");
   uint64_t count = 0;
   FID fid = td->GetTupleFid();
   auto *alloc = oidmgr->get_allocator(fid);
   uint32_t himark = alloc->head.hiwater_mark;
   auto *tuple_array = td->GetTupleArray();
   auto *key_array = td->GetKeyArray();
-  printf("himark: %d\n", himark);
 
   for (OID oid = 0; oid <= himark; oid++) {
     fat_ptr *entry = key_array->get(oid);
@@ -532,7 +461,6 @@ rc_t ddl_executor::build_map(transaction *t, str_arena *arena,
     }
   }
 
-  printf("DDL build map ends\n");
   return rc_t{RC_TRUE};
   ;
 }

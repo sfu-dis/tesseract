@@ -232,9 +232,8 @@ rc_t transaction::si_commit() {
 
 #if defined(COPYDDL)
   if (is_dml() && DMLConsistencyHandler() && ddl_running_1) {
-    // std::cerr << "DML failed with begin: " << xc->begin << ", end: " <<
-    // xc->end << std::endl; printf("DML failed with begin: %lu, end: %lu\n",
-    // xc->begin, xc->end);
+    DLOG(INFO) << "DML failed with begin: " << xc->begin
+               << ", end: " << xc->end;
     return rc_t{RC_ABORT_SI_CONFLICT};
   }
 #endif
@@ -254,7 +253,7 @@ rc_t transaction::si_commit() {
 
 #ifdef COPYDDL
   if (is_ddl()) {
-    printf("DDL txn end: %lu\n", xc->end);
+    DLOG(INFO) << "DDL txn end: " << xc->end;
     // If txn is DDL, commit schema record(s) first before CDC
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       write_record_t w = write_set.get(is_ddl(), i);
@@ -298,22 +297,18 @@ rc_t transaction::si_commit() {
       object->SetCSN(csn_ptr);
       ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
     }
-    std::cerr << "DDL schema commit with size " << write_set.size()
-              << std::endl;
-    // log->set_dirty(false);
+    DLOG(INFO) << "DDL schema commit with size " << write_set.size();
 
     if (config::ddl_type != 4) {
       for (auto &v : new_td_map) {
         // Fix new table file's marks
         auto *alloc = oidmgr->get_allocator(this->old_td->GetTupleFid());
         uint32_t himark = alloc->head.hiwater_mark;
-        std::cerr << "old td sz: " << himark << std::endl;
         auto *new_tuple_array = v.second->GetTupleArray();
         new_tuple_array->ensure_size(himark - 64);
         oidmgr->recreate_allocator(v.second->GetTupleFid(), himark - 64);
         auto *new_alloc = oidmgr->get_allocator(v.second->GetTupleFid());
         himark = new_alloc->head.hiwater_mark;
-        std::cerr << "new td sz: " << himark << std::endl;
 
         // Switch table descriptor for primary index
         OrderedIndex *index = v.second->GetPrimaryIndex();
@@ -338,21 +333,20 @@ rc_t transaction::si_commit() {
   if (is_ddl() && config::ddl_type != 4) {
 #if !defined(LAZYDDL)
     // Start the second round of CDC
-    std::cerr << "Second CDC begins" << std::endl;
+    DLOG(INFO) << "Second CDC begins";
     ddl_running_2 = true;
     ddl_end.store(0);
     std::vector<thread::Thread *> cdc_workers = changed_data_capture();
     while (ddl_end.load() != config::cdc_threads && !ddl_failed) {
     }
     join_changed_data_capture_threads(cdc_workers);
-    // join_changed_data_capture_threads(ddl_exe->get_cdc_workers());
     ddl_running_2 = false;
-    std::cerr << "Second CDC ends" << std::endl;
+    DLOG(INFO) << "Second CDC ends";
     if (config::enable_late_scan_join) {
       ddl_exe->join_scan_workers();
     }
     if (ddl_failed) {
-      printf("DDL failed\n");
+      DLOG(INFO) << "DDL failed";
       for (auto &v : new_td_map) {
         OrderedIndex *index = v.second->GetPrimaryIndex();
         index->SetTableDescriptor(this->old_td);
@@ -625,7 +619,6 @@ std::vector<thread::Thread *> transaction::changed_data_capture() {
     cdc_workers.push_back(thread);
 
     auto parallel_changed_data_capture = [=](char *) {
-      printf("numa node: %d\n", GetLog()->get_numa_node());
       bool ddl_end_local = false;
       str_arena *arena = new str_arena(config::arena_size_mb);
       rc_t rc;
