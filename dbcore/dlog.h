@@ -216,7 +216,7 @@ public:
   bool peek_read(char *buf, uint64_t size);
 
   // CDC flush
-  void cdc_flush() { last_flush(); }
+  void cdc_flush() { enqueue_flush(); }
 
   // Reset log buffer size
   void reset_logbuf(uint64_t logbuf_m);

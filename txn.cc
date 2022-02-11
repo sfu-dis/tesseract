@@ -84,7 +84,6 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   if (ermia::config::pcommit) {
     log = GetLog();
     if (is_ddl()) {
-      log->set_normal(true);
       log->set_doing_ddl(true);
 #if defined(COPYDDL)
       for (uint32_t i = 0; i < ermia::dlog::tlogs.size(); i++) {
@@ -396,7 +395,6 @@ rc_t transaction::si_commit() {
     if (!config::enable_lazy_background) {
       log->set_dirty(false);
       log->set_doing_ddl(false);
-      log->set_normal(false);
       return rc_t{RC_TRUE};
     }
     varstr *v = new varstr();
@@ -502,7 +500,6 @@ rc_t transaction::si_commit() {
 #endif
     log->set_dirty(false);
     log->set_doing_ddl(false);
-    log->set_normal(false);
     return rc_t{RC_TRUE};
   }
 
