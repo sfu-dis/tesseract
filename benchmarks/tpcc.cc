@@ -2588,9 +2588,13 @@ bench_worker::workload_desc_vec tpcc_worker::get_workload() const {
                               double(g_txn_workload_mix[7]) / base,
                               TxnMicroBenchRandom));
 
-  w.push_back(workload_desc("DDL", double(0) / base, TxnDDL));
-
   return w;
+}
+
+bench_worker::ddl_workload_desc_vec tpcc_worker::get_ddl_workload() const {
+  ddl_workload_desc_vec ddl_w;
+  ddl_w.push_back(ddl_workload_desc("DDL", 0, TxnDDL));
+  return ddl_w;
 }
 
 #endif // ADV_COROUTINE

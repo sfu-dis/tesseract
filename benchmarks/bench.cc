@@ -37,13 +37,21 @@ retry:
   }
 }
 
+void bench_worker::do_ddl_workload_function(uint32_t i) {
+  ASSERT(ddl_workload.size());
+retry:
+  util::timer t;
+  const unsigned long old_seed = r.get_seed();
+  const auto ret = ddl_workload[i].fn(this);
+  if (finish_workload(ret, i, t)) {
+    r.set_seed(old_seed);
+    goto retry;
+  }
+}
+
 uint32_t bench_worker::fetch_workload() {
   double d = r.next_uniform();
-#ifdef DDL
-  size_t workload_size = workload.size() - 1;
-#else
   size_t workload_size = workload.size();
-#endif
   for (size_t i = 0; i < workload_size; i++) {
     if ((i + 1) == workload_size || d < workload[i].frequency) {
       return i;
@@ -116,6 +124,7 @@ void bench_worker::MyWork(char *) {
     // mark logs as active for cdc use
     tlog->reset_committer(false);
     workload = get_workload();
+    ddl_workload = get_ddl_workload();
     txn_counts.resize(workload.size());
     barrier_a->count_down();
     barrier_b->wait_for();
@@ -124,7 +133,7 @@ void bench_worker::MyWork(char *) {
       if (worker_id == ddl_worker_id &&
           ddl_num < ermia::config::ddl_num_total && ddl_start) {
         util::timer ddl_timer;
-        do_workload_function(workload.size() - 1);
+        do_ddl_workload_function(ermia::config::ddl_num_total - 1);
         double lap = ddl_timer.lap();
         DLOG(INFO) << "DDL duration: " << lap / 1000000.0 << "s" << std::endl;
         ddl_num++;

@@ -24,9 +24,14 @@ public:
       w.push_back(workload_desc("Read", read_ratio, TxnRead));
     if (write_ratio)
       w.push_back(workload_desc("RMW", write_ratio, TxnRMW));
-    w.push_back(workload_desc("DDL", 0, TxnDDL));
 
     return w;
+  }
+
+  virtual ddl_workload_desc_vec get_ddl_workload() const {
+    ddl_workload_desc_vec ddl_w;
+    ddl_w.push_back(ddl_workload_desc("DDL", 0, TxnDDL));
+    return ddl_w;
   }
 
   static rc_t TxnDDL(bench_worker *w) {

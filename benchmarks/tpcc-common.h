@@ -1328,8 +1328,9 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   }
 
   virtual workload_desc_vec get_workload() const override;
+  virtual ddl_workload_desc_vec get_ddl_workload() const override;
 
- protected:
+protected:
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
 
  private:
@@ -1408,6 +1409,7 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
   }
 
   virtual workload_desc_vec get_workload() const override;
+  virtual ddl_workload_desc_vec get_ddl_workload() const override;
   virtual void MyWork(char *) override;
 
  protected:

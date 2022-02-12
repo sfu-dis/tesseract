@@ -136,8 +136,6 @@ class bench_worker : public ermia::thread::Runner {
     workload_desc(const std::string &name, double frequency, txn_fn_t fn,
                   coro_txn_fn_t cf=nullptr, task_fn_t tf=nullptr)
         : name(name), frequency(frequency), fn(fn), coro_fn(cf) , task_fn(tf) {
-      if (name == "DDL")
-        return;
       ALWAYS_ASSERT(frequency > 0.0);
       ALWAYS_ASSERT(frequency <= 1.0);
     }
@@ -147,9 +145,25 @@ class bench_worker : public ermia::thread::Runner {
     coro_txn_fn_t coro_fn;
     task_fn_t task_fn;
   };
+  struct ddl_workload_desc {
+    ddl_workload_desc() {}
+    ddl_workload_desc(const std::string &name, double frequency, txn_fn_t fn,
+                      coro_txn_fn_t cf = nullptr, task_fn_t tf = nullptr)
+        : name(name), frequency(frequency), fn(fn), coro_fn(cf), task_fn(tf) {
+      ALWAYS_ASSERT(frequency == 0.0);
+    }
+    std::string name;
+    double frequency;
+    txn_fn_t fn;
+    coro_txn_fn_t coro_fn;
+    task_fn_t task_fn;
+  };
   typedef std::vector<workload_desc> workload_desc_vec;
+  typedef std::vector<ddl_workload_desc> ddl_workload_desc_vec;
   virtual workload_desc_vec get_workload() const = 0;
+  virtual ddl_workload_desc_vec get_ddl_workload() const = 0;
   workload_desc_vec workload;
+  ddl_workload_desc_vec ddl_workload;
 
   inline size_t get_ntxn_commits() const { return ntxn_commits; }
   inline size_t get_ntxn_aborts() const { return ntxn_aborts; }
@@ -179,6 +193,7 @@ class bench_worker : public ermia::thread::Runner {
   const tx_stat_map get_txn_counts() const;
 
   void do_workload_function(uint32_t i);
+  void do_ddl_workload_function(uint32_t i);
   uint32_t fetch_workload();
   bool finish_workload(rc_t ret, uint32_t workload_idx, util::timer t);
 

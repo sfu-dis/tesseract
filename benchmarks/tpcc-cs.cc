@@ -1317,4 +1317,9 @@ void tpcc_cs_worker::MyWork(char *) {
   }
 }
 
+bench_worker::ddl_workload_desc_vec tpcc_cs_worker::get_ddl_workload() const {
+  ddl_workload_desc_vec ddl_w;
+  return ddl_w;
+}
+
 #endif // ADV_COROUTINE
