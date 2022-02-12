@@ -8,10 +8,6 @@
 #include "tpcc-common.h"
 
 rc_t tpcc_worker::txn_new_order() {
-#ifdef BLOCKDDL
-  db->ReadLock(schema_fid);
-  db->ReadLock(order_line_fid);
-#endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, 10);
   const uint customerID = GetCustomerId(r);
@@ -59,8 +55,9 @@ rc_t tpcc_worker::txn_new_order() {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 #ifdef BLOCKDDL
-  txn->register_locked_tables(schema_fid);
-  txn->register_locked_tables(order_line_fid);
+  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::READ);
+  // txn->register_locked_tables(order_line_fid,
+  // ermia::transaction::lock_type::WRITE);
 #endif
 
   // Read schema tables first
@@ -330,17 +327,10 @@ rc_t tpcc_worker::txn_new_order() {
   }
 
   TryCatch(db->Commit(txn));
-#ifdef BLOCKDDL
-  db->ReadUnlock(order_line_fid);
-  db->ReadUnlock(schema_fid);
-#endif
   return {RC_TRUE};
 }  // new-order
 
 rc_t tpcc_worker::txn_payment() {
-#ifdef BLOCKDDL
-  db->ReadLock(schema_fid);
-#endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   uint customerDistrictID, customerWarehouseID;
@@ -368,7 +358,7 @@ rc_t tpcc_worker::txn_payment() {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 #ifdef BLOCKDDL
-  txn->register_locked_tables(schema_fid);
+  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::READ);
 #endif
 
   // Read schema tables first
@@ -589,17 +579,10 @@ rc_t tpcc_worker::txn_payment() {
                               Encode(str(Size(v_h)), v_h)));
 
   TryCatch(db->Commit(txn));
-#ifdef BLOCKDDL
-  db->ReadUnlock(schema_fid);
-#endif
   return {RC_TRUE};
 }
 
 rc_t tpcc_worker::txn_delivery() {
-#ifdef BLOCKDDL
-  db->ReadLock(schema_fid);
-  db->ReadLock(order_line_fid);
-#endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   const uint32_t ts = GetCurrentTimeMillis();
@@ -625,8 +608,9 @@ rc_t tpcc_worker::txn_delivery() {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 #ifdef BLOCKDDL
-  txn->register_locked_tables(schema_fid);
-  txn->register_locked_tables(order_line_fid);
+  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::READ);
+  // txn->register_locked_tables(order_line_fid,
+  // ermia::transaction::lock_type::WRITE);
 #endif
 
   // Read schema tables first
@@ -867,18 +851,10 @@ rc_t tpcc_worker::txn_delivery() {
     }
   }
   TryCatch(db->Commit(txn));
-#ifdef BLOCKDDL
-  db->ReadUnlock(order_line_fid);
-  db->ReadUnlock(schema_fid);
-#endif
   return {RC_TRUE};
 }
 
 rc_t tpcc_worker::txn_order_status() {
-#ifdef BLOCKDDL
-  db->ReadLock(schema_fid);
-  db->ReadLock(order_line_fid);
-#endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
 
@@ -899,10 +875,10 @@ rc_t tpcc_worker::txn_order_status() {
   ermia::scoped_str_arena s_arena(arena);
   // NB: since txn_order_status() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
-
 #ifdef BLOCKDDL
-  txn->register_locked_tables(schema_fid);
-  txn->register_locked_tables(order_line_fid);
+  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::READ);
+  // txn->register_locked_tables(order_line_fid,
+  // ermia::transaction::lock_type::WRITE);
 #endif
 
   // Read schema tables first
@@ -1124,18 +1100,10 @@ rc_t tpcc_worker::txn_order_status() {
   }
 
   TryCatch(db->Commit(txn));
-#ifdef BLOCKDDL
-  db->ReadUnlock(order_line_fid);
-  db->ReadUnlock(schema_fid);
-#endif
   return {RC_TRUE};
 }
 
 rc_t tpcc_worker::txn_stock_level() {
-#ifdef BLOCKDDL
-  db->ReadLock(schema_fid);
-  db->ReadLock(order_line_fid);
-#endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint threshold = RandomNumber(r, 10, 20);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -1158,8 +1126,9 @@ rc_t tpcc_worker::txn_stock_level() {
 #endif
   ermia::scoped_str_arena s_arena(arena);
 #ifdef BLOCKDDL
-  txn->register_locked_tables(schema_fid);
-  txn->register_locked_tables(order_line_fid);
+  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::READ);
+  // txn->register_locked_tables(order_line_fid,
+  // ermia::transaction::lock_type::WRITE);
 #endif
 
   // Read schema tables first 
@@ -1241,10 +1210,6 @@ rc_t tpcc_worker::txn_stock_level() {
   }
 exit:
   TryCatch(db->Commit(txn));
-#ifdef BLOCKDDL
-  db->ReadUnlock(order_line_fid);
-  db->ReadUnlock(schema_fid);
-#endif
   return {RC_TRUE};
 }
 
@@ -1273,11 +1238,6 @@ rc_t tpcc_worker::txn_credit_check() {
           SQL UPDATE Customer SET c_credit = :c_credit
           WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
   */
-
-#ifdef BLOCKDDL
-  db->ReadLock(schema_fid);
-  db->ReadLock(order_line_fid);
-#endif
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   uint customerDistrictID, customerWarehouseID;
@@ -1296,8 +1256,9 @@ rc_t tpcc_worker::txn_credit_check() {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 #ifdef BLOCKDDL
-  txn->register_locked_tables(schema_fid);
-  txn->register_locked_tables(order_line_fid);
+  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::READ);
+  // txn->register_locked_tables(order_line_fid,
+  // ermia::transaction::lock_type::WRITE);
 #endif
 
   // Read schema tables first
@@ -1465,23 +1426,13 @@ rc_t tpcc_worker::txn_credit_check() {
   }
 
   TryCatch(db->Commit(txn));
-#ifdef BLOCKDDL
-  db->ReadUnlock(order_line_fid);
-  db->ReadUnlock(schema_fid);
-#endif
   return {RC_TRUE};
 }
 
 rc_t tpcc_worker::txn_query2() {
   // TODO(yongjunh): use TXN_FLAG_READ_MOSTLY once SSN's and SSI's read optimization are available.
-#ifdef BLOCKDDL
-  db->ReadLock(schema_fid);
-#endif
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
-#ifdef BLOCKDDL
-  txn->register_locked_tables(schema_fid);
-#endif
 
   // Read schema tables first 
   char str1[] = "order_line";
@@ -1632,9 +1583,6 @@ rc_t tpcc_worker::txn_query2() {
   }
 
   TryCatch(db->Commit(txn));
-#ifdef BLOCKDDL
-  db->ReadUnlock(schema_fid);
-#endif
   return {RC_TRUE};
 }
 
@@ -1729,13 +1677,11 @@ template <typename T1, typename T2, typename T3> struct key_tuple {
 
 rc_t tpcc_worker::txn_ddl() {
 #ifdef BLOCKDDL
-  db->WriteLock(schema_fid);
-  db->WriteLock(order_line_fid);
-
   ermia::transaction *txn =
       db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
-  txn->register_locked_tables(schema_fid);
-  txn->register_locked_tables(order_line_fid);
+  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::WRITE);
+  // txn->register_locked_tables(order_line_fid,
+  // ermia::transaction::lock_type::WRITE);
 
   char str1[] = "order_line";
   ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1);
@@ -1766,12 +1712,13 @@ rc_t tpcc_worker::txn_ddl() {
                                   schema.reformat_idx, schema.constraint_idx,
                                   schema.td, schema.td, schema.index, -1);
 
+  txn->set_old_td(schema.td);
+  txn->add_old_td_map(schema.td);
+  txn->add_new_td_map(schema.td);
+
   TryCatch(ddl_exe->scan(txn, arena, v2));
 
   TryCatch(db->Commit(txn));
-
-  db->WriteUnlock(order_line_fid);
-  db->WriteUnlock(schema_fid);
 #elif COPYDDL
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 

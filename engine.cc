@@ -232,12 +232,6 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
     if (schema && schema->old_index && !found) {
-      /*if (schema->old_index) {
-        AWAIT schema->old_index->GetOID(key, rc, t->xc, oid);
-        if (rc._val == RC_TRUE) {
-          AWAIT InsertOID(t, key, oid);
-        }
-      }*/
       ((ConcurrentMasstreeIndex *)(schema->old_index))
           ->GetRecord(t, rc, key, value, out_oid, schema);
       if (rc._val == RC_TRUE) {
@@ -316,7 +310,6 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
         fat_ptr *entry =
             config::enable_ddl_keys ? key_array->get(oid) : nullptr;
         varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
-        // t->string_allocator().reset();
         varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
             key, value, &(t->string_allocator()), schema->v,
             old_table_descriptor->GetTupleFid(), oid);
@@ -505,12 +498,6 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
   if (schema && schema->old_index && rc._val != RC_TRUE) {
-    /*if (schema->old_index) {
-      AWAIT schema->old_index->GetOID(key, rc, t->xc, oid);
-      if (rc._val == RC_TRUE) {
-        AWAIT InsertOID(t, key, oid);
-      }
-    }*/
     OID out_oid = INVALID_OID;
     rc = AWAIT InsertRecord(t, key, value, &out_oid, schema);
     RETURN rc;
@@ -591,12 +578,6 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
   if (schema && schema->old_index && rc._val != RC_TRUE) {
-    /*if (schema->old_index) {
-      AWAIT schema->old_index->GetOID(key, rc, t->xc, oid);
-      if (rc._val == RC_TRUE) {
-        AWAIT InsertOID(t, key, oid);
-      }
-    }*/
     RETURN rc_t{RC_TRUE};
 #else
   if (schema && !schema->show_index) {
@@ -758,7 +739,6 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
         fat_ptr *entry =
             config::enable_ddl_keys ? key_array->get(oid) : nullptr;
         varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
-        // t->string_allocator().reset();
         varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
             key, vv, &(t->string_allocator()), schema->v,
             old_table_descriptor->GetTupleFid(), oid);

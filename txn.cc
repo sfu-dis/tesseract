@@ -18,6 +18,11 @@ std::atomic<uint64_t> ddl_end(0);
 uint64_t *_tls_durable_lsn =
     (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
 
+#ifdef BLOCKDDL
+std::unordered_map<FID, pthread_rwlock_t *> transaction::lock_map;
+std::mutex transaction::map_rw_latch;
+#endif
+
 transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     : flags(flags), log(nullptr), log_size(0), sa(&sa), coro_batch_idx(coro_batch_idx) {
   if (config::phantom_prot) {
@@ -167,6 +172,12 @@ void transaction::Abort() {
     ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
     MM::deallocate(entry);
   }
+
+#ifdef BLOCKDDL
+  for (auto &table : locked_tables) {
+    ReadUnlock(table.first);
+  }
+#endif
 }
 
 rc_t transaction::commit() {
@@ -212,6 +223,12 @@ rc_t transaction::commit() {
     }
   }
 
+#ifdef BLOCKDDL
+  for (auto &table : locked_tables) {
+    ReadUnlock(table.first);
+  }
+#endif
+
   return ret;
 }
 
@@ -251,7 +268,6 @@ rc_t transaction::si_commit() {
     }
   }
 
-#ifdef COPYDDL
   if (is_ddl()) {
     DLOG(INFO) << "DDL txn end: " << xc->end;
     // If txn is DDL, commit schema record(s) first before CDC
@@ -299,6 +315,7 @@ rc_t transaction::si_commit() {
     }
     DLOG(INFO) << "DDL schema commit with size " << write_set.size();
 
+#ifdef COPYDDL
     if (config::ddl_type != 4) {
       for (auto &v : new_td_map) {
         // Fix new table file's marks
@@ -326,8 +343,8 @@ rc_t transaction::si_commit() {
       }
       ddl_td_set = true;
     }
-  }
 #endif
+  }
 
 #ifdef COPYDDL
   if (is_ddl() && config::ddl_type != 4) {
@@ -383,7 +400,6 @@ rc_t transaction::si_commit() {
   if (is_ddl()) {
     ddl_running_1 = false;
     volatile_write(xc->state, TXN::TXN_CMMTD);
-#ifdef COPYDDL
 #ifdef LAZYDDL
     // Background migration
     if (!config::enable_lazy_background) {
@@ -448,7 +464,12 @@ rc_t transaction::si_commit() {
 #else
                          CSN::from_ptr(csn).offset() < xc->end &&
 #endif
-                         CSN::from_ptr(csn).offset() > xc->begin) {
+#ifdef BLOCKDDL
+                         CSN::from_ptr(csn).offset() > xc->begin
+#else
+                         CSN::from_ptr(csn).offset() > xc->begin
+#endif
+              ) {
                 dbtuple *tuple = (dbtuple *)cur_obj->GetPayload();
                 uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
                 uint32_t off = lb->payload_size;
@@ -491,7 +512,6 @@ rc_t transaction::si_commit() {
         thread::PutThread(*it);
       }
     }
-#endif
     log->set_dirty(false);
     log->set_doing_ddl(false);
     return rc_t{RC_TRUE};

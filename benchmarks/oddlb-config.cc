@@ -16,7 +16,7 @@ void oddlb_create_db(ermia::Engine *db) {
     db->CreateMasstreePrimaryIndex("USERTABLE", std::string("USERTABLE"));
 #ifdef BLOCKDDL
     db->BuildLockMap(ermia::Catalog::GetTable("USERTABLE")->GetTupleFid());
-#endif
+#endif  
   };
 
   thread->StartTask(create_table);

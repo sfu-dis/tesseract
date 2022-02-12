@@ -208,6 +208,9 @@ class tpcc_bench_runner : public bench_runner {
           db->CreateMasstreePrimaryIndex(table_name, std::string(index_name));
         }
       }
+#ifdef BLOCKDDL
+      db->BuildLockMap(ermia::Catalog::GetTable(table_name)->GetTupleFid());
+#endif
     };
 
     ermia::thread::Thread *thread = ermia::thread::GetThread(true);
@@ -236,10 +239,6 @@ class tpcc_bench_runner : public bench_runner {
     RegisterIndex(db, "supplier",   "supplier",         true);
     RegisterIndex(db, "warehouse",  "warehouse",        true);
     create_schema_table(db, "SCHEMA");
-#ifdef BLOCKDDL
-    db->BuildLockMap(ermia::Catalog::GetTable("order_line")->GetTupleFid());
-    db->BuildLockMap(ermia::Catalog::GetTable("oorder")->GetTupleFid());
-#endif
   }
 
   virtual void prepare(char *) {

@@ -32,6 +32,9 @@ extern volatile bool cdc_test;
 extern std::atomic<uint64_t> ddl_end;
 extern uint64_t *_tls_durable_lsn CACHE_ALIGNED;
 
+extern std::unordered_map<FID, pthread_rwlock_t *> lock_map;
+extern std::mutex map_rw_latch;
+
 struct Schema_record;
 
 #if defined(SSN) || defined(SSI)
@@ -316,11 +319,56 @@ public:
   }
 
 #ifdef BLOCKDDL
-  inline std::vector<FID> get_locked_tables() { return locked_tables; }
+  enum lock_type { READ, WRITE };
 
-  inline void register_locked_tables(FID table_fid) {
-    locked_tables.push_back(table_fid);
+  inline std::unordered_map<FID, int> get_locked_tables() {
+    return locked_tables;
   }
+
+  inline void register_locked_tables(FID table_fid, lock_type lt) {
+    if (lt == lock_type::READ) {
+      ReadLock(table_fid);
+    } else if (lt == lock_type::WRITE) {
+      WriteLock(table_fid);
+    }
+    locked_tables[table_fid] = lt;
+  }
+
+  inline void ReadLock(FID table_fid) {
+    if (locked_tables[table_fid]) {
+      return;
+    }
+    int ret = pthread_rwlock_rdlock(lock_map[table_fid]);
+    LOG_IF(FATAL, ret);
+  }
+
+  inline void ReadUnlock(FID table_fid) {
+    int ret = pthread_rwlock_unlock(lock_map[table_fid]);
+    LOG_IF(FATAL, ret);
+  }
+
+  inline void WriteLock(FID table_fid) {
+    if (locked_tables[table_fid] == lock_type::READ) {
+      ReadUnlock(table_fid);
+    }
+    if (locked_tables[table_fid] == lock_type::WRITE) {
+      return;
+    }
+    int ret = pthread_rwlock_wrlock(lock_map[table_fid]);
+    LOG_IF(FATAL, ret);
+  }
+
+  inline void WriteUnlock(FID table_fid) {
+    int ret = pthread_rwlock_unlock(lock_map[table_fid]);
+    LOG_IF(FATAL, ret);
+  }
+
+public:
+  static std::unordered_map<FID, pthread_rwlock_t *> lock_map;
+  static std::mutex map_rw_latch;
+
+protected:
+  std::unordered_map<FID, int> locked_tables;
 #endif
 
 protected:
@@ -337,9 +385,6 @@ protected:
   std::unordered_map<FID, TableDescriptor *> old_td_map;
   bool wait_for_new_schema;
   ddl::ddl_executor *ddl_exe;
-#ifdef BLOCKDDL
-  std::vector<FID> locked_tables;
-#endif
   util::timer timer;
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)

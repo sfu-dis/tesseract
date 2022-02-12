@@ -15,7 +15,7 @@ public:
                           barrier_b) {
   }
 
-  double read_ratio = 1, write_ratio = 0;
+  double read_ratio = 0.2, write_ratio = 0.8;
 
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
@@ -166,12 +166,10 @@ public:
 
     TryCatch(db->Commit(txn));
 #elif defined(BLOCKDDL)
-    db->WriteLock(schema_fid);
-    db->ReadLock(table_fid);
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
-    txn->register_locked_tables(schema_fid);
-    txn->register_locked_tables(table_fid);
+    txn->register_locked_tables(schema_fid,
+                                ermia::transaction::lock_type::WRITE);
 
     char str1[] = "USERTABLE", str2[sizeof(ermia::Schema_base)];
     ermia::varstr &k = str(sizeof(str1));
@@ -201,11 +199,13 @@ public:
                                     schema.reformat_idx, schema.constraint_idx,
                                     schema.td, schema.td, schema.index, -1);
 
+    txn->set_old_td(schema.td);
+    txn->add_old_td_map(schema.td);
+    txn->add_new_td_map(schema.td);
+
     TryCatch(ddl_exe->scan(txn, arena, v1));
 
     TryCatch(db->Commit(txn));
-    db->ReadUnlock(table_fid);
-    db->WriteUnlock(schema_fid);
 #elif SIDDL
     DLOG(INFO) << "SI DDL begins";
     int count = 0;
@@ -263,10 +263,6 @@ public:
   }
 
   rc_t txn_read() {
-#ifdef BLOCKDDL
-    db->ReadLock(schema_fid);
-    db->ReadLock(table_fid);
-#endif
     uint64_t a =
         r.next() % oddl_initial_table_size; // 0 ~ oddl_initial_table_size-1
 
@@ -281,8 +277,8 @@ public:
         ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
 #endif
 #ifdef BLOCKDDL
-    txn->register_locked_tables(schema_fid);
-    txn->register_locked_tables(table_fid);
+    txn->register_locked_tables(schema_fid,
+                                ermia::transaction::lock_type::READ);
 #endif
 
     char str1[] = "USERTABLE";
@@ -338,8 +334,12 @@ public:
     if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION &&
         schema.ddl_type != ermia::ddl::ddl_type::VERIFICATION_ONLY &&
         record_test.v != schema_version) {
+#ifdef BLOCKDDL
+      TryCatch(rc_t{RC_ABORT_USER});
+#else
       LOG(FATAL) << "Read: It should get " << schema_version << " ,but get "
                  << record_test.v;
+#endif
     }
 
     if (schema_version == 0) {
@@ -385,26 +385,18 @@ public:
     }
 
     TryCatch(db->Commit(txn));
-#ifdef BLOCKDDL
-    db->ReadUnlock(table_fid);
-    db->ReadUnlock(schema_fid);
-#endif
     return {RC_TRUE};
   }
 
   rc_t txn_rmw() {
-#ifdef BLOCKDDL
-    db->ReadLock(schema_fid);
-    db->ReadLock(table_fid);
-#endif
     uint64_t a =
         r.next() % oddl_initial_table_size; // 0 ~ oddl_initial_table_size-1
 
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
 #ifdef BLOCKDDL
-    txn->register_locked_tables(schema_fid);
-    txn->register_locked_tables(table_fid);
+    txn->register_locked_tables(schema_fid,
+                                ermia::transaction::lock_type::READ);
 #endif
 
 #ifdef SIDDL
@@ -509,10 +501,6 @@ public:
 #endif
 
     TryCatch(db->Commit(txn));
-#ifdef BLOCKDDL
-    db->ReadUnlock(table_fid);
-    db->ReadUnlock(schema_fid);
-#endif
     return {RC_TRUE};
   }
 };
