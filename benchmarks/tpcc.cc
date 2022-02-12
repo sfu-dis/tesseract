@@ -55,9 +55,9 @@ rc_t tpcc_worker::txn_new_order() {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 #ifdef BLOCKDDL
-  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::READ);
+  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::SHARED);
   // txn->register_locked_tables(order_line_fid,
-  // ermia::transaction::lock_type::WRITE);
+  // ermia::transaction::lock_type::EXCLUSIVE);
 #endif
 
   // Read schema tables first
@@ -358,7 +358,7 @@ rc_t tpcc_worker::txn_payment() {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 #ifdef BLOCKDDL
-  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::READ);
+  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::SHARED);
 #endif
 
   // Read schema tables first
@@ -608,9 +608,9 @@ rc_t tpcc_worker::txn_delivery() {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 #ifdef BLOCKDDL
-  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::READ);
+  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::SHARED);
   // txn->register_locked_tables(order_line_fid,
-  // ermia::transaction::lock_type::WRITE);
+  // ermia::transaction::lock_type::EXCLUSIVE);
 #endif
 
   // Read schema tables first
@@ -876,9 +876,9 @@ rc_t tpcc_worker::txn_order_status() {
   // NB: since txn_order_status() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
 #ifdef BLOCKDDL
-  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::READ);
+  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::SHARED);
   // txn->register_locked_tables(order_line_fid,
-  // ermia::transaction::lock_type::WRITE);
+  // ermia::transaction::lock_type::EXCLUSIVE);
 #endif
 
   // Read schema tables first
@@ -1126,9 +1126,9 @@ rc_t tpcc_worker::txn_stock_level() {
 #endif
   ermia::scoped_str_arena s_arena(arena);
 #ifdef BLOCKDDL
-  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::READ);
+  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::SHARED);
   // txn->register_locked_tables(order_line_fid,
-  // ermia::transaction::lock_type::WRITE);
+  // ermia::transaction::lock_type::EXCLUSIVE);
 #endif
 
   // Read schema tables first 
@@ -1256,9 +1256,9 @@ rc_t tpcc_worker::txn_credit_check() {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 #ifdef BLOCKDDL
-  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::READ);
+  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::SHARED);
   // txn->register_locked_tables(order_line_fid,
-  // ermia::transaction::lock_type::WRITE);
+  // ermia::transaction::lock_type::EXCLUSIVE);
 #endif
 
   // Read schema tables first
@@ -1679,9 +1679,9 @@ rc_t tpcc_worker::txn_ddl() {
 #ifdef BLOCKDDL
   ermia::transaction *txn =
       db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
-  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::WRITE);
+  txn->register_locked_tables(schema_fid, ermia::transaction::lock_type::EXCLUSIVE);
   // txn->register_locked_tables(order_line_fid,
-  // ermia::transaction::lock_type::WRITE);
+  // ermia::transaction::lock_type::EXCLUSIVE);
 
   char str1[] = "order_line";
   ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1);

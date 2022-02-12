@@ -169,7 +169,7 @@ public:
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
     txn->register_locked_tables(schema_fid,
-                                ermia::transaction::lock_type::WRITE);
+                                ermia::transaction::lock_type::EXCLUSIVE);
 
     char str1[] = "USERTABLE", str2[sizeof(ermia::Schema_base)];
     ermia::varstr &k = str(sizeof(str1));
@@ -278,7 +278,7 @@ public:
 #endif
 #ifdef BLOCKDDL
     txn->register_locked_tables(schema_fid,
-                                ermia::transaction::lock_type::READ);
+                                ermia::transaction::lock_type::SHARED);
 #endif
 
     char str1[] = "USERTABLE";
@@ -396,7 +396,7 @@ public:
         db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
 #ifdef BLOCKDDL
     txn->register_locked_tables(schema_fid,
-                                ermia::transaction::lock_type::READ);
+                                ermia::transaction::lock_type::SHARED);
 #endif
 
 #ifdef SIDDL

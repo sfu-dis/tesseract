@@ -319,16 +319,16 @@ public:
   }
 
 #ifdef BLOCKDDL
-  enum lock_type { READ, WRITE };
+  enum lock_type { SHARED, EXCLUSIVE };
 
   inline std::unordered_map<FID, int> get_locked_tables() {
     return locked_tables;
   }
 
   inline void register_locked_tables(FID table_fid, lock_type lt) {
-    if (lt == lock_type::READ) {
+    if (lt == lock_type::SHARED) {
       ReadLock(table_fid);
-    } else if (lt == lock_type::WRITE) {
+    } else if (lt == lock_type::EXCLUSIVE) {
       WriteLock(table_fid);
     }
     locked_tables[table_fid] = lt;
@@ -348,10 +348,10 @@ public:
   }
 
   inline void WriteLock(FID table_fid) {
-    if (locked_tables[table_fid] == lock_type::READ) {
+    if (locked_tables[table_fid] == lock_type::SHARED) {
       ReadUnlock(table_fid);
     }
-    if (locked_tables[table_fid] == lock_type::WRITE) {
+    if (locked_tables[table_fid] == lock_type::EXCLUSIVE) {
       return;
     }
     int ret = pthread_rwlock_wrlock(lock_map[table_fid]);
