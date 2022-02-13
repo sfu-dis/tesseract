@@ -266,20 +266,12 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                                              uint32_t ddl_thread_id,
                                              uint32_t begin_log,
                                              uint32_t end_log, str_arena *arena,
-                                             bool *ddl_end) {
+                                             bool *ddl_end, uint32_t count) {
   RCU::rcu_enter();
   TXN::xid_context *xc = t->GetXIDContext();
   uint64_t begin_csn = xc->begin;
   uint64_t end_csn = xc->end;
   std::unordered_map<FID, TableDescriptor *> old_td_map = t->get_old_td_map();
-  uint32_t count = 0;
-  for (uint32_t i = begin_log; i <= end_log; i++) {
-    dlog::tls_log *tlog = dlog::tlogs[i];
-    uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
-    if (tlog && csn && tlog != GetLog() && i != ddl_thread_id) {
-      count++;
-    }
-  }
   uint64_t block_sz = sizeof(dlog::log_block),
            logrec_sz = sizeof(dlog::log_record), tuple_sc = sizeof(dbtuple);
   for (uint32_t i = begin_log; i <= end_log; i++) {

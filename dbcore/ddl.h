@@ -142,7 +142,7 @@ public:
   rc_t changed_data_capture_impl(transaction *t, uint32_t thread_id,
                                  uint32_t ddl_thread_id, uint32_t begin_log,
                                  uint32_t end_log, str_arena *arena,
-                                 bool *ddl_end);
+                                 bool *ddl_end, uint32_t count);
 
   // Build map for join and aggregation
   rc_t build_map(transaction *t, str_arena *arena, TableDescriptor *td);

@@ -638,13 +638,23 @@ std::vector<thread::Thread *> transaction::changed_data_capture() {
     }
     cdc_workers.push_back(thread);
 
+    uint32_t count = 0;
+    for (uint32_t i = begin_log; i <= end_log; i++) {
+      dlog::tls_log *tlog = dlog::tlogs[i];
+      uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
+      if (tlog && csn && tlog != GetLog() && i != ddl_thread_id) {
+        count++;
+      }
+    }
+
     auto parallel_changed_data_capture = [=](char *) {
       bool ddl_end_local = false;
       str_arena *arena = new str_arena(config::arena_size_mb);
       rc_t rc;
       while (cdc_running) {
-        rc = ddl_exe->changed_data_capture_impl(
-            this, i, ddl_thread_id, begin_log, end_log, arena, &ddl_end_local);
+        rc = ddl_exe->changed_data_capture_impl(this, i, ddl_thread_id,
+                                                begin_log, end_log, arena,
+                                                &ddl_end_local, count);
         if (rc._val != RC_TRUE) {
           ddl_failed = true;
           cdc_running = false;
