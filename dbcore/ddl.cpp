@@ -59,14 +59,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
     uint32_t end = (i + 1) * num_per_scan_thread;
     if (i == scan_threads - 1)
       end = himark;
-  retry:
-    thread::Thread *thread = nullptr;
-    if (config::enable_ddl_offloading) {
-      thread = thread::GetThread(ermia::config::numa_nodes - 1,
-                                 config::scan_physical_workers_only);
-    } else {
-      thread = thread::GetThread(config::scan_physical_workers_only);
-    }
+    thread::Thread *thread = thread::GetThread(config::scan_physical_workers_only);
     ALWAYS_ASSERT(thread);
     scan_workers.push_back(thread);
     auto parallel_scan = [=](char *) {

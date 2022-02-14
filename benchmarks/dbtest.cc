@@ -178,15 +178,9 @@ int main(int argc, char **argv) {
     ermia::config::threads = ermia::config::worker_threads;
     if (ermia::config::cdc_physical_workers_only) {
       ermia::config::threads += ermia::config::cdc_threads;
-      if (ermia::config::enable_ddl_offloading) {
-        ermia::config::threads += ermia::config::cdc_threads;
-      }
     }
     if (ermia::config::scan_physical_workers_only) {
       ermia::config::threads += ermia::config::scan_threads - 1;
-      if (ermia::config::enable_ddl_offloading) {
-        ermia::config::threads += ermia::config::scan_threads;
-      }
     }
 #else
     ermia::config::threads = FLAGS_threads;

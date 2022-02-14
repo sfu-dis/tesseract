@@ -619,23 +619,8 @@ std::vector<thread::Thread *> transaction::changed_data_capture() {
     if (i == cdc_threads - 1)
       end_log = normal_workers[--j];
 
-  retry:
-    thread::Thread *thread = nullptr;
-    if (config::enable_ddl_offloading) {
-      thread = thread::GetThread(config::numa_nodes - 1,
-                                 config::cdc_physical_workers_only);
-    } else {
-      thread = thread::GetThread(config::cdc_physical_workers_only);
-    }
+    thread::Thread *thread = thread::GetThread(config::cdc_physical_workers_only);
     ALWAYS_ASSERT(thread);
-    if (!config::cdc_physical_workers_only) {
-      for (auto &sib : ddl::ddl_worker_logical_threads) {
-        if (thread->sys_cpu == sib) {
-          thread::PutThread(thread);
-          goto retry;
-        }
-      }
-    }
     cdc_workers.push_back(thread);
 
     uint32_t count = 0;
