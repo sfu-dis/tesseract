@@ -1704,9 +1704,9 @@ rc_t tpcc_worker::txn_ddl() {
 
   // New a ddl executor
   ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
-  ddl_exe->add_ddl_executor_paras(schema.v, -1, schema.ddl_type,
-                                  schema.reformat_idx, schema.constraint_idx,
-                                  schema.td, schema.td, schema.index, -1);
+  ddl_exe->add_ddl_executor_paras(
+      schema.v, -1, schema.ddl_type, schema.reformat_idx, schema.constraint_idx,
+      schema.td, schema.td, schema.index, ermia::ddl::schema_state_type::READY);
 
   txn->set_old_td(schema.td);
   txn->add_old_td_map(schema.td);
@@ -1742,7 +1742,9 @@ rc_t tpcc_worker::txn_ddl() {
                << schema_version;
     order_line_schema.v = schema_version;
     order_line_schema.old_v = old_schema_version;
-    order_line_schema.state = ermia::config::ddl_type == 4 ? 0 : 2;
+    order_line_schema.state = ermia::config::ddl_type == 4
+                                  ? ermia::ddl::schema_state_type::READY
+                                  : ermia::ddl::schema_state_type::NOT_READY;
 
     if (ermia::config::ddl_type != 4) {
       order_line_schema.old_td = old_order_line_td;
@@ -2379,7 +2381,9 @@ rc_t tpcc_worker::txn_ddl() {
                << schema_version;
     order_line_schema.v = schema_version;
     order_line_schema.old_v = old_schema_version;
-    order_line_schema.state = ermia::config::ddl_type == 4 ? 0 : 2;
+    order_line_schema.state = ermia::config::ddl_type == 4
+                                  ? ermia::ddl::schema_state_type::READY
+                                  : ermia::ddl::schema_state_type::NOT_READY;
     if (ermia::config::ddl_type != 4) {
       order_line_schema.old_td = old_order_line_td;
 

@@ -37,17 +37,17 @@ void schematable_loader::load() {
 
 #ifdef COPYDDL
   struct ermia::Schema_record order_line_schema;
-  order_line_schema.state = ermia::ddl::schema_state_type::NOT_READY;
+  order_line_schema.state = ermia::ddl::schema_state_type::READY;
   order_line_schema.old_td = nullptr;
   order_line_schema.old_index = nullptr;
 
   struct ermia::Schema_record oorder_schema;
-  oorder_schema.state = ermia::ddl::schema_state_type::NOT_READY;
+  oorder_schema.state = ermia::ddl::schema_state_type::READY;
   oorder_schema.old_td = nullptr;
   oorder_schema.old_index = nullptr;
 
   struct ermia::Schema_record customer_schema;
-  customer_schema.state = ermia::ddl::schema_state_type::NOT_READY;
+  customer_schema.state = ermia::ddl::schema_state_type::READY;
   customer_schema.old_td = nullptr;
   customer_schema.old_index = nullptr;
 
@@ -239,7 +239,7 @@ void microbenchmark_schematable_loader::load() {
 
 #ifdef COPYDDL
   struct ermia::Schema_record usertable_schema;
-  usertable_schema.state = ermia::ddl::schema_state_type::NOT_READY;
+  usertable_schema.state = ermia::ddl::schema_state_type::READY;
   usertable_schema.old_td = nullptr;
   if (ermia::config::ddl_type == 4) {
     int i = 0;

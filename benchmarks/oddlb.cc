@@ -136,7 +136,9 @@ public:
                          ermia::config::no_copy_verification_version_add;
         schema.v = schema_version;
       }
-      schema.state = ermia::config::ddl_type == 2 ? 2 : 0;
+      schema.state = ermia::config::ddl_type == 2
+                         ? ermia::ddl::schema_state_type::NOT_READY
+                         : ermia::ddl::schema_state_type::READY;
       txn->set_old_td(old_td);
       txn->add_old_td_map(old_td);
     }
@@ -197,7 +199,8 @@ public:
     ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
     ddl_exe->add_ddl_executor_paras(schema.v, -1, schema.ddl_type,
                                     schema.reformat_idx, schema.constraint_idx,
-                                    schema.td, schema.td, schema.index, -1);
+                                    schema.td, schema.td, schema.index,
+                                    ermia::ddl::schema_state_type::READY);
 
     txn->set_old_td(schema.td);
     txn->add_old_td_map(schema.td);
@@ -243,7 +246,8 @@ public:
     ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
     ddl_exe->add_ddl_executor_paras(schema.v, -1, schema.ddl_type,
                                     schema.reformat_idx, schema.constraint_idx,
-                                    schema.td, schema.td, schema.index, -1);
+                                    schema.td, schema.td, schema.index,
+                                    ermia::ddl::schema_state_type::READY);
 
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(txn, arena, v);

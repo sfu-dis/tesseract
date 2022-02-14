@@ -18,7 +18,7 @@ struct Schema_base {
 
 struct Schema_record : public Schema_base {
   TableDescriptor *old_td;
-  uint64_t state;
+  ddl::schema_state_type state;
   uint64_t old_v;
   OrderedIndex *old_index;
   TableDescriptor *old_tds[16];

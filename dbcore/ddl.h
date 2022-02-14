@@ -80,7 +80,7 @@ struct ddl_executor_paras {
   ddl_executor_paras(uint64_t new_v, uint64_t old_v, ddl_type type,
                      uint64_t reformat_idx, uint64_t constraint_idx,
                      TableDescriptor *new_td, TableDescriptor *old_td,
-                     OrderedIndex *index, uint64_t state,
+                     OrderedIndex *index, schema_state_type state,
                      uint64_t secondary_index_key_create_idx,
                      bool handle_insert, bool handle_update,
                      uint64_t scan_reformat_idx)
@@ -113,7 +113,7 @@ public:
   inline void add_ddl_executor_paras(
       uint64_t new_v, uint64_t old_v, ddl_type type, uint64_t reformat_idx,
       uint64_t constraint_idx, TableDescriptor *new_td, TableDescriptor *old_td,
-      OrderedIndex *index, uint64_t state,
+      OrderedIndex *index, schema_state_type state,
       uint64_t secondary_index_key_create_idx = -1, bool handle_insert = true,
       bool handle_update = true, uint64_t scan_reformat_idx = -1) {
     ddl_executor_paras_list.push_back(new ddl_executor_paras(
