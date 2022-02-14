@@ -110,10 +110,10 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
                 ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
                 MM::deallocate(entry);
               } else {
-                ConcurrentMasstreeIndex *secondary_index =
-                    (ConcurrentMasstreeIndex
-                         *)((*it)->new_td->GetSecIndexes().front());
                 if ((*it)->new_td->GetSecIndexes().size()) {
+                  ConcurrentMasstreeIndex *secondary_index =
+                      (ConcurrentMasstreeIndex
+                           *)((*it)->new_td->GetSecIndexes().front());
                   varstr *new_secondary_index_key =
                       reformats[(*it)->secondary_index_key_create_idx](
                           key, tuple_value, arena, (*it)->new_v, fid, oid);
@@ -192,10 +192,10 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
             ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
             MM::deallocate(entry);
           } else {
-            ConcurrentMasstreeIndex *secondary_index =
-                (ConcurrentMasstreeIndex
-                     *)((*it)->new_td->GetSecIndexes().front());
             if ((*it)->new_td->GetSecIndexes().size()) {
+              ConcurrentMasstreeIndex *secondary_index =
+                  (ConcurrentMasstreeIndex
+                       *)((*it)->new_td->GetSecIndexes().front());
               varstr *new_secondary_index_key =
                   reformats[(*it)->secondary_index_key_create_idx](
                       key, tuple_value, arena, (*it)->new_v, fid, oid);
