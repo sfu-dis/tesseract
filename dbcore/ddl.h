@@ -31,6 +31,11 @@ enum ddl_type {
 
 ddl_type ddl_type_map(uint32_t type);
 
+enum schema_state_type {
+  READY,
+  NOT_READY,
+};
+
 // struct of DDL executor parameters
 struct ddl_executor_paras {
   // New schema version
@@ -58,7 +63,7 @@ struct ddl_executor_paras {
   OrderedIndex *index;
 
   // State
-  uint64_t state;
+  schema_state_type state;
 
   // Schema secondary index key creation function index
   uint64_t secondary_index_key_create_idx;

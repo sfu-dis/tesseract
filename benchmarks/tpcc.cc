@@ -1069,9 +1069,7 @@ rc_t tpcc_worker::txn_order_status() {
   const oorder_c_id_idx::key *k_oo_idx = Decode(*newest_o_c_id, k_oo_idx_temp);
   const uint o_id = k_oo_idx->o_o_id;
 
-  order_line_nop_callback c_order_line(order_line_schema.state == 1
-                                           ? order_line_schema.old_v
-                                           : order_line_schema.v);
+  order_line_nop_callback c_order_line(order_line_schema.v);
   const order_line::key k_ol_0(warehouse_id, districtID, o_id, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, o_id,
                                std::numeric_limits<int32_t>::max());
@@ -1166,9 +1164,7 @@ rc_t tpcc_worker::txn_stock_level() {
       : v_d->d_next_o_id;
 
   // manual joins are fun!
-  order_line_scan_callback c(order_line_schema.state == 1
-                                 ? order_line_schema.old_v
-                                 : order_line_schema.v);
+  order_line_scan_callback c(order_line_schema.v);
   const int32_t lower = cur_next_o_id >= 20 ? (cur_next_o_id - 20) : 0;
   const order_line::key k_ol_0(warehouse_id, districtID, lower, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, cur_next_o_id, 0);
@@ -1838,7 +1834,7 @@ rc_t tpcc_worker::txn_ddl() {
 
     customer_schema.v = schema_version;
     customer_schema.old_v = old_schema_version;
-    customer_schema.state = 2;
+    customer_schema.state = ermia::ddl::schema_state_type::NOT_READY;
     customer_schema.old_td = old_customer_td;
 
     rc = rc_t{RC_INVALID};
@@ -1962,7 +1958,7 @@ rc_t tpcc_worker::txn_ddl() {
     struct ermia::Schema_record public_customer_schema;
     public_customer_schema.v = schema_version;
     public_customer_schema.old_v = old_schema_version;
-    public_customer_schema.state = 2;
+    public_customer_schema.state = ermia::ddl::schema_state_type::NOT_READY;
     public_customer_schema.old_td = old_customer_td;
 #ifdef LAZYDDL
     public_customer_schema.old_index = old_customer_table_index;
@@ -2083,7 +2079,7 @@ rc_t tpcc_worker::txn_ddl() {
                << schema_version;
     oorder_schema.v = schema_version;
     oorder_schema.old_v = old_schema_version;
-    oorder_schema.state = 2;
+    oorder_schema.state = ermia::ddl::schema_state_type::NOT_READY;
     oorder_schema.old_td = old_oorder_td;
 
     rc = rc_t{RC_INVALID};
@@ -2306,7 +2302,7 @@ rc_t tpcc_worker::txn_ddl() {
                << schema_version;
     order_line_schema.v = old_schema_version;
     order_line_schema.old_v = old_schema_version;
-    order_line_schema.state = 2;
+    order_line_schema.state = ermia::ddl::schema_state_type::NOT_READY;
     order_line_schema.old_td = old_order_line_td;
 
     rc = rc_t{RC_INVALID};

@@ -64,7 +64,7 @@ retry:
   if (t->is_dml() || t->is_read_only()) {
     struct Schema_record schema;
     memcpy(&schema, (char *)value.data(), sizeof(schema));
-    if (schema.state == 2) {
+    if (schema.state == ddl::schema_state_type::NOT_READY) {
       if (schema.ddl_type != ddl::ddl_type::COPY_ONLY ||
           config::enable_cdc_schema_lock) {
         goto retry;

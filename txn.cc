@@ -382,7 +382,7 @@ rc_t transaction::si_commit() {
       varstr value(tuple->get_value_start(), tuple->size);
       struct Schema_record schema;
       memcpy(&schema, (char *)value.data(), sizeof(schema));
-      schema.state = 0;
+      schema.state = ddl::schema_state_type::READY;
 
       char schema_str[sizeof(Schema_record)];
       memcpy(schema_str, &schema, sizeof(schema_str));

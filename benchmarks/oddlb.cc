@@ -93,7 +93,7 @@ public:
     schema.v = schema_version;
     schema.old_v = old_schema_version;
     schema.old_td = old_td;
-    schema.state = 0;
+    schema.state = ermia::ddl::schema_state_type::READY;
     schema.ddl_type = ermia::ddl::ddl_type_map(ermia::config::ddl_type);
 
     rc = rc_t{RC_INVALID};
@@ -108,7 +108,7 @@ public:
       db->CreateTable(str3.c_str());
 
       schema.td = ermia::Catalog::GetTable(str3.c_str());
-      schema.state = 2;
+      schema.state = ermia::ddl::schema_state_type::NOT_READY;
 #ifdef LAZYDDL
       schema.old_index = old_table_index;
       schema.old_tds[old_schema_version] = old_td;
