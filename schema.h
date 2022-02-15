@@ -20,9 +20,9 @@ struct Schema_base {
 };
 
 struct Schema_record : public Schema_base {
-  ermia::OrderedIndex *index;
-  ermia::TableDescriptor *td;
   ermia::TableDescriptor *old_td;
+  ermia::TableDescriptor *td;
+  ermia::OrderedIndex *index;
   uint64_t state;
   uint64_t old_v;
   OrderedIndex *old_index;
