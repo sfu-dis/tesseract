@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../engine.h"
+
+namespace ermia {
  
 struct Schema_base_ {
   uint64_t v;
@@ -18,17 +20,17 @@ struct Schema_base {
 };
 
 struct Schema_record : public Schema_base {
-  ermia::TableDescriptor *old_td;
-  ermia::TableDescriptor *td;
-  ermia::OrderedIndex *index;
+  TableDescriptor *old_td;
+  TableDescriptor *td;
+  OrderedIndex *index;
   uint64_t state;
   uint64_t old_v;
   OrderedIndex *old_index;
   TableDescriptor *old_tds[16];
   uint64_t reformats[16];
 #ifdef LAZYDDL
-  ermia::OrderedIndex *old_index;
-  ermia::TableDescriptor *old_tds[16];
+  OrderedIndex *old_index;
+  TableDescriptor *old_tds[16];
 #endif
 };
 
@@ -42,3 +44,5 @@ struct Schema2 : public Schema_base {
   uint64_t b;
   uint64_t c;
 };
+
+} // namespace ermia
