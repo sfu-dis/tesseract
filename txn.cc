@@ -8,8 +8,8 @@ extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 
 namespace ermia {
 
-volatile bool ddl_running_1 = false;
-volatile bool ddl_running_2 = false;
+volatile bool ddl_running = false;
+volatile bool cdc_second_phase = false;
 volatile bool ddl_failed = false;
 volatile bool cdc_running = false;
 volatile bool ddl_td_set = false;
@@ -31,7 +31,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   }
   wait_for_new_schema = false;
   if (is_ddl()) {
-    ddl_running_1 = true;
+    ddl_running = true;
     ddl_td_set = false;
 #if defined(SIDDL)
     write_set.init_large_write_set();
@@ -103,7 +103,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   }
 
   xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
-  if (config::enable_dml_slow_down && ddl_running_1 && is_dml()) {
+  if (config::enable_dml_slow_down && ddl_running && is_dml()) {
     util::fast_random r(xc->begin);
     if (r.next_uniform() >= 0.8) {
       usleep(1);
@@ -248,7 +248,7 @@ rc_t transaction::si_commit() {
   xc->end = write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;
 
 #if defined(COPYDDL)
-  if (is_dml() && DMLConsistencyHandler() && ddl_running_1) {
+  if (is_dml() && DMLConsistencyHandler() && ddl_running) {
     DLOG(INFO) << "DML failed with begin: " << xc->begin
                << ", end: " << xc->end;
     return rc_t{RC_ABORT_SI_CONFLICT};
@@ -351,13 +351,13 @@ rc_t transaction::si_commit() {
 #if !defined(LAZYDDL)
     // Start the second round of CDC
     DLOG(INFO) << "Second CDC begins";
-    ddl_running_2 = true;
+    cdc_second_phase = true;
     ddl_end.store(0);
     std::vector<thread::Thread *> cdc_workers = changed_data_capture();
     while (ddl_end.load() != config::cdc_threads && !ddl_failed) {
     }
     join_changed_data_capture_threads(cdc_workers);
-    ddl_running_2 = false;
+    cdc_second_phase = false;
     DLOG(INFO) << "Second CDC ends";
     if (config::enable_late_scan_join) {
       ddl_exe->join_scan_workers();
@@ -398,7 +398,7 @@ rc_t transaction::si_commit() {
 #endif
 
   if (is_ddl()) {
-    ddl_running_1 = false;
+    ddl_running = false;
     volatile_write(xc->state, TXN::TXN_CMMTD);
 #ifdef LAZYDDL
     // Background migration
@@ -644,7 +644,7 @@ std::vector<thread::Thread *> transaction::changed_data_capture() {
           ddl_failed = true;
           cdc_running = false;
         }
-        if (ddl_end_local && ddl_running_2) {
+        if (ddl_end_local && cdc_second_phase) {
           break;
         }
       }

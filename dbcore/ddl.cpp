@@ -288,7 +288,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                             offset_in_seg);
 
         while (offset_increment < data_sz - offset_in_seg &&
-               (cdc_running || ddl_running_2) && !ddl_failed) {
+               (cdc_running || cdc_second_phase) && !ddl_failed) {
           dlog::log_block *header =
               (dlog::log_block *)(data_buf + offset_increment);
           if ((end_csn && begin_csn <= header->csn && header->csn <= end_csn) ||
@@ -403,12 +403,12 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
         }
         RCU::rcu_free(data_buf);
         if (stop_scan ||
-            (ddl_running_2 && insert_total == 0 && update_total == 0)) {
+            (cdc_second_phase && insert_total == 0 && update_total == 0)) {
           count--;
         }
       }
     }
-    if ((!cdc_running && !ddl_running_2) || ddl_failed) {
+    if ((!cdc_running && !cdc_second_phase) || ddl_failed) {
       break;
     }
   }
