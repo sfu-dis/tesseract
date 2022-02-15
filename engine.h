@@ -3,7 +3,6 @@
 #include "txn.h"
 #include "varstr.h"
 #include "engine_internal.h"
-#include "schema.h"
 #include "../benchmarks/record/encoder.h"
 
 #if __clang__
