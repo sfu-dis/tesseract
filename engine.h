@@ -3,6 +3,7 @@
 #include "txn.h"
 #include "varstr.h"
 #include "engine_internal.h"
+#include "schema.h"
 #include "../benchmarks/record/encoder.h"
 
 #if __clang__
@@ -79,6 +80,7 @@ public:
     t->uninitialize();
   }
 
+#ifdef BLOCKDDL
   inline bool BuildIndexMap(std::string table_name) {
     std::unique_lock<std::mutex> lock(map_rw_latch);
     if (lock_map.find(table_name) != lock_map.end()) {
@@ -90,6 +92,7 @@ public:
       return true;
     }
   }
+#endif
 
   inline void ReadLock(std::string table_name) {
     int ret = pthread_rwlock_rdlock(lock_map[table_name]);
