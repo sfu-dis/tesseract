@@ -162,7 +162,7 @@ int main(int argc, char **argv) {
   ermia::config::enable_cdc_verification_test =
       FLAGS_enable_cdc_verification_test;
   ermia::config::enable_dml_slow_down = FLAGS_enable_dml_slow_down;
-  ermia::config::ddl_num_total = FLAGS_ddl_num_total;
+  ermia::config::ddl_total = FLAGS_ddl_num_total;
   ermia::config::ddl_start_time = FLAGS_ddl_start_time;
   ermia::config::no_copy_verification_version_add =
       FLAGS_no_copy_verification_version_add;
@@ -340,8 +340,8 @@ int main(int argc, char **argv) {
             << ermia::config::enable_cdc_verification_test << std::endl;
   std::cerr << "  enable_dml_slow_down    		: "
             << ermia::config::enable_dml_slow_down << std::endl;
-  std::cerr << "  ddl_num_total				: "
-            << ermia::config::ddl_num_total << std::endl;
+  std::cerr << "  ddl_total				: "
+            << ermia::config::ddl_total << std::endl;
   std::cerr << "  ddl_start_time			: "
             << ermia::config::ddl_start_time << std::endl;
   std::cerr << "  no_copy_verification_version_add	: "

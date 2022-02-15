@@ -78,7 +78,7 @@ extern bool enable_cdc_schema_lock;
 extern uint32_t ddl_type;
 extern bool enable_cdc_verification_test;
 extern bool enable_dml_slow_down;
-extern uint32_t ddl_num_total;
+extern uint32_t ddl_total;
 extern uint32_t ddl_start_time;
 extern uint32_t no_copy_verification_version_add;
 extern uint32_t ddl_example;

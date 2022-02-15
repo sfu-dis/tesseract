@@ -23,7 +23,7 @@ enum { RUNMODE_TIME = 0, RUNMODE_OPS = 1 };
 
 // benchmark global variables
 extern volatile bool running;
-extern volatile int ddl_num;
+extern volatile int ddl_done;
 
 template <typename T>
 static std::vector<T> unique_filter(const std::vector<T> &v) {

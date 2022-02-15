@@ -19,7 +19,7 @@
 
 volatile bool running = true;
 std::vector<bench_worker *> bench_runner::workers;
-volatile int ddl_num = 0;
+volatile int ddl_done = 0;
 volatile int ddl_worker_id = -1;
 volatile bool ddl_start = false;
 
@@ -51,9 +51,8 @@ retry:
 
 uint32_t bench_worker::fetch_workload() {
   double d = r.next_uniform();
-  size_t workload_size = workload.size();
-  for (size_t i = 0; i < workload_size; i++) {
-    if ((i + 1) == workload_size || d < workload[i].frequency) {
+  for (size_t i = 0; i < workload.size(); i++) {
+    if ((i + 1) == workload.size() || d < workload[i].frequency) {
       return i;
     }
     d -= workload[i].frequency;
@@ -131,12 +130,12 @@ void bench_worker::MyWork(char *) {
 
     while (running) {
       if (worker_id == ddl_worker_id &&
-          ddl_num < ermia::config::ddl_num_total && ddl_start) {
+          ddl_done < ermia::config::ddl_total && ddl_start) {
         util::timer ddl_timer;
-        do_ddl_workload_function(ermia::config::ddl_num_total - 1);
+        do_ddl_workload_function(ddl_done);
         double lap = ddl_timer.lap();
         DLOG(INFO) << "DDL duration: " << lap / 1000000.0 << "s" << std::endl;
-        ddl_num++;
+        ddl_done++;
         ddl_start = false;
       } else {
         uint32_t workload_idx = fetch_workload();
