@@ -17,28 +17,11 @@ struct Schema_base {
 
 struct Schema_record : public Schema_base {
   TableDescriptor *old_td;
-  TableDescriptor *td;
-  OrderedIndex *index;
   ddl::schema_state_type state;
   uint64_t old_v;
   OrderedIndex *old_index;
   TableDescriptor *old_tds[16];
   uint64_t reformats[16];
-#ifdef LAZYDDL
-  OrderedIndex *old_index;
-  TableDescriptor *old_tds[16];
-#endif
-};
-
-struct Schema1 : public Schema_base {
-  uint64_t a;
-  uint64_t b;
-};
-
-struct Schema2 : public Schema_base {
-  uint64_t a;
-  uint64_t b;
-  uint64_t c;
 };
 
 } // namespace ermia
