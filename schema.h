@@ -1,9 +1,7 @@
 #pragma once
 
 #include "../engine.h"
-
-namespace ermia {
-   
+ 
 struct Schema_base_ {
   uint64_t v;
 };
@@ -44,5 +42,3 @@ struct Schema2 : public Schema_base {
   uint64_t b;
   uint64_t c;
 };
-
-} // namespace ermia
