@@ -141,7 +141,7 @@ public:
   }
 
   // Scan and do operations (copy, verification)
-  rc_t scan(transaction *t, str_arena *arena, varstr &value);
+  rc_t scan(transaction *t, str_arena *arena);
 
   // CDC
   rc_t changed_data_capture_impl(transaction *t, uint32_t thread_id,

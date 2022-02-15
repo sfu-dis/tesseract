@@ -407,8 +407,7 @@ rc_t transaction::si_commit() {
       log->set_doing_ddl(false);
       return rc_t{RC_TRUE};
     }
-    varstr *v = new varstr();
-    ddl_exe->scan(this, &(string_allocator()), *v);
+    ddl_exe->scan(this, &(string_allocator()));
 #endif
 
     for (auto &v : new_td_map) {
