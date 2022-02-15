@@ -5,30 +5,37 @@
 
 #include <vector>
 
-#include "dbcore/dlog.h"
+#include "dbcore/ddl.h"
 #include "dbcore/dlog-tx.h"
-#include "dbcore/xid.h"
+#include "dbcore/dlog.h"
 #include "dbcore/sm-config.h"
-#include "dbcore/sm-oid.h"
 #include "dbcore/sm-object.h"
+#include "dbcore/sm-oid.h"
 #include "dbcore/sm-rc.h"
-#include "masstree/masstree_btree.h"
+#include "dbcore/xid.h"
 #include "macros.h"
+#include "masstree/masstree_btree.h"
 #include "str_arena.h"
 #include "tuple.h"
 
 #include <sparsehash/dense_hash_map>
 using google::dense_hash_map;
 
+namespace ermia {
+
 extern volatile bool ddl_running_1;
 extern volatile bool ddl_running_2;
+extern volatile bool ddl_failed;
 extern volatile bool cdc_running;
-extern volatile bool ddl_overlap_1;
-extern volatile bool ddl_overlap_2;
+extern volatile bool ddl_td_set;
+extern volatile bool cdc_test;
 extern std::atomic<uint64_t> ddl_end;
 extern uint64_t *_tls_durable_lsn CACHE_ALIGNED;
 
-namespace ermia {
+extern std::unordered_map<FID, pthread_rwlock_t *> lock_map;
+extern std::mutex map_rw_latch;
+
+struct Schema_record;
 
 #if defined(SSN) || defined(SSI)
 #define set_tuple_xstamp(tuple, s)                                    \
@@ -61,21 +68,54 @@ struct write_record_t {
 };
 
 struct write_set_t {
-  static const uint32_t kMaxEntries = 256, kMaxEntries_ = 100000000;
+  static const uint32_t kMaxEntries = 256, kMaxEntries_ = 50000000;
   uint32_t num_entries;
-  write_record_t entries[kMaxEntries];
+  uint32_t max_entries;
+  write_record_t init_entries[kMaxEntries];
+  write_record_t *entries;
   write_record_t *entries_;
   mcs_lock lock;
-  write_set_t() : num_entries(0) {}
-  inline void emplace_back(fat_ptr *oe, FID fid, OID oid, uint32_t size,
-                           dlog::log_record::logrec_type type) {
-    ALWAYS_ASSERT(num_entries < kMaxEntries);
+  write_set_t()
+      : num_entries(0), max_entries(kMaxEntries), entries(&init_entries[0]) {}
+  inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid,
+                           uint32_t size, dlog::log_record::logrec_type type) {
+#if defined(SIDDL)
+    if (is_ddl) {
+      ALWAYS_ASSERT(num_entries < kMaxEntries_);
+      if (config::scan_threads) {
+        CRITICAL_SECTION(cs, lock);
+      }
+      new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, type);
+    } else {
+      ALWAYS_ASSERT(num_entries < kMaxEntries);
+      new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type);
+    }
+#else
+    if (num_entries >= max_entries) {
+      write_record_t *new_entries = new write_record_t[max_entries * 2];
+      memcpy(new_entries, entries, sizeof(write_record_t) * max_entries);
+      max_entries *= 2;
+      if (entries != &init_entries[0]) {
+        delete[] entries;
+      }
+      entries = new_entries;
+    }
     new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type);
+#endif
     ++num_entries;
   }
   inline uint32_t size() { return num_entries; }
   inline void clear() { num_entries = 0; }
-  inline write_record_t get(uint32_t idx) { return entries[idx]; }
+  inline write_record_t get(bool is_ddl, uint32_t idx) {
+#if defined(SIDDL)
+    if (is_ddl)
+      return entries_[idx];
+    else
+      return entries[idx];
+#else
+    return entries[idx];
+#endif
+  }
   inline void init_large_write_set() { entries_ = new write_record_t[kMaxEntries_]; }
 };
 
@@ -129,8 +169,8 @@ protected:
   void uninitialize();
 
   inline void ensure_active() {
-    // volatile_write(xc->state, TXN::TXN_ACTIVE);
-    // ASSERT(state() == TXN::TXN_ACTIVE);
+    volatile_write(xc->state, TXN::TXN_ACTIVE);
+    ASSERT(state() == TXN::TXN_ACTIVE);
   }
 
   rc_t commit();
@@ -148,11 +188,8 @@ protected:
 #endif
 
 #ifdef COPYDDL
-#if !defined(LAZYDDL) && !defined(DCOPYDDL)
+#if !defined(LAZYDDL)
   std::vector<ermia::thread::Thread *> changed_data_capture();
-  bool changed_data_capture_impl(uint32_t thread_id, uint32_t ddl_thread_id,
-                                 uint32_t begin_log, uint32_t end_log,
-                                 str_arena *arena, util::fast_random &r);
   void join_changed_data_capture_threads(
       std::vector<ermia::thread::Thread *> cdc_workers);
   uint64_t get_cdc_smallest_csn();
@@ -165,42 +202,57 @@ protected:
   void Abort();
 
   // Insert a record to the underlying table
-  OID Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple = nullptr);
+  OID Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple = nullptr,
+             uint64_t schema_version = 0);
+
+  // DDL insert used for unoptimized lazy DDL
+  OID DDLInsert(TableDescriptor *td, varstr *value,
+                fat_ptr **out_entry = nullptr, uint64_t schema_version = 0);
 
   // DDL scan insert
-  void DDLScanInsert(TableDescriptor *td, OID oid, varstr *value);
+  void DDLScanInsert(TableDescriptor *td, OID oid, varstr *value,
+                     dlog::log_block *block = nullptr,
+                     uint64_t schema_version = 0);
+
+  // DDL scan update
+  void DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value,
+                     dlog::log_block *block = nullptr,
+                     uint64_t schema_version = 0);
 
   // DDL CDC insert
   PROMISE(rc_t)
-  DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn);
+  DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
+               dlog::log_block *block = nullptr, uint64_t schema_version = 0);
 
   // DDL CDC update
   PROMISE(rc_t)
-  DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn);
-
-  // DDL update
-  PROMISE(OID)
-  DDLInsert(TableDescriptor *td, varstr *value);
+  DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
+               dlog::log_block *block = nullptr, uint64_t schema_version = 0);
 
   // DDL schema unblock
   PROMISE(rc_t)
   DDLSchemaUnblock(TableDescriptor *td, OID oid, varstr *value,
-                   uint64_t tuple_csn);
+                   uint64_t tuple_csn, uint64_t schema_version = 0);
 
   // DML & DDL overlap check
   PROMISE(bool)
-  OverlapCheck(TableDescriptor *td, OID oid);
+  OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td, OID oid);
 
   PROMISE(rc_t)
-  Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
+  Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
+         uint64_t schema_version = 0);
 
   // Same as Update but without support for logging key
-  inline PROMISE(rc_t) Update(TableDescriptor *td, OID oid, varstr *v) {
-    auto rc = AWAIT Update(td, oid, nullptr, v);
+  inline PROMISE(rc_t) Update(TableDescriptor *td, OID oid, varstr *v,
+                              uint64_t schema_version = 0) {
+    auto rc = AWAIT Update(td, oid, nullptr, v, schema_version);
     RETURN rc;
   }
 
   void LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key);
+
+  // Table scan to simulate operations without index
+  void table_scan(TableDescriptor *td, const varstr *key, OID oid);
 
 public:
   // Reads the contents of tuple into v within this transaction context
@@ -221,15 +273,16 @@ public:
     }*/
 #endif
 
-    // Work out the encoded size to be added to the log block later
-    auto logrec_size =
-        align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
-    log_size += logrec_size;
-    // Each write set entry still just records the size of the actual "data" to
-    // be inserted to the log excluding dlog::log_record, which will be
-    // prepended by log_insert/update etc.
     if (!is_ddl() || (is_ddl() && is_allowed)) {
-      write_set.emplace_back(entry, fid, oid, size + sizeof(dbtuple), type);
+      // Work out the encoded size to be added to the log block later
+      auto logrec_size =
+          align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
+      log_size += logrec_size;
+      // Each write set entry still just records the size of the actual "data"
+      // to be inserted to the log excluding dlog::log_record, which will be
+      // prepended by log_insert/update etc.
+      write_set.emplace_back(is_ddl(), entry, fid, oid, size + sizeof(dbtuple),
+                             type);
     }
   }
 
@@ -241,11 +294,84 @@ public:
 
   inline bool IsWaitForNewSchema() { return wait_for_new_schema; }
 
-#ifdef COPYDDL
-  inline void set_table_descriptors(TableDescriptor *_new_td, TableDescriptor *_old_td) { new_td = _new_td, old_td = _old_td; }
+  inline TableDescriptor *get_old_td() { return old_td; }
+
+  inline void set_old_td(TableDescriptor *_old_td) { old_td = _old_td; }
+
+  inline std::unordered_map<FID, TableDescriptor *> get_new_td_map() {
+    return new_td_map;
+  }
+
+  inline std::unordered_map<FID, TableDescriptor *> get_old_td_map() {
+    return old_td_map;
+  }
+
+  inline void add_new_td_map(TableDescriptor *new_td) {
+    new_td_map[new_td->GetTupleFid()] = new_td;
+  }
+
+  inline void add_old_td_map(TableDescriptor *old_td) {
+    old_td_map[old_td->GetTupleFid()] = old_td;
+  }
+
+  inline void set_ddl_executor(ddl::ddl_executor *_ddl_exe) {
+    ddl_exe = _ddl_exe;
+  }
+
+#ifdef BLOCKDDL
+  enum lock_type { SHARED, EXCLUSIVE };
+
+  inline std::unordered_map<FID, int> get_locked_tables() {
+    return locked_tables;
+  }
+
+  inline void register_locked_tables(FID table_fid, lock_type lt) {
+    if (lt == lock_type::SHARED) {
+      ReadLock(table_fid);
+    } else if (lt == lock_type::EXCLUSIVE) {
+      WriteLock(table_fid);
+    }
+    locked_tables[table_fid] = lt;
+  }
+
+  inline void ReadLock(FID table_fid) {
+    if (locked_tables[table_fid]) {
+      return;
+    }
+    int ret = pthread_rwlock_rdlock(lock_map[table_fid]);
+    LOG_IF(FATAL, ret);
+  }
+
+  inline void ReadUnlock(FID table_fid) {
+    int ret = pthread_rwlock_unlock(lock_map[table_fid]);
+    LOG_IF(FATAL, ret);
+  }
+
+  inline void WriteLock(FID table_fid) {
+    if (locked_tables[table_fid] == lock_type::SHARED) {
+      ReadUnlock(table_fid);
+    }
+    if (locked_tables[table_fid] == lock_type::EXCLUSIVE) {
+      return;
+    }
+    int ret = pthread_rwlock_wrlock(lock_map[table_fid]);
+    LOG_IF(FATAL, ret);
+  }
+
+  inline void WriteUnlock(FID table_fid) {
+    int ret = pthread_rwlock_unlock(lock_map[table_fid]);
+    LOG_IF(FATAL, ret);
+  }
+
+public:
+  static std::unordered_map<FID, pthread_rwlock_t *> lock_map;
+  static std::mutex map_rw_latch;
+
+protected:
+  std::unordered_map<FID, int> locked_tables;
 #endif
 
- protected:
+protected:
   const uint64_t flags;
   XID xid;
   TXN::xid_context *xc;
@@ -254,9 +380,11 @@ public:
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
   std::unordered_map<TableDescriptor*, OID> schema_read_map;
-  TableDescriptor *new_td;
+  std::unordered_map<FID, TableDescriptor *> new_td_map;
   TableDescriptor *old_td;
+  std::unordered_map<FID, TableDescriptor *> old_td_map;
   bool wait_for_new_schema;
+  ddl::ddl_executor *ddl_exe;
   util::timer timer;
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)

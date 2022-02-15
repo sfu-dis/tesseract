@@ -131,10 +131,14 @@ public:
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a,
                      barrier_b),
         schema_index((ermia::ConcurrentMasstreeIndex *)open_tables.at("SCHEMA"))
-#if defined(SIDDL) || defined(BLOCKDDL) || defined(NONEDDL)
+#if defined(SIDDL) || defined(BLOCKDDL)
         ,
         table_index(
-            (ermia::ConcurrentMasstreeIndex *)open_tables.at("USERTABLE"))
+            (ermia::ConcurrentMasstreeIndex *)open_tables.at("USERTABLE")),
+        schema_fid(
+            open_tables.at("SCHEMA")->GetTableDescriptor()->GetTupleFid()),
+        table_fid(
+            open_tables.at("USERTABLE")->GetTableDescriptor()->GetTupleFid())
 #endif
   {
   }
@@ -146,8 +150,10 @@ protected:
   }
 
   ermia::ConcurrentMasstreeIndex *schema_index;
-#if defined(SIDDL) || defined(BLOCKDDL) || defined(NONEDDL)
+#if defined(SIDDL) || defined(BLOCKDDL)
   ermia::ConcurrentMasstreeIndex *table_index;
+  ermia::FID schema_fid;
+  ermia::FID table_fid;
 #endif
 
   mcs_lock lock;

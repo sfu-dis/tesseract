@@ -19,9 +19,9 @@
 
 volatile bool running = true;
 std::vector<bench_worker *> bench_runner::workers;
-std::atomic<int> ddl_num(0);
-volatile bool ddling = false;
+volatile int ddl_num = 0;
 volatile int ddl_worker_id = -1;
+volatile bool ddl_start = false;
 
 thread_local ermia::epoch_num coroutine_batch_end_epoch = 0;
 
@@ -37,42 +37,23 @@ retry:
   }
 }
 
+void bench_worker::do_ddl_workload_function(uint32_t i) {
+  ASSERT(ddl_workload.size());
+retry:
+  util::timer t;
+  const unsigned long old_seed = r.get_seed();
+  const auto ret = ddl_workload[i].fn(this);
+  if (finish_workload(ret, i, t)) {
+    r.set_seed(old_seed);
+    goto retry;
+  }
+}
+
 uint32_t bench_worker::fetch_workload() {
-  /*#if defined(COPYDDL) && !defined(LAZYDDL) && defined(MICROBENCH)
-    int thread_id = ermia::thread::MyId();;
-    if (ddling && thread_id < ermia::config::cdc_threads) {
-      printf("thread %u wait\n", ermia::thread::MyId());
-      while (ddling) {}
-    }
-  #endif*/
   double d = r.next_uniform();
-  for (size_t i = 0; i < workload.size(); i++) {
-    if ((i + 1) == workload.size() || d < workload[i].frequency) {
-      if (i == workload.size() - 1) {
-        ddl_num.fetch_add(1);
-        int ddl_num_local = ddl_num.load();
-#if defined(COPYDDL) && defined(MICROBENCH)
-        if (ddl_num_local != 30)
-          continue;
-#if !defined(LAZYDDL)
-        ddl_worker_id = worker_id;
-        ddling = true;
-#endif
-#elif defined(COPYDDL)
-        if (ddl_num_local != 2)
-          continue;
-#if !defined(LAZYDDL)
-        ddl_worker_id = worker_id;
-        ddling = true;
-#endif
-#elif defined(BLOCKDDL)
-        if (ddl_num_local != 4)
-          continue;
-#else
-        if (ddl_num_local != 2)
-          continue;
-#endif
-      }
+  size_t workload_size = workload.size();
+  for (size_t i = 0; i < workload_size; i++) {
+    if ((i + 1) == workload_size || d < workload[i].frequency) {
       return i;
     }
     d -= workload[i].frequency;
@@ -84,11 +65,6 @@ uint32_t bench_worker::fetch_workload() {
 
 bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer t) {
   if (!ret.IsAbort()) {
-#if defined(COPYDDL) && !defined(LAZYDDL)
-    if (ret._val == RC_DDL_TRUE) {
-      ddling = false;
-    }
-#endif
     ++ntxn_commits;
     std::get<0>(txn_counts[workload_idx])++;
     if (!ermia::config::pcommit) {
@@ -144,15 +120,28 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
 void bench_worker::MyWork(char *) {
   if (is_worker) {
     tlog = ermia::GetLog();
+    // Set _tls_durable_csn to be current global_durable_csn to
+    // mark logs as active for cdc use
     tlog->reset_committer(false);
     workload = get_workload();
+    ddl_workload = get_ddl_workload();
     txn_counts.resize(workload.size());
     barrier_a->count_down();
     barrier_b->wait_for();
 
     while (running) {
-      uint32_t workload_idx = fetch_workload();
-      do_workload_function(workload_idx);
+      if (worker_id == ddl_worker_id &&
+          ddl_num < ermia::config::ddl_num_total && ddl_start) {
+        util::timer ddl_timer;
+        do_ddl_workload_function(ermia::config::ddl_num_total - 1);
+        double lap = ddl_timer.lap();
+        DLOG(INFO) << "DDL duration: " << lap / 1000000.0 << "s" << std::endl;
+        ddl_num++;
+        ddl_start = false;
+      } else {
+        uint32_t workload_idx = fetch_workload();
+        do_workload_function(workload_idx);
+      }
     }
   }
 }
@@ -229,6 +218,9 @@ void bench_runner::run() {
       LOG_IF(FATAL, tlog->get_commit_queue_size() > 0);
     }
 
+    // Set all _tls_durable_csn to be zero first,
+    // later running threads will set its corresponding _tls_durable_csn
+    // to be current global_durable_csn to mark logs as active for cdc use
     ermia::dlog::tlogs[0]->reset_committer(true);
   }
 
@@ -253,6 +245,11 @@ void bench_runner::run() {
 void bench_runner::start_measurement() {
   workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
+#ifdef DDL
+  util::fast_random r(2343352);
+  ddl_worker_id = r.next() % workers.size() - 1;
+  DLOG(INFO) << "ddl_worker_id: " << ddl_worker_id;
+#endif
   for (std::vector<bench_worker *>::const_iterator it = workers.begin();
        it != workers.end(); ++it) {
     while (!(*it)->IsImpersonated()) {
@@ -348,11 +345,14 @@ void bench_runner::start_measurement() {
 
   double total_util = 0;
   double sec_util = 0;
-  uint32_t sleep_time = 1;
-  // uint32_t sleep_time = 500;
+  // uint32_t sleep_time = 1;
+  uint32_t sleep_time = 1000 * 1000;
   auto gather_stats = [&]() {
-    sleep(1);
-    // usleep(1000 * sleep_time);
+    if (slept == ermia::config::ddl_start_time * 1000000) {
+      ddl_start = true;
+    }
+    // sleep(1);
+    usleep(sleep_time);
     uint64_t sec_commits = 0, sec_aborts = 0;
     for (size_t i = 0; i < ermia::config::worker_threads; i++) {
       sec_commits += workers[i]->get_ntxn_commits();
@@ -366,15 +366,17 @@ void bench_runner::start_measurement() {
     if (ermia::config::print_cpu_util) {
       sec_util = get_cpu_util();
       total_util += sec_util;
-      printf("%lu,%lu,%lu,%.2f%%\n", slept + sleep_time, sec_commits, sec_aborts, sec_util);
+      printf("%.1f,%lu,%lu,%.2f%%\n", double(slept + sleep_time) / 1000000,
+             sec_commits, sec_aborts, sec_util);
     } else {
-      printf("%lu,%lu,%lu\n", slept + sleep_time, sec_commits, sec_aborts);
+      printf("%.1f,%lu,%lu\n", double(slept + sleep_time) / 1000000,
+             sec_commits, sec_aborts);
     }
     slept += sleep_time;
   };
 
   // Backups run forever until told to stop.
-  while (slept < ermia::config::benchmark_seconds) {
+  while (slept < ermia::config::benchmark_seconds * 1000000) {
     gather_stats();
   }
   running = false;
@@ -403,7 +405,7 @@ void bench_runner::start_measurement() {
   size_t n_query_commits = 0;
   uint64_t latency_numer_us = 0;
   for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-#if defined(COPYDDL) && !defined(LAZYDDL)
+#if defined(COPYDDL)
     if (i == ddl_worker_id) {
       continue;
     }

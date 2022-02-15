@@ -28,8 +28,8 @@ int g_hybrid = 0;
 // 6: TPC-CH query 2 variant - original query 2, but /w marginal stock table update
 // 7: Microbenchmark-random - same as Microbenchmark, but uses random read-set range
 // 8: DDL
-unsigned g_txn_workload_mix[8] = {
-    450000, 430000, 0, 40000, 40000, 39999, 0, 0}; // default TPC-C workload mix
+unsigned g_txn_workload_mix[8] = {45, 43, 0, 4,
+                                  4,  4,  0, 0}; // default TPC-C workload mix
 
 // how much % of time a worker should use a random home wh
 // 0 - always use home wh
@@ -208,6 +208,9 @@ class tpcc_bench_runner : public bench_runner {
           db->CreateMasstreePrimaryIndex(table_name, std::string(index_name));
         }
       }
+#ifdef BLOCKDDL
+      db->BuildLockMap(ermia::Catalog::GetTable(table_name)->GetTupleFid());
+#endif
     };
 
     ermia::thread::Thread *thread = ermia::thread::GetThread(true);
@@ -236,10 +239,6 @@ class tpcc_bench_runner : public bench_runner {
     RegisterIndex(db, "supplier",   "supplier",         true);
     RegisterIndex(db, "warehouse",  "warehouse",        true);
     create_schema_table(db, "SCHEMA");
-#ifdef BLOCKDDL
-    db->BuildIndexMap("order_line");
-    db->BuildIndexMap("oorder");
-#endif
   }
 
   virtual void prepare(char *) {
@@ -393,11 +392,11 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
         unsigned s = 0;
         for (size_t i = 0; i < toks.size(); i++) {
           unsigned p = strtoul(toks[i].c_str(), nullptr, 10);
-          // ALWAYS_ASSERT(p >= 0 && p <= 100);
+          ALWAYS_ASSERT(p >= 0 && p <= 100);
           s += p;
           g_txn_workload_mix[i] = p;
         }
-        // ALWAYS_ASSERT(s == 100);
+        ALWAYS_ASSERT(s == 100);
       } break;
       case 'z':
         g_nr_suppliers = strtoul(optarg, NULL, 10);

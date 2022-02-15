@@ -32,3 +32,4 @@ struct Schema2 : public Schema_base {
   uint64_t b;
   uint64_t c;
 };
+

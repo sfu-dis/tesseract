@@ -14,7 +14,9 @@ void oddlb_create_db(ermia::Engine *db) {
   auto create_table = [=](char *) {
     db->CreateTable("USERTABLE");
     db->CreateMasstreePrimaryIndex("USERTABLE", std::string("USERTABLE"));
-    db->BuildIndexMap(std::string("USERTABLE"));
+#ifdef BLOCKDDL
+    db->BuildLockMap(ermia::Catalog::GetTable("USERTABLE")->GetTupleFid());
+#endif  
   };
 
   thread->StartTask(create_table);
@@ -47,7 +49,7 @@ void oddlb_usertable_loader::load() {
     *(char*)v.p = 'a';
     */
 
-    struct Schema1 record1;
+    struct ermia::Schema1 record1;
     record1.v = 0;
     record1.a = start_key + i; // a is key
     record1.b = start_key + i;
@@ -88,7 +90,7 @@ void oddlb_usertable_loader::load() {
 
     tbl->GetRecord(txn, rc, k, v, &oid);
 
-    struct Schema1 record1_test;
+    struct ermia::Schema1 record1_test;
     memcpy(&record1_test, (char *)v.data(), sizeof(record1_test));
     ALWAYS_ASSERT(record1_test.v == 0);
     ALWAYS_ASSERT(record1_test.a == start_key + i);

@@ -123,12 +123,18 @@ private:
   // Whether dirty
   bool dirty;
 
+  // Whether do normal operations
+  bool normal;
+
+  // Whether doing DDL
+  bool doing_ddl;
+
 private:
   // Get the currently open segment
   inline segment *current_segment() { return &segments[segments.size() - 1]; }
 
   // Do flush when doing enqueue commits
-  // void enqueue_flush();
+  void enqueue_flush();
 
   // Issue an async I/O to flush the current active log buffer
   void issue_flush(const char *buf, uint64_t size);
@@ -154,9 +160,19 @@ public:
   inline uint32_t get_id() { return id; }
   inline segment *get_segment(uint32_t segnum) { return &segments[segnum]; }
 
+  inline int get_numa_node() { return numa_node; }
+
   inline bool is_dirty() { return dirty; }
 
-  inline void set_dirty(bool _dirty) { dirty = _dirty; } 
+  inline void set_dirty(bool _dirty) { dirty = _dirty; }
+
+  inline bool is_normal() { return normal; }
+
+  inline void set_normal(bool _normal) { normal = _normal; }
+
+  inline bool is_doing_ddl() { return doing_ddl; }
+
+  inline void set_doing_ddl(bool _doing_ddl) { doing_ddl = _doing_ddl; }
 
   inline std::vector<segment> *get_segments() { return &segments; }
 
@@ -199,7 +215,11 @@ public:
 
   bool peek_read(char *buf, uint64_t size);
 
-  void enqueue_flush();
+  // CDC flush
+  void cdc_flush() { enqueue_flush(); }
+
+  // Reset log buffer size
+  void reset_logbuf(uint64_t logbuf_m);
 };
 
 extern std::vector<tls_log *> tlogs;

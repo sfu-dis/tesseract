@@ -29,15 +29,15 @@ if [[ "$bench" != "oddl" && "$bench" != "tpce" && "$bench" != "ycsb" && "$bench"
   echo "Unsupported benchmark $bench."
 fi
 
-if [ -z ${logbuf_mb+x} ]; then
-  logbuf_mb=8
-  echo "logbuf_mb is unset, using $logbuf_mb";
+if [ -z ${logbuf_kb+x} ]; then
+  logbuf_kb=32
+  echo "logbuf_kb is unset, using $logbuf_kb";
 else
-  echo "logbuf_mb is set to $logbuf_mb";
+  echo "logbuf_kb is set to $logbuf_kb";
 fi
 
 options="$exe $1 -verbose=1 -benchmark $bench -threads $threads -scale_factor $sf -seconds $runtime \
-  -log_data_dir $LOGDIR -log_buffer_mb=$logbuf_mb -parallel_loading"
+  -log_data_dir $LOGDIR -log_buffer_kb=$logbuf_kb -parallel_loading"
 echo $options
 if [ "$bench" == "tpcc" ]; then
   btype=${workload:4:1}
@@ -54,7 +54,7 @@ if [ "$bench" == "tpcc" ]; then
     if [ "$workload" == "tpcc_contention" ]; then
       wh_spread="100"
     fi
-    $options -benchmark_options "--workload-mix="450000,430000,0,40000,40000,39999,0,0" --warehouse-spread=$wh_spread $2"
+    $options -benchmark_options "--workload-mix="45,43,0,4,4,4,0,0" --warehouse-spread=$wh_spread $2"
   fi
 elif [ "$bench" == "tpce" ]; then
   if [ "$workload" == "tpce_org" ]; then

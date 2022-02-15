@@ -1,6 +1,5 @@
 #pragma once
 
-#include <liburing.h>
 #include <list>
 
 #include "../varstr.h"
@@ -48,27 +47,26 @@ class Object {
   // commit. 
   fat_ptr csn_;
 
-  // io_uring structures
-  static struct io_uring ring;
+ public:
+   static fat_ptr Create(const varstr *tuple_value, epoch_num epoch,
+                         uint64_t schema_version);
 
-public:
-  static fat_ptr Create(const varstr *tuple_value, epoch_num epoch);
+   Object()
+       : alloc_epoch_(0), status_(kStatusMemory), pdest_(NULL_PTR),
+         next_pdest_(NULL_PTR), next_volatile_(NULL_PTR) {}
 
-  Object()
-      : alloc_epoch_(0), status_(kStatusMemory), pdest_(NULL_PTR),
-        next_pdest_(NULL_PTR), next_volatile_(NULL_PTR) {}
+   Object(fat_ptr pdest, fat_ptr next, epoch_num e, bool in_memory)
+       : alloc_epoch_(e), status_(in_memory ? kStatusMemory : kStatusStorage),
+         pdest_(pdest), next_pdest_(next), next_volatile_(NULL_PTR) {}
 
-  Object(fat_ptr pdest, fat_ptr next, epoch_num e, bool in_memory)
-      : alloc_epoch_(e), status_(in_memory ? kStatusMemory : kStatusStorage),
-        pdest_(pdest), next_pdest_(next), next_volatile_(NULL_PTR) {}
-
-  inline bool IsDeleted() { return status_ == kStatusDeleted; }
-  inline bool IsInMemory() { return status_ == kStatusMemory; }
-  inline fat_ptr *GetPersistentAddressPtr() { return &pdest_; }
-  inline fat_ptr GetPersistentAddress() { return pdest_; }
-  inline void SetPersistentAddress(fat_ptr ptr) { pdest_._ptr = ptr._ptr; }
-  inline fat_ptr GetCSN() { return csn_; }
-  inline void SetCSN(fat_ptr csnptr) { volatile_write(csn_._ptr, csnptr._ptr); }
+   inline bool IsDeleted() { return status_ == kStatusDeleted; }
+   inline bool IsInMemory() { return status_ == kStatusMemory; }
+   inline fat_ptr *GetPersistentAddressPtr() { return &pdest_; }
+   inline fat_ptr GetPersistentAddress() { return pdest_; }
+   inline void SetPersistentAddress(fat_ptr ptr) { pdest_._ptr = ptr._ptr; }
+   inline fat_ptr GetCSN() { return csn_; }
+   inline void SetCSN(fat_ptr csnptr) {
+     volatile_write(csn_._ptr, csnptr._ptr); }
   inline fat_ptr GetNextPersistent() { return volatile_read(next_pdest_); }
   inline fat_ptr* GetNextPersistentPtr() { return &next_pdest_; }
   inline fat_ptr GetNextVolatile() { return volatile_read(next_volatile_); }

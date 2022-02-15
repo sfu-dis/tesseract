@@ -87,7 +87,7 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
   id = log_id;
   numa_node = node;
   flushing = false;
-  logbuf_size = logbuf_mb * uint32_t{1024 * 1024};
+  logbuf_size = logbuf_mb * uint32_t{1024};
   logbuf[0] = (char *)numa_alloc_onnode(logbuf_size, numa_node);
   LOG_IF(FATAL, !logbuf[0]) << "Unable to allocate log buffer";
   logbuf[1] = (char *)numa_alloc_onnode(logbuf_size, numa_node);
@@ -100,6 +100,8 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
   durable_lsn = 0;
   current_lsn = 0;
   dirty = false;
+  normal = true;
+  doing_ddl = false;
 
   // Create a new segment
   create_segment();
@@ -125,14 +127,29 @@ void tls_log::uninitialize() {
   io_uring_queue_exit(&ring);
 }
 
+void tls_log::reset_logbuf(uint64_t logbuf_mb) {
+  CRITICAL_SECTION(cs, lock);
+  numa_free(logbuf[0], logbuf_size);
+  numa_free(logbuf[1], logbuf_size);
+
+  logbuf_size = logbuf_mb * uint32_t{1024 * 1024};
+  logbuf[0] = (char *)numa_alloc_onnode(logbuf_size, numa_node);
+  LOG_IF(FATAL, !logbuf[0]) << "Unable to allocate log buffer";
+  logbuf[1] = (char *)numa_alloc_onnode(logbuf_size, numa_node);
+  LOG_IF(FATAL, !logbuf[1]) << "Unable to allocate log buffer";
+
+  logbuf_offset = 0;
+  active_logbuf = logbuf[0];
+}
+
 void tls_log::enqueue_flush() {
   CRITICAL_SECTION(cs, lock);
   if (flushing) {
     poll_flush();
     flushing = false;
   }
-  
-  if (logbuf_offset) {
+
+  if (logbuf_offset && !is_dirty()) {
     issue_flush(active_logbuf, logbuf_offset);
     switch_log_buffers();
   }
@@ -145,7 +162,10 @@ void tls_log::last_flush() {
     flushing = false;
   }
 
-  if (logbuf_offset) {
+  // while (is_dirty()) {
+  //}
+
+  if (logbuf_offset && !is_dirty()) {
     issue_flush(active_logbuf, logbuf_offset);
     switch_log_buffers();
     poll_flush();
@@ -235,19 +255,18 @@ void tls_log::poll_flush() {
     io_uring_cqe_seen(&ring, cqe);
     durable_lsn += size;
     current_segment()->size += size;
-    if (current_segment()->expected_size != current_segment()->size)
-      printf("n ");
   }
 
-  if (!dirty) {
-    // get last tls durable csn
-    uint64_t last_tls_durable_csn =
-        (active_logbuf == logbuf[0]) ? last_csns[1] : last_csns[0];
+  if (!normal || (doing_ddl && dirty))
+    return;
 
-    // set tls durable csn
-    tcommitter.set_tls_durable_csn(last_tls_durable_csn);
-    ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == last_tls_durable_csn);
-  }
+  // get last tls durable csn
+  uint64_t last_tls_durable_csn =
+      (active_logbuf == logbuf[0]) ? last_csns[1] : last_csns[0];
+
+  // set tls durable csn
+  tcommitter.set_tls_durable_csn(last_tls_durable_csn);
+  ALWAYS_ASSERT(tcommitter.get_tls_durable_csn() == last_tls_durable_csn);
 
   if (ermia::config::pcommit_thread) {
     dlog::wakeup_commit_daemon();
@@ -260,7 +279,6 @@ void tls_log::create_segment() {
   size_t n = snprintf(segment_name_buf, sizeof(segment_name_buf),
                       SEGMENT_FILE_NAME_FMT, id, (unsigned int)segments.size());
   DIR *logdir = opendir(dir);
-  if (logdir == nullptr) printf("logdir null\n");
   ALWAYS_ASSERT(logdir);
   segments.emplace_back(dirfd(logdir), segment_name_buf);
 }
@@ -287,7 +305,9 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
   }
 
   CRITICAL_SECTION(cs, lock);
-  tcommitter.set_dirty_flag();
+  if (normal)
+    tcommitter.set_dirty_flag();
+  set_dirty(true);
 
   uint32_t alloc_size = payload_size + sizeof(log_block);
   LOG_IF(FATAL, alloc_size > logbuf_size) << "Total size too big";
@@ -366,7 +386,7 @@ retry:
     flush = false;
   }
   tcommitter.enqueue_committed_xct(csn, &flush, &insert);
-  if (count >= 2) {
+  if (count >= 10) {
     tcommitter.extend_queue();
     tcommitter.enqueue_committed_xct(csn, &flush, &insert);
     count = 0;

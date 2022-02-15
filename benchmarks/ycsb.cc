@@ -56,6 +56,11 @@ class ycsb_sequential_worker : public ycsb_base_worker {
     return w;
   }
 
+  virtual ddl_workload_desc_vec get_ddl_workload() const {
+    ddl_workload_desc_vec ddl_w;
+    return ddl_w;
+  }
+
   static rc_t TxnRead(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_read(); }
   static rc_t TxnReadAMACMultiGet(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_read_amac_multiget(); }
   static rc_t TxnReadSimpleCoroMultiGet(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_read_simple_coro_multiget(); }

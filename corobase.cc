@@ -1245,7 +1245,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
     co_return c.return_code;
   }
 
-  XctSearchRangeCallback cb(t, &c);
+  XctSearchRangeCallback cb(t, &c, nullptr, table_descriptor);
 
   ConcurrentMasstree:: low_level_search_range_scanner<false>
     scanner(&masstree_, end_key ? end_key : nullptr, cb);
@@ -1415,7 +1415,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
             goto get_version_start_over;
           }
           if (visible) {
-            if (!scanner.visit_value(ka, cur_obj->GetPinnedTuple())) {
+            if (!scanner.visit_value(ka, cur_obj->GetPinnedTuple(), 0)) {
               goto done;
             }
             break;

@@ -3,6 +3,7 @@
 #include "txn.h"
 #include "varstr.h"
 #include "engine_internal.h"
+#include "schema.h"
 #include "../benchmarks/record/encoder.h"
 #include "../schema.h"
 
@@ -34,14 +35,12 @@ class Table;
 
 extern TableDescriptor *schema_td;
 extern uint64_t *_cdc_last_csn;
-extern uint64_t t3;
 
 class Engine {
 private:
   std::unordered_map<std::string, pthread_rwlock_t*> lock_map;
   std::mutex map_rw_latch;
 
-private:
   void LogIndexCreation(bool primary, FID table_fid, FID index_fid, const std::string &index_name);
   void CreateIndex(const char *table_name, const std::string &index_name, bool is_primary);
 
@@ -113,6 +112,7 @@ public:
     int ret = pthread_rwlock_unlock(lock_map[table_name]);
     LOG_IF(FATAL, ret);
   }
+
 };
 
 // User-facing table abstraction, operates on OIDs only
@@ -137,7 +137,7 @@ private:
 
   struct SearchRangeCallback {
     SearchRangeCallback(OrderedIndex::ScanCallback &upcall)
-        : upcall(&upcall), return_code(rc_t{RC_FALSE}) {}
+        : upcall(&upcall), return_code(rc_t{RC_FALSE}), max_oid(0) {}
     ~SearchRangeCallback() {}
 
     inline bool Invoke(const ConcurrentMasstree::string_type &k,
@@ -147,12 +147,22 @@ private:
 
     OrderedIndex::ScanCallback *upcall;
     rc_t return_code;
+    OID max_oid;
   };
 
   struct XctSearchRangeCallback
       : public ConcurrentMasstree::low_level_search_range_callback {
-    XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback)
-        : t(t), caller_callback(caller_callback) {}
+    XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback,
+                           Schema_record *schema,
+                           TableDescriptor *table_descriptor, bool insert_oid)
+        : t(t), caller_callback(caller_callback), schema(schema),
+          table_descriptor(table_descriptor), insert_oid(insert_oid) {}
+
+    XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback,
+                           Schema_record *schema,
+                           TableDescriptor *table_descriptor)
+        : t(t), caller_callback(caller_callback), schema(schema),
+          table_descriptor(table_descriptor), insert_oid(false) {}
 
     virtual void
     on_resp_node(const typename ConcurrentMasstree::node_opaque_t *n,
@@ -161,11 +171,14 @@ private:
                         const typename ConcurrentMasstree::string_type &k,
                         dbtuple *v,
                         const typename ConcurrentMasstree::node_opaque_t *n,
-                        uint64_t version);
+                        uint64_t version, OID oid);
 
   private:
     transaction *const t;
     SearchRangeCallback *const caller_callback;
+    Schema_record *schema;
+    TableDescriptor *table_descriptor;
+    bool insert_oid;
   };
 
   struct PurgeTreeWalker : public ConcurrentMasstree::tree_walk_callback {
@@ -185,6 +198,8 @@ private:
 
 public:
   ConcurrentMasstreeIndex(const char *table_name, bool primary) : OrderedIndex(table_name, primary) {}
+  ConcurrentMasstreeIndex(const char *table_name, bool primary, FID self_fid)
+      : OrderedIndex(table_name, primary, self_fid) {}
 
   ConcurrentMasstree &GetMasstree() { return masstree_; }
 
@@ -226,42 +241,27 @@ public:
   PROMISE(void) ReadSchemaTable(transaction *t, rc_t &rc, const varstr &key, varstr &value, 
 		  OID *out_oid = nullptr) override;
 
-  PROMISE(rc_t)
-  WriteNormalTable(str_arena *arena, OrderedIndex *index, transaction *t,
-                   varstr &value) override;
-
-  PROMISE(rc_t) WriteNormalTable1(str_arena *arena, OrderedIndex *old_oorder_table_index, OrderedIndex *order_line_table_index, OrderedIndex *oorder_table_secondary_index, transaction *t, varstr &value, std::function<ermia::varstr *(
-                  const char *keyp,
-                  size_t keylen,
-                  const ermia::varstr &value,
-                  uint64_t schema_version,
-                  ermia::transaction *txn,
-                  ermia::str_arena *arena,
-                  ermia::OrderedIndex *index)> op) override;
-
-  PROMISE(rc_t)
-  CheckNormalTable(str_arena *arena, OrderedIndex *index, transaction *t,
-                   std::function<bool(uint64_t)> op) override;
-
   PROMISE(void)
   GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-            OID *out_oid = nullptr,
-            TableDescriptor *old_table_descriptor = nullptr,
-            TableDescriptor *old_table_descriptors[] = nullptr,
-            uint64_t version = 0) override;
+            OID *out_oid = nullptr, Schema_record *schema = nullptr) override;
   PROMISE(rc_t)
   UpdateRecord(transaction *t, const varstr &key, varstr &value,
-               TableDescriptor *old_table_descriptor = nullptr,
-               TableDescriptor *old_table_descriptors[] = nullptr,
-               uint64_t version = 0) override;
-  PROMISE(rc_t) InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
-  PROMISE(rc_t) RemoveRecord(transaction *t, const varstr &key, TableDescriptor *old_table_descriptor = nullptr) override;
+               Schema_record *schema = nullptr) override;
+  PROMISE(rc_t)
+  InsertRecord(transaction *t, const varstr &key, varstr &value,
+               OID *out_oid = nullptr,
+               Schema_record *schema = nullptr) override;
+  PROMISE(rc_t)
+  RemoveRecord(transaction *t, const varstr &key,
+               Schema_record *schema = nullptr) override;
   PROMISE(bool) InsertOID(transaction *t, const varstr &key, OID oid) override;
 
-  PROMISE(rc_t) Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-                     ScanCallback &callback, str_arena *arena = nullptr) override;
-  PROMISE(rc_t) ReverseScan(transaction *t, const varstr &start_key,
-                            const varstr *end_key, ScanCallback &callback, str_arena *arena = nullptr) override;
+  PROMISE(rc_t)
+  Scan(transaction *t, const varstr &start_key, const varstr *end_key,
+       ScanCallback &callback, Schema_record *schema = nullptr) override;
+  PROMISE(rc_t)
+  ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
+              ScanCallback &callback, Schema_record *schema = nullptr) override;
 
   inline size_t Size() override { return masstree_.size(); }
   std::map<std::string, uint64_t> Clear() override;

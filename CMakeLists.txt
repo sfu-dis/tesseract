@@ -83,101 +83,51 @@ add_library(thread_pool SHARED ${THREAD_POOL_SRC})
 
 # Non blocking DDL - SI
 add_library(corobase_ddl_si SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_si PROPERTIES COMPILE_FLAGS "-DSIDDL")
+set_target_properties(corobase_ddl_si PROPERTIES COMPILE_FLAGS "-DDDL -DSIDDL")
 
 add_executable(corobase_DDL_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_SI PROPERTIES COMPILE_FLAGS "-DSIDDL")
+set_target_properties(corobase_DDL_SI PROPERTIES COMPILE_FLAGS "-DDDL -DSIDDL")
 target_link_libraries(corobase_DDL_SI corobase_ddl_si thread_pool)
-
-add_library(corobase_ddl_si_microbench SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_si_microbench PROPERTIES COMPILE_FLAGS "-DSIDDL -DMICROBENCH")
-
-add_executable(corobase_DDL_SI_MICROBENCH ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_SI_MICROBENCH PROPERTIES COMPILE_FLAGS "-DSIDDL -DMICROBENCH")
-target_link_libraries(corobase_DDL_SI_MICROBENCH corobase_ddl_si thread_pool)
 
 set(corobase_SI_LIB corobase_ddl_si)
 
 # Non blocking DDL - Copy
 add_library(corobase_ddl_copy SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_copy PROPERTIES COMPILE_FLAGS "-DCOPYDDL")
+set_target_properties(corobase_ddl_copy PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL")
 
 add_executable(corobase_DDL_COPY ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_COPY PROPERTIES COMPILE_FLAGS "-DCOPYDDL")
+set_target_properties(corobase_DDL_COPY PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL")
 target_link_libraries(corobase_DDL_COPY corobase_ddl_copy thread_pool)
-
-add_library(corobase_ddl_copy_microbench SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_copy_microbench PROPERTIES COMPILE_FLAGS "-DCOPYDDL -DMICROBENCH")
-
-add_executable(corobase_DDL_COPY_MICROBENCH ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_COPY_MICROBENCH PROPERTIES COMPILE_FLAGS "-DCOPYDDL -DMICROBENCH")
-target_link_libraries(corobase_DDL_COPY_MICROBENCH corobase_ddl_copy_microbench thread_pool)
 
 set(corobase_COPY_LIB corobase_ddl_copy)
 
-# Non blocking DDL - Double write copy
-add_library(corobase_ddl_double_copy SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_double_copy PROPERTIES COMPILE_FLAGS "-DCOPYDDL -DDCOPYDDL")
-
-add_executable(corobase_DDL_DOUBLE_COPY ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_DOUBLE_COPY PROPERTIES COMPILE_FLAGS "-DCOPYDDL -DDCOPYDDL")
-target_link_libraries(corobase_DDL_DOUBLE_COPY corobase_ddl_double_copy thread_pool)
-
-add_library(corobase_ddl_double_copy_microbench SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_double_copy_microbench PROPERTIES COMPILE_FLAGS "-DCOPYDDL -DDCOPYDDL -DMICROBENCH")
-
-add_executable(corobase_DDL_DOUBLE_COPY_MICROBENCH ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_DOUBLE_COPY_MICROBENCH PROPERTIES COMPILE_FLAGS "-DCOPYDDL -DDCOPYDDL -DMICROBENCH")
-target_link_libraries(corobase_DDL_DOUBLE_COPY_MICROBENCH corobase_ddl_double_copy_microbench thread_pool)
-
-set(corobase_COPY_LIB corobase_ddl_double_copy)
-
 # Non blocking DDL - Lazy copy
 add_library(corobase_ddl_lazy_copy SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_lazy_copy PROPERTIES COMPILE_FLAGS "-DCOPYDDL -DLAZYDDL")
+set_target_properties(corobase_ddl_lazy_copy PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL")
 
 add_executable(corobase_DDL_LAZY_COPY ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_LAZY_COPY PROPERTIES COMPILE_FLAGS "-DCOPYDDL -DLAZYDDL")
+set_target_properties(corobase_DDL_LAZY_COPY PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL")
 target_link_libraries(corobase_DDL_LAZY_COPY corobase_ddl_lazy_copy thread_pool)
-
-add_library(corobase_ddl_lazy_copy_microbench SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_lazy_copy_microbench PROPERTIES COMPILE_FLAGS "-DCOPYDDL -DLAZYDDL -DMICROBENCH")
-
-add_executable(corobase_DDL_LAZY_COPY_MICROBENCH ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_LAZY_COPY_MICROBENCH PROPERTIES COMPILE_FLAGS "-DCOPYDDL -DLAZYDDL -DMICROBENCH")
-target_link_libraries(corobase_DDL_LAZY_COPY_MICROBENCH corobase_ddl_lazy_copy_microbench thread_pool)
 
 set(corobase_COPY_LIB corobase_ddl_lazy_copy)
 
-# Non copy & verification DDL
-add_library(corobase_ddl_no_copy_verification SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_no_copy_verification PROPERTIES COMPILE_FLAGS "-DNONEDDL")
+# Non blocking DDL - Optimized lazy copy
+add_library(corobase_ddl_opt_lazy_copy SHARED ${LIB_SRC})
+set_target_properties(corobase_ddl_opt_lazy_copy PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL -DOPTLAZYDDL")
 
-add_executable(corobase_DDL_NO_COPY_VERIFICATION ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_NO_COPY_VERIFICATION PROPERTIES COMPILE_FLAGS "-DNONEDDL")
-target_link_libraries(corobase_DDL_NO_COPY_VERIFICATION corobase_ddl_no_copy_verification thread_pool)
+add_executable(corobase_DDL_OPT_LAZY_COPY ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(corobase_DDL_OPT_LAZY_COPY PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL -DOPTLAZYDDL")
+target_link_libraries(corobase_DDL_OPT_LAZY_COPY corobase_ddl_opt_lazy_copy thread_pool)
 
-add_library(corobase_ddl_no_copy_verification_microbench SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_no_copy_verification_microbench PROPERTIES COMPILE_FLAGS "-DNONEDDL -DMICROBENCH")
-
-add_executable(corobase_DDL_NO_COPY_VERIFICATION_MICROBENCH ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_NO_COPY_VERIFICATION_MICROBENCH PROPERTIES COMPILE_FLAGS "-DNONEDDL -DMICROBENCH")
-target_link_libraries(corobase_DDL_NO_COPY_VERIFICATION_MICROBENCH corobase_ddl_no_copy_verification_microbench thread_pool)
+set(corobase_COPY_LIB corobase_ddl_opt_lazy_copy)
 
 # Blocking DDL
 add_library(corobase_ddl_block SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_block PROPERTIES COMPILE_FLAGS "-DBLOCKDDL")
+set_target_properties(corobase_ddl_block PROPERTIES COMPILE_FLAGS "-DDDL -DBLOCKDDL")
 
 add_executable(corobase_DDL_BLOCK ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_BLOCK PROPERTIES COMPILE_FLAGS "-DBLOCKDDL")
+set_target_properties(corobase_DDL_BLOCK PROPERTIES COMPILE_FLAGS "-DDDL -DBLOCKDDL")
 target_link_libraries(corobase_DDL_BLOCK corobase_ddl_block thread_pool)
-
-add_library(corobase_ddl_block_microbench SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_block_microbench PROPERTIES COMPILE_FLAGS "-DBLOCKDDL -DMICROBENCH")
-
-add_executable(corobase_DDL_BLOCK_MICROBENCH ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_BLOCK_MICROBENCH PROPERTIES COMPILE_FLAGS "-DBLOCKDDL -DMICROBENCH")
-target_link_libraries(corobase_DDL_BLOCK_MICROBENCH corobase_ddl_block_microbench thread_pool)
 
 set(corobase_BLOCK_LIB corobase_ddl_block)
 

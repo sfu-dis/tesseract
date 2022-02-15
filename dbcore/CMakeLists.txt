@@ -11,6 +11,7 @@ endif()
 
 set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/burt-hash.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/ddl.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dlog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dynarray.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/epoch.cpp

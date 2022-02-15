@@ -614,14 +614,11 @@ fat_ptr sm_oid_mgr::free_oid(FID f, OID o) {
 
 fat_ptr sm_oid_mgr::UpdateTuple(oid_array *oa, OID o, const varstr *value,
                                 TXN::xid_context *updater_xc,
-                                fat_ptr *new_obj_ptr,
-                                bool wait_for_new_schema) {
-wait_for_commit:
+                                fat_ptr *new_obj_ptr, uint64_t schema_version) {
   auto *ptr = oa->get(o);
 start_over:
   fat_ptr head = volatile_read(*ptr);
   if (head == NULL_PTR) {
-    // std::cerr << "NULL_PTR" << std::endl;
     return NULL_PTR;
   }
   ASSERT(head.asi_type() == 0);
@@ -655,7 +652,7 @@ start_over:
       goto install;
     }
 
-    // wait_for_commit:
+  wait_for_commit:
     TXN::xid_context *holder = TXN::xid_get_context(holder_xid);
     if (!holder) {
       ASSERT(old_desc->GetCSN().asi_type() == fat_ptr::ASI_CSN ||
@@ -713,7 +710,7 @@ install:
   // Note for this to be correct we shouldn't allow multiple txs
   // working on the same tuple at the same time.
 
-  *new_obj_ptr = Object::Create(value, updater_xc->begin_epoch);
+  *new_obj_ptr = Object::Create(value, updater_xc->begin_epoch, schema_version);
   ASSERT(new_obj_ptr->asi_type() == 0);
   Object *new_object = (Object *)new_obj_ptr->offset();
   new_object->SetCSN(updater_xc->owner.to_ptr());
@@ -857,7 +854,6 @@ start_over:
 }
 
 bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retry) {
-wait_for_commit:
   fat_ptr csn = object->GetCSN();
   uint16_t asi_type = csn.asi_type();
   if (csn == NULL_PTR) {
@@ -878,7 +874,7 @@ wait_for_commit:
       return true;
     }
 
-    // wait_for_commit:
+  wait_for_commit:
     auto *holder = TXN::xid_get_context(holder_xid);
     if (!holder) { // invalid XID (dead tuple, must retry than goto next in the
                    // chain)
@@ -901,11 +897,7 @@ wait_for_commit:
       goto wait_for_commit;
     }
 
-#ifdef DCOPYDDL
-    if (state == TXN::TXN_CMMTD || state == TXN::TXN_DDL) {
-#else
     if (state == TXN::TXN_CMMTD) {
-#endif
       ASSERT(volatile_read(holder->end));
       ASSERT(owner == holder_xid);
 #if defined(RC) || defined(RC_SPIN)

@@ -60,7 +60,7 @@ PROMISE(void) Object::Pin() {
 
   // Already pre-allocated space when creating the object
   dbtuple *tuple = (dbtuple *)GetPayload();
-  new (tuple) dbtuple(0);  // set the correct size later
+  new (tuple) dbtuple(0, 0); // set the correct size later
 
   size_t data_sz = decode_size_aligned(pdest_.size_code());
   if (where == fat_ptr::ASI_LOG) {
@@ -132,7 +132,8 @@ PROMISE(void) Object::Pin() {
   }
 }
 
-fat_ptr Object::Create(const varstr *tuple_value, epoch_num epoch) {
+fat_ptr Object::Create(const varstr *tuple_value, epoch_num epoch,
+                       uint64_t schema_version) {
   // Calculate tuple size
   const uint32_t data_sz = tuple_value ? tuple_value->size() : 0;
   size_t alloc_sz = sizeof(dbtuple) + sizeof(Object) + data_sz;
@@ -145,7 +146,7 @@ fat_ptr Object::Create(const varstr *tuple_value, epoch_num epoch) {
 
   // Tuple setup
   dbtuple *tuple = (dbtuple *)obj->GetPayload();
-  new (tuple) dbtuple(data_sz);
+  new (tuple) dbtuple(data_sz, schema_version);
   if (tuple_value) {
     memcpy(tuple->get_value_start(), tuple_value->p, data_sz);
   }

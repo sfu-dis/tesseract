@@ -400,9 +400,15 @@ PROMISE(int) basic_table<P>::scan(H helper, Str firstkey, bool emit_firstkey, F 
       ermia::OID o = entry.value();
       v = AWAIT ermia::oidmgr->oid_get_version(tuple_array_, o, xc);
       if (v) {
-        if (!scanner.visit_value(ka, v))
+        if (!scanner.visit_value(ka, v, o))
           goto done;
       }
+#ifdef OPTLAZYDDL
+      else {
+        if (!scanner.visit_value(ka, v, o))
+          goto done;
+      }
+#endif
       stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
       state = stack[stackpos].find_next(helper, ka, entry);
     } break;

@@ -801,6 +801,8 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
             v.c_middle.assign("OE");
             v.c_data.assign(RandomStr(r, RandomNumber(r, 300, 500)));
 
+            v.v = 0;
+
 #ifndef NDEBUG
             checker::SanityCheckCustomer(&k, &v);
 #endif
@@ -1081,9 +1083,15 @@ class credit_check_order_line_scan_callback
       const order_line::value *val = Decode(value, v_ol_temp);
       sum += val->ol_amount;
     } else {
-      order_line_1::value v_ol_temp;
-      const order_line_1::value *val = Decode(value, v_ol_temp);
-      sum += val->ol_amount;
+      if (ermia::config::ddl_example == 0) {
+        order_line_1::value v_ol_temp;
+        const order_line_1::value *val = Decode(value, v_ol_temp);
+        sum += val->ol_amount;
+      } else if (ermia::config::ddl_example == 4) {
+        order_line_stock::value v_ol_temp;
+        const order_line_stock::value *val = Decode(value, v_ol_temp);
+        sum += val->ol_amount;
+      }
     }
     return true;
   }
@@ -1108,82 +1116,35 @@ class credit_check_order_scan_callback : public ermia::OrderedIndex::ScanCallbac
 
 class order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
  public:
-  order_line_nop_callback(uint64_t v, bool lazy, ermia::transaction *t, 
-		          ermia::str_arena *arena, ermia::OrderedIndex *index) 
-	  : n(0), schema_v(v), _lazy(lazy), _txn(t), _arena(arena), _index(index) {
-	    if (lazy) {
-              // printf("lazy scan, version: %lu\n", v);
-	      // _arena = new ermia::str_arena(ermia::config::arena_size_mb);
-	    }
-	  }
-  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
-    MARK_REFERENCED(keylen);
-    MARK_REFERENCED(keyp);
-    if (schema_v == 0) {
-      ASSERT(keylen == sizeof(order_line::key));
-      order_line::value v_ol_temp;
-      const order_line::value *v_ol = Decode(value, v_ol_temp);
-#ifdef LAZYDDL
-      if (_lazy) {
-	ermia::varstr *k = _arena->next(keylen);
-        if (!k) {
-          _arena = new ermia::str_arena(ermia::config::arena_size_mb);
-          k = _arena->next(keylen);
-        }
-        ASSERT(k);
-        k->copy_from(keyp, keylen);
-	      
-	order_line_1::value v_ol_1;
-        v_ol_1.ol_i_id = v_ol->ol_i_id;
-        v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
-        v_ol_1.ol_amount = v_ol->ol_amount;
-        v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
-        v_ol_1.ol_quantity = v_ol->ol_quantity;
-        v_ol_1.v = schema_v + 1;
-        v_ol_1.ol_tax = 0;
-
-        const size_t order_line_sz = Size(v_ol_1);
-	ermia::varstr *d_v = _arena->next(order_line_sz);
-
-        if (!d_v) {
-          _arena = new ermia::str_arena(ermia::config::arena_size_mb);
-          d_v = _arena->next(order_line_sz);
-        }
-        d_v = &Encode(*d_v, v_ol_1);
-
-	ermia::OID oid = 0;
-        rc_t rc = {RC_INVALID};
-        AWAIT _index->GetOID(*k, rc, _txn->GetXIDContext(), oid);
-
-	if (rc._val != RC_TRUE) {
-	  invoke_status = _index->InsertRecord(_txn, *k, *d_v);
-          if (invoke_status._val != RC_TRUE) {
-            printf("DDL normal record insert false\n");
-            return false;
-          }
-        }
-      }
-#endif
+   order_line_nop_callback(uint64_t v) : n(0), schema_v(v) {}
+   virtual bool Invoke(const char *keyp, size_t keylen,
+                       const ermia::varstr &value) {
+     MARK_REFERENCED(keylen);
+     MARK_REFERENCED(keyp);
+     if (schema_v == 0) {
+       ASSERT(keylen == sizeof(order_line::key));
+       order_line::value v_ol_temp;
+       const order_line::value *v_ol = Decode(value, v_ol_temp);
 #ifndef NDEBUG
-    order_line::key k_ol_temp;
-    const order_line::key *k_ol = Decode(keyp, k_ol_temp);
-    checker::SanityCheckOrderLine(k_ol, v_ol);
+       order_line::key k_ol_temp;
+       const order_line::key *k_ol = Decode(keyp, k_ol_temp);
+       checker::SanityCheckOrderLine(k_ol, v_ol);
 #endif
     } else {
       ASSERT(keylen == sizeof(order_line_1::key));
-      order_line_1::value v_ol_temp;
-      const order_line_1::value *v_ol = Decode(value, v_ol_temp);
+      if (ermia::config::ddl_example == 0) {
+        order_line_1::value v_ol_temp;
+        const order_line_1::value *v_ol = Decode(value, v_ol_temp);
+      } else if (ermia::config::ddl_example == 4) {
+        order_line_stock::value v_ol_temp;
+        const order_line_stock::value *v_ol = Decode(value, v_ol_temp);
+      }
     }
     ++n;
     return true;
   }
   size_t n;
   uint64_t schema_v;
-  bool _lazy;
-  ermia::transaction *_txn;
-  ermia::str_arena *_arena;
-  ermia::OrderedIndex *_index;
-  rc_t invoke_status = rc_t{RC_TRUE};
 };
 
 class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
@@ -1213,10 +1174,7 @@ class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
 
 class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
  public:
-   order_line_scan_callback(uint64_t v, bool lazy, ermia::transaction *t,
-                            ermia::str_arena *arena, ermia::OrderedIndex *index)
-       : n(0), schema_v(v), _lazy(lazy), _txn(t), _arena(arena), _index(index) {
-   }
+   order_line_scan_callback(uint64_t v) : n(0), schema_v(v) {}
    virtual bool Invoke(const char *keyp, size_t keylen,
                        const ermia::varstr &value) {
      MARK_REFERENCED(keyp);
@@ -1230,60 +1188,18 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
        const order_line::key *k_ol = Decode(keyp, k_ol_temp);
        checker::SanityCheckOrderLine(k_ol, v_ol);
 #endif
-
-#ifdef LAZYDDL
-       if (_lazy) {
-         ermia::varstr *k = _arena->next(keylen);
-         if (!k) {
-           _arena = new ermia::str_arena(ermia::config::arena_size_mb);
-           k = _arena->next(keylen);
-         }
-         ASSERT(k);
-         k->copy_from(keyp, keylen);
-
-         order_line_1::value v_ol_1;
-         v_ol_1.ol_i_id = v_ol->ol_i_id;
-         v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
-         v_ol_1.ol_amount = v_ol->ol_amount;
-         v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
-         v_ol_1.ol_quantity = v_ol->ol_quantity;
-         v_ol_1.v = schema_v + 1;
-         v_ol_1.ol_tax = 0;
-
-         const size_t order_line_sz = Size(v_ol_1);
-         ermia::varstr *d_v = _arena->next(order_line_sz);
-
-         if (!d_v) {
-           _arena = new ermia::str_arena(ermia::config::arena_size_mb);
-           d_v = _arena->next(order_line_sz);
-         }
-         d_v = &Encode(*d_v, v_ol_1);
-
-         ermia::OID oid = 0;
-         rc_t rc = {RC_INVALID};
-         AWAIT _index->GetOID(*k, rc, _txn->GetXIDContext(), oid);
-
-         if (rc._val != RC_TRUE) {
-           invoke_status = _index->InsertRecord(_txn, *k, *d_v);
-           if (invoke_status._val != RC_TRUE) {
-             printf("DDL normal record insert false\n");
-             return false;
-           }
-         }
-       }
-#endif
        s_i_ids[v_ol->ol_i_id] = 1;
      } else {
        ASSERT(keylen == sizeof(order_line_1::key));
-       order_line_1::value v_ol_temp;
-       const order_line_1::value *v_ol = Decode(value, v_ol_temp);
-       if (v_ol->v == 0) {
-         // printf("v_ol->v == 0\n");
-         invoke_status = rc_t{RC_ABORT_SI_CONFLICT};
-         return false;
+       if (ermia::config::ddl_example == 0) {
+         order_line_1::value v_ol_temp;
+         const order_line_1::value *v_ol = Decode(value, v_ol_temp);
+         s_i_ids[v_ol->ol_i_id] = 1;
+       } else if (ermia::config::ddl_example == 4) {
+         order_line_stock::value v_ol_temp;
+         const order_line_stock::value *v_ol = Decode(value, v_ol_temp);
+         s_i_ids[v_ol->ol_i_id] = 1;
        }
-       ALWAYS_ASSERT(v_ol->v != 0);
-       s_i_ids[v_ol->ol_i_id] = 1;
      }
      n++;
      return true;
@@ -1291,11 +1207,6 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
    size_t n;
    uint64_t schema_v;
    std::unordered_map<uint, bool> s_i_ids;
-   bool _lazy;
-   ermia::transaction *_txn;
-   ermia::str_arena *_arena;
-   ermia::OrderedIndex *_index;
-   rc_t invoke_status = rc_t{RC_TRUE};
 };
 
 class new_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
@@ -1323,24 +1234,43 @@ class new_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
 
 class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
  public:
-  tpcc_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
-              const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-              const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
-              spin_barrier *barrier_a, spin_barrier *barrier_b,
-              uint home_warehouse_id)
-      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
-        tpcc_worker_mixin(partitions),
-        home_warehouse_id(home_warehouse_id),
-        schema_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("SCHEMA"))
-#if !defined(COPYDDL)	
-	, order_line_table_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("order_line_0"))
-	, oorder_table_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("oorder_0"))
-        , oorder_table_secondary_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("oorder_c_id_idx_0"))
+   tpcc_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
+               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+               const std::map<std::string, std::vector<ermia::OrderedIndex *>>
+                   &partitions,
+               spin_barrier *barrier_a, spin_barrier *barrier_b,
+               uint home_warehouse_id)
+       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a,
+                      barrier_b),
+         tpcc_worker_mixin(partitions), home_warehouse_id(home_warehouse_id),
+         schema_index(
+             (ermia::ConcurrentMasstreeIndex *)open_tables.at("SCHEMA"))
+#if !defined(COPYDDL)
+         ,
+         order_line_table_index(
+             (ermia::ConcurrentMasstreeIndex *)open_tables.at("order_line_0")),
+         oorder_table_index(
+             (ermia::ConcurrentMasstreeIndex *)open_tables.at("oorder_0")),
+         oorder_table_secondary_index((ermia::ConcurrentMasstreeIndex *)
+                                          open_tables.at("oorder_c_id_idx_0")),
+         customer_table_index(
+             (ermia::ConcurrentMasstreeIndex *)open_tables.at("customer_0")),
+         customer_table_secondary_index(
+             (ermia::ConcurrentMasstreeIndex *)open_tables.at(
+                 "customer_name_idx_0"))
 #endif
-	{
+#ifdef BLOCKDDL
+         ,
+         schema_fid(
+             open_tables.at("SCHEMA")->GetTableDescriptor()->GetTupleFid()),
+         order_line_fid(open_tables.at("order_line_0")
+                            ->GetTableDescriptor()
+                            ->GetTupleFid())
+#endif
+   {
     ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
     memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
-  }
+   }
 
   // XXX(stephentu): tune this
   static const size_t NMaxCustomerIdxScanElems = 512;
@@ -1399,8 +1329,9 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   }
 
   virtual workload_desc_vec get_workload() const override;
+  virtual ddl_workload_desc_vec get_ddl_workload() const override;
 
- protected:
+protected:
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
 
  private:
@@ -1411,6 +1342,12 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   ermia::ConcurrentMasstreeIndex *order_line_table_index;
   ermia::ConcurrentMasstreeIndex *oorder_table_index;
   ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index;
+  ermia::ConcurrentMasstreeIndex *customer_table_index;
+  ermia::ConcurrentMasstreeIndex *customer_table_secondary_index;
+#endif
+#ifdef BLOCKDDL
+  ermia::FID schema_fid;
+  ermia::FID order_line_fid;
 #endif
 };
 
@@ -1473,6 +1410,7 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
   }
 
   virtual workload_desc_vec get_workload() const override;
+  virtual ddl_workload_desc_vec get_ddl_workload() const override;
   virtual void MyWork(char *) override;
 
  protected:

@@ -47,19 +47,18 @@ struct dbtuple {
                 // and must abort.
 #endif
   uint32_t size;   // actual size of record
+  uint8_t schema_version;  // schema version
   uint8_t value_start[0];  // must be last field
 
-  dbtuple(uint32_t size)
-  :
+  dbtuple(uint32_t size, uint64_t schema_version)
+      :
 #if defined(SSN) || defined(SSI)
-    sstamp(NULL_PTR),
-    xstamp(0),
-    preader(0),
+        sstamp(NULL_PTR), xstamp(0), preader(0),
 #endif
 #ifdef SSI
-    s2(0),
+        s2(0),
 #endif
-    size(size) {
+        size(size), schema_version((uint8_t)schema_version) {
   }
 
   ~dbtuple() {}
