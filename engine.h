@@ -5,7 +5,6 @@
 #include "engine_internal.h"
 #include "schema.h"
 #include "../benchmarks/record/encoder.h"
-#include "../schema.h"
 
 #if __clang__
 #include <experimental/coroutine>
