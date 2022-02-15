@@ -1712,7 +1712,7 @@ rc_t tpcc_worker::txn_ddl() {
   txn->add_old_td_map(schema.td);
   txn->add_new_td_map(schema.td);
 
-  TryCatch(ddl_exe->scan(txn, arena, v2));
+  TryCatch(ddl_exe->scan(txn, arena));
 
   TryCatch(db->Commit(txn));
 #elif COPYDDL
@@ -1806,7 +1806,7 @@ rc_t tpcc_worker::txn_ddl() {
 
     if (ermia::config::ddl_type != 4) {
 #if !defined(LAZYDDL)
-      rc = ddl_exe->scan(txn, arena, v3);
+      rc = ddl_exe->scan(txn, arena);
       TryCatch(rc);
 #endif
     }
@@ -2045,7 +2045,7 @@ rc_t tpcc_worker::txn_ddl() {
     txn->set_ddl_executor(ddl_exe);
 
 #if !defined(LAZYDDL)
-    rc = ddl_exe->scan(txn, arena, v3);
+    rc = ddl_exe->scan(txn, arena);
     TryCatch(rc);
 #endif
   } else if (ermia::config::ddl_example == 2) {
@@ -2278,7 +2278,7 @@ rc_t tpcc_worker::txn_ddl() {
     txn->set_ddl_executor(ddl_exe);
 
 #if !defined(LAZYDDL)
-    rc = ddl_exe->scan(txn, arena, v3);
+    rc = ddl_exe->scan(txn, arena);
     TryCatch(rc);
 #endif
   } else if (ermia::config::ddl_example == 3) {
@@ -2355,7 +2355,7 @@ rc_t tpcc_worker::txn_ddl() {
     txn->set_ddl_executor(ddl_exe);
 
 #if !defined(LAZYDDL)
-    rc = ddl_exe->scan(txn, arena, v3);
+    rc = ddl_exe->scan(txn, arena);
     TryCatch(rc);
 #endif
   } else if (ermia::config::ddl_example == 4) {
@@ -2479,7 +2479,7 @@ rc_t tpcc_worker::txn_ddl() {
 
     if (ermia::config::ddl_type != 4) {
 #if !defined(LAZYDDL)
-    rc = ddl_exe->scan(txn, arena, v3);
+    rc = ddl_exe->scan(txn, arena);
     TryCatch(rc);
 #endif
     }

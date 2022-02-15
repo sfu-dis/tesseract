@@ -26,7 +26,7 @@ ddl_type ddl_type_map(uint32_t type) {
   }
 }
 
-rc_t ddl_executor::scan(transaction *t, str_arena *arena, varstr &value) {
+rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
   DLOG(INFO) << "First CDC begins";
   cdc_workers = t->changed_data_capture();

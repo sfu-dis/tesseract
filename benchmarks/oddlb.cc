@@ -161,7 +161,7 @@ public:
     if (ermia::config::ddl_type != 4) {
 #if !defined(LAZYDDL)
       rc = rc_t{RC_INVALID};
-      rc = ddl_exe->scan(txn, arena, v2);
+      rc = ddl_exe->scan(txn, arena);
       TryCatch(rc);
 #endif
     }
@@ -206,7 +206,7 @@ public:
     txn->add_old_td_map(schema.td);
     txn->add_new_td_map(schema.td);
 
-    TryCatch(ddl_exe->scan(txn, arena, v1));
+    TryCatch(ddl_exe->scan(txn, arena));
 
     TryCatch(db->Commit(txn));
 #elif SIDDL
@@ -250,7 +250,7 @@ public:
                                     ermia::ddl::schema_state_type::READY);
 
     rc = rc_t{RC_INVALID};
-    rc = ddl_exe->scan(txn, arena, v);
+    rc = ddl_exe->scan(txn, arena);
     if (rc._val != RC_TRUE) {
       std::cerr << "SI DDL aborts" << std::endl;
       count++;
