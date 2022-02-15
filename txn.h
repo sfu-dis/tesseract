@@ -32,9 +32,6 @@ extern volatile bool cdc_test;
 extern std::atomic<uint64_t> ddl_end;
 extern uint64_t *_tls_durable_lsn CACHE_ALIGNED;
 
-extern std::unordered_map<FID, pthread_rwlock_t *> lock_map;
-extern std::mutex map_rw_latch;
-
 struct Schema_record;
 
 #if defined(SSN) || defined(SSI)
