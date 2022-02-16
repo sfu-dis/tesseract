@@ -404,7 +404,7 @@ void bench_runner::start_measurement() {
   size_t n_query_commits = 0;
   uint64_t latency_numer_us = 0;
   for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-#if defined(COPYDDL)
+#ifdef COPYDDL
     if (i == ddl_worker_id) {
       continue;
     }
@@ -425,20 +425,24 @@ void bench_runner::start_measurement() {
     }
   }
 
+#ifdef COPYDDL
+  double workers_size = workers.size() - 1;
+#else
+  double workers_size = workers.size();
+#endif
+
   const unsigned long elapsed = t.lap();
   const double elapsed_nosync_sec = double(elapsed_nosync) / 1000000.0;
   const double agg_nosync_throughput = double(n_commits) / elapsed_nosync_sec;
   const double avg_nosync_per_core_throughput =
-      agg_nosync_throughput / double(workers.size());
+      agg_nosync_throughput / workers_size;
 
   const double elapsed_sec = double(elapsed) / 1000000.0;
   const double agg_throughput = double(n_commits) / elapsed_sec;
-  const double avg_per_core_throughput =
-      agg_throughput / double(workers.size());
+  const double avg_per_core_throughput = agg_throughput / workers_size;
 
   const double agg_abort_rate = double(n_aborts) / elapsed_sec;
-  const double avg_per_core_abort_rate =
-      agg_abort_rate / double(workers.size());
+  const double avg_per_core_abort_rate = agg_abort_rate / workers_size;
 
   const double agg_system_abort_rate =
       double(n_aborts - n_user_aborts) / elapsed_sec;
@@ -460,6 +464,11 @@ void bench_runner::start_measurement() {
 
   tx_stat_map agg_txn_counts = workers[0]->get_txn_counts();
   for (size_t i = 1; i < workers.size(); i++) {
+#ifdef COPYDDL
+    if (i == ddl_worker_id) {
+      continue;
+    }
+#endif
     auto &c = workers[i]->get_txn_counts();
     for (auto &t : c) {
       std::get<0>(agg_txn_counts[t.first]) += std::get<0>(t.second);

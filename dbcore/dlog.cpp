@@ -144,12 +144,16 @@ void tls_log::reset_logbuf(uint64_t logbuf_mb) {
 
 void tls_log::enqueue_flush() {
   CRITICAL_SECTION(cs, lock);
+  if (is_dirty()) {
+    return;
+  }
+
   if (flushing) {
     poll_flush();
     flushing = false;
   }
 
-  if (logbuf_offset && !is_dirty()) {
+  if (logbuf_offset) {
     issue_flush(active_logbuf, logbuf_offset);
     switch_log_buffers();
   }
@@ -157,15 +161,16 @@ void tls_log::enqueue_flush() {
 
 void tls_log::last_flush() {
   CRITICAL_SECTION(cs, lock);
+  if (is_dirty()) {
+    return;
+  }
+
   if (flushing) {
     poll_flush();
     flushing = false;
   }
 
-  // while (is_dirty()) {
-  //}
-
-  if (logbuf_offset && !is_dirty()) {
+  if (logbuf_offset) {
     issue_flush(active_logbuf, logbuf_offset);
     switch_log_buffers();
     poll_flush();

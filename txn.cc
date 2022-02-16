@@ -1199,7 +1199,7 @@ transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
   RETURN false;
 }
 
-void transaction::table_scan(TableDescriptor *td, const varstr *key, OID oid) {
+OID transaction::table_scan(TableDescriptor *td, const varstr *key, OID oid) {
   auto *key_array = td->GetKeyArray();
   if (oid == -1) {
     auto *alloc = oidmgr->get_allocator(td->GetTupleFid());
@@ -1209,9 +1209,10 @@ void transaction::table_scan(TableDescriptor *td, const varstr *key, OID oid) {
     fat_ptr *entry = key_array->get(oid);
     varstr *k = entry ? (varstr *)((*entry).offset()) : nullptr;
     if (k && key && memcmp(k->data(), key->data(), key->size())) {
-      break;
+      return o;
     }
   }
+  return 0;
 }
 
 void transaction::LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key) {

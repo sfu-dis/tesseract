@@ -175,7 +175,14 @@ ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
     XctSearchRangeCallback cb(t, &c, schema, table_descriptor);
     AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
                                       cb, t->xc);
-    if (schema && !schema->show_index) {
+    bool need_scan = false;
+#ifdef LAZYDDL
+    if (c.return_code._val == RC_FALSE) {
+      need_scan = true;
+      c.max_oid = -1;
+    }
+#endif
+    if (schema && (!schema->show_index || need_scan)) {
       t->table_scan(table_descriptor, end_key, c.max_oid);
     }
   }
@@ -200,7 +207,14 @@ ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
     }
     AWAIT masstree_.rsearch_range_call(start_key, end_key ? &lowervk : nullptr,
                                        cb, t->xc);
-    if (schema && !schema->show_index) {
+    bool need_scan = false;
+#ifdef LAZYDDL
+    if (c.return_code._val == RC_FALSE) {
+      need_scan = true;
+      c.max_oid = -1;
+    }
+#endif
+    if (schema && (!schema->show_index || need_scan)) {
       t->table_scan(table_descriptor, end_key, c.max_oid);
     }
   }
@@ -254,9 +268,9 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
         volatile_write(rc._val, RC_ABORT_INTERNAL);
       }
       RETURN;
-#else
-    if (schema && !schema->show_index) {
+    }
 #endif
+    if (schema && !schema->show_index) {
       t->table_scan(table_descriptor, &key, oid);
     }
 
@@ -496,14 +510,18 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   rc_t rc = {RC_INVALID};
   AWAIT GetOID(key, rc, t->xc, oid);
 
+  if (schema && !schema->old_index && schema->show_index &&
+      rc._val != RC_TRUE) {
+    oid = t->table_scan(table_descriptor, &key, -1);
+  }
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
   if (schema && schema->old_index && rc._val != RC_TRUE) {
     OID out_oid = INVALID_OID;
     rc = AWAIT InsertRecord(t, key, value, &out_oid, schema);
     RETURN rc;
-#else
-  if (schema && !schema->show_index) {
+  }
 #endif
+  if (schema && !schema->show_index) {
     t->table_scan(table_descriptor, &key, oid);
   }
 
@@ -579,9 +597,9 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
   if (schema && schema->old_index && rc._val != RC_TRUE) {
     RETURN rc_t{RC_TRUE};
-#else
-  if (schema && !schema->show_index) {
+  }
 #endif
+  if (schema && !schema->show_index) {
     t->table_scan(table_descriptor, &key, oid);
   }
 

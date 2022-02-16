@@ -249,7 +249,7 @@ protected:
   void LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key);
 
   // Table scan to simulate operations without index
-  void table_scan(TableDescriptor *td, const varstr *key, OID oid);
+  OID table_scan(TableDescriptor *td, const varstr *key, OID oid);
 
 public:
   // Reads the contents of tuple into v within this transaction context
