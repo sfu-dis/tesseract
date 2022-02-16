@@ -175,14 +175,7 @@ ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
     XctSearchRangeCallback cb(t, &c, schema, table_descriptor);
     AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
                                       cb, t->xc);
-    bool need_scan = false;
-#ifdef LAZYDDL
-    if (c.return_code._val == RC_FALSE) {
-      need_scan = true;
-      c.max_oid = -1;
-    }
-#endif
-    if (schema && (!schema->show_index || need_scan)) {
+    if (schema && !schema->show_index) {
       t->table_scan(table_descriptor, end_key, c.max_oid);
     }
   }
@@ -207,14 +200,7 @@ ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
     }
     AWAIT masstree_.rsearch_range_call(start_key, end_key ? &lowervk : nullptr,
                                        cb, t->xc);
-    bool need_scan = false;
-#ifdef LAZYDDL
-    if (c.return_code._val == RC_FALSE) {
-      need_scan = true;
-      c.max_oid = -1;
-    }
-#endif
-    if (schema && (!schema->show_index || need_scan)) {
+    if (schema && !schema->show_index) {
       t->table_scan(table_descriptor, end_key, c.max_oid);
     }
   }
@@ -510,16 +496,25 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   rc_t rc = {RC_INVALID};
   AWAIT GetOID(key, rc, t->xc, oid);
 
-  if (schema && !schema->old_index && schema->show_index &&
+#ifdef LAZYDDL
+  /*if (schema && schema->old_index && schema->old_index != schema->index &&
       rc._val != RC_TRUE) {
-    oid = t->table_scan(table_descriptor, &key, -1);
-  }
-#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    oid = t->table_scan(table_descriptor, &key, 0);
+  }*/
+#if !defined(OPTLAZYDDL)
   if (schema && schema->old_index && rc._val != RC_TRUE) {
     OID out_oid = INVALID_OID;
-    rc = AWAIT InsertRecord(t, key, value, &out_oid, schema);
+    varstr old_value;
+    ((ConcurrentMasstreeIndex *)(schema->old_index))
+        ->GetRecord(t, rc, key, old_value, &out_oid, schema);
+    if (rc._val == RC_TRUE) {
+      rc = AWAIT InsertRecord(t, key, value, &out_oid, schema);
+    } else {
+      rc = rc_t{RC_ABORT_INTERNAL};
+    }
     RETURN rc;
   }
+#endif
 #endif
   if (schema && !schema->show_index) {
     t->table_scan(table_descriptor, &key, oid);

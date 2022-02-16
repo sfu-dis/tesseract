@@ -2326,6 +2326,7 @@ rc_t tpcc_worker::txn_ddl() {
 
     new_order_line_table_index->SetArrays(true);
     order_line_schema.td->SetPrimaryIndex(new_order_line_table_index);
+    order_line_schema.old_index = old_order_line_table_index;
     order_line_schema.index = new_order_line_table_index;
     order_line_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
     order_line_schema.show_index = true;

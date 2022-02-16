@@ -1201,15 +1201,15 @@ transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
 
 OID transaction::table_scan(TableDescriptor *td, const varstr *key, OID oid) {
   auto *key_array = td->GetKeyArray();
-  if (oid == -1) {
+  if (oid == 0) {
     auto *alloc = oidmgr->get_allocator(td->GetTupleFid());
     oid = alloc->head.hiwater_mark;
   }
   for (OID o = 1; o <= oid; o++) {
-    fat_ptr *entry = key_array->get(oid);
+    fat_ptr *entry = key_array->get(o);
     varstr *k = entry ? (varstr *)((*entry).offset()) : nullptr;
     if (k && key && memcmp(k->data(), key->data(), key->size())) {
-      return o;
+      // return o;
     }
   }
   return 0;
