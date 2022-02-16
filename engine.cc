@@ -496,12 +496,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   rc_t rc = {RC_INVALID};
   AWAIT GetOID(key, rc, t->xc, oid);
 
-#ifdef LAZYDDL
-  /*if (schema && schema->old_index && schema->old_index != schema->index &&
-      rc._val != RC_TRUE) {
-    oid = t->table_scan(table_descriptor, &key, 0);
-  }*/
-#if !defined(OPTLAZYDDL)
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
   if (schema && schema->old_index && rc._val != RC_TRUE) {
     OID out_oid = INVALID_OID;
     varstr old_value;
@@ -514,7 +509,6 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
     }
     RETURN rc;
   }
-#endif
 #endif
   if (schema && !schema->show_index) {
     t->table_scan(table_descriptor, &key, oid);
