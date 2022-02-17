@@ -1,8 +1,10 @@
 #pragma once
+#include <numa.h>
 #include <x86intrin.h>
+
 #include <iostream>
 #include <string>
-#include <numa.h>
+
 #include "sm-defs.h"
 
 namespace ermia {
@@ -75,15 +77,11 @@ extern bool scan_with_it;
 extern bool full_replay;
 
 enum SystemState { kStateLoading, kStateForwardProcessing, kStateShutdown };
-inline bool IsLoading() {
-  return volatile_read(state) == kStateLoading;
-}
+inline bool IsLoading() { return volatile_read(state) == kStateLoading; }
 inline bool IsForwardProcessing() {
   return volatile_read(state) == kStateForwardProcessing;
 }
-inline bool IsShutdown() {
-  return volatile_read(state) == kStateShutdown;
-}
+inline bool IsShutdown() { return volatile_read(state) == kStateShutdown; }
 
 // Warm-up policy when recovering from a chkpt or the log.
 // Set by --recovery-warm-up=[lazy/eager/whatever].
@@ -124,13 +122,9 @@ extern bool amac_version_chain;
 
 extern double cycles_per_byte;
 
-inline bool eager_warm_up() {
-  return recovery_warm_up_policy == WARM_UP_EAGER;
-}
+inline bool eager_warm_up() { return recovery_warm_up_policy == WARM_UP_EAGER; }
 
-inline bool lazy_warm_up() {
-  return recovery_warm_up_policy == WARM_UP_LAZY;
-}
+inline bool lazy_warm_up() { return recovery_warm_up_policy == WARM_UP_LAZY; }
 
 void init();
 void sanity_check();

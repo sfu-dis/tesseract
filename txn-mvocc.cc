@@ -1,13 +1,13 @@
 #ifdef MVOCC
 
-#include "macros.h"
-#include "txn.h"
 #include "dbcore/rcu.h"
 #include "dbcore/serial.h"
 #include "engine.h"
+#include "macros.h"
+#include "txn.h"
 
 namespace ermia {
- 
+
 rc_t transaction::mvocc_commit() {
   ASSERT(log);
   // get clsn, abort if failed

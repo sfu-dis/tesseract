@@ -1,7 +1,8 @@
-#include "sm-alloc.h"
 #include "sm-object.h"
-#include "../tuple.h"
+
 #include "../engine.h"
+#include "../tuple.h"
+#include "sm-alloc.h"
 
 namespace ermia {
 
@@ -10,14 +11,17 @@ namespace ermia {
 // to only data size (i.e., the size of the payload of dbtuple rounded up).
 // Returns a fat_ptr to the object created
 PROMISE(void) Object::Pin() {
-  // config::always_load is a scenario where we always dig out the payload from the durable log,
-  // even if the version is already in-memory.
+  // config::always_load is a scenario where we always dig out the payload from
+  // the durable log, even if the version is already in-memory.
   if (config::always_load) {
-try_load:
-    uint32_t val = __sync_val_compare_and_swap(&status_, kStatusMemory, kStatusLoading);
+  try_load:
+    uint32_t val =
+        __sync_val_compare_and_swap(&status_, kStatusMemory, kStatusLoading);
     if (val == kStatusLoading) {
-      // Serialize the concurrent readers such that they don't mess up with the same version.
-      while (volatile_read(status_) != kStatusMemory) {}
+      // Serialize the concurrent readers such that they don't mess up with the
+      // same version.
+      while (volatile_read(status_) != kStatusMemory) {
+      }
       goto try_load;
     }
   } else {
@@ -39,7 +43,8 @@ try_load:
     if (val == kStatusMemory) {
       RETURN;
     } else if (val == kStatusLoading) {
-      while (volatile_read(status_) != kStatusMemory) {}
+      while (volatile_read(status_) != kStatusMemory) {
+      }
       RETURN;
     } else {
       ASSERT(val == kStatusStorage);
@@ -73,7 +78,7 @@ try_load:
 
     if (config::iouring_read_log) {
       log->issue_read(segment->fd, (char *)logrec, data_sz, offset_in_seg);
-      while(!log->peek_read((char *)logrec, data_sz)) {
+      while (!log->peek_read((char *)logrec, data_sz)) {
         SUSPEND;
       }
     } else {
@@ -82,7 +87,8 @@ try_load:
     }
 
     // Copy the entire dbtuple including dbtuple header and data
-    memcpy(tuple, &logrec->data[0], sizeof(dbtuple) + ((dbtuple *)logrec->data)->size);
+    memcpy(tuple, &logrec->data[0],
+           sizeof(dbtuple) + ((dbtuple *)logrec->data)->size);
 
     // Could be a delete
     ASSERT(tuple->size < data_sz);

@@ -4,11 +4,11 @@
 #include <utility>
 #include <vector>
 
+#include "../macros.h"
 #include "../third-party/foedus/zipfian_random.hpp"
 #include "bench.h"
 #include "record/encoder.h"
 #include "record/inline_str.h"
-#include "../macros.h"
 
 extern uint g_initial_table_size;
 extern int g_zipfian_rng;
@@ -33,14 +33,17 @@ enum class ReadTransactionType {
 DO_STRUCT(ycsb_kv, YCSB_KEY_FIELDS, YCSB_VALUE_FIELDS);
 
 inline void BuildKey(uint64_t key, ermia::varstr &k) {
-  ASSERT (sizeof(ycsb_kv::key) % sizeof(uint64_t) == 0);
+  ASSERT(sizeof(ycsb_kv::key) % sizeof(uint64_t) == 0);
   static const char *prefix = "corobase";
   ycsb_kv::key extended_key;
-  for (uint offset = 0; offset < sizeof(ycsb_kv::key); offset = offset + sizeof(uint64_t)) {
+  for (uint offset = 0; offset < sizeof(ycsb_kv::key);
+       offset = offset + sizeof(uint64_t)) {
     if (offset + sizeof(uint64_t) < sizeof(ycsb_kv::key))
-      memcpy((void *)(extended_key.y_key.data() + offset), (void *)prefix, sizeof(uint64_t));
+      memcpy((void *)(extended_key.y_key.data() + offset), (void *)prefix,
+             sizeof(uint64_t));
     else
-      *(uint64_t *)(extended_key.y_key.data() + offset) = __builtin_bswap64(key);
+      *(uint64_t *)(extended_key.y_key.data() + offset) =
+          __builtin_bswap64(key);
   }
   Encode(k, extended_key);
 }
@@ -89,10 +92,12 @@ struct YcsbWorkload {
 
 class ycsb_usertable_loader : public bench_loader {
  public:
-  ycsb_usertable_loader(unsigned long seed, ermia::Engine *db,
-                        const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                        uint32_t loader_id)
+  ycsb_usertable_loader(
+      unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+      uint32_t loader_id)
       : bench_loader(seed, db, open_tables), loader_id(loader_id) {}
+
  private:
   uint32_t loader_id;
 
@@ -103,7 +108,7 @@ class ycsb_usertable_loader : public bench_loader {
 void ycsb_create_db(ermia::Engine *db);
 void ycsb_parse_options(int argc, char **argv);
 
-template<class WorkerType>
+template <class WorkerType>
 class ycsb_bench_runner : public bench_runner {
  public:
   ycsb_bench_runner(ermia::Engine *db) : bench_runner(db) {
@@ -111,20 +116,22 @@ class ycsb_bench_runner : public bench_runner {
   }
 
   virtual void prepare(char *) {
-    open_tables["USERTABLE"] = ermia::TableDescriptor::GetPrimaryIndex("USERTABLE");
+    open_tables["USERTABLE"] =
+        ermia::TableDescriptor::GetPrimaryIndex("USERTABLE");
   }
 
  protected:
   virtual std::vector<bench_loader *> make_loaders() {
     uint64_t requested = g_initial_table_size;
-    uint32_t nloaders = 
-	    std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
-    uint64_t records_per_thread = std::max<uint64_t>(1, g_initial_table_size / nloaders);
+    uint32_t nloaders = std::thread::hardware_concurrency() /
+                        (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
+    uint64_t records_per_thread =
+        std::max<uint64_t>(1, g_initial_table_size / nloaders);
     g_initial_table_size = records_per_thread * nloaders;
 
     if (ermia::config::verbose) {
-      std::cerr << "[INFO] requested for " << requested << " records, will load "
-           << g_initial_table_size << std::endl;
+      std::cerr << "[INFO] requested for " << requested
+                << " records, will load " << g_initial_table_size << std::endl;
     }
 
     std::vector<bench_loader *> ret;
@@ -140,7 +147,8 @@ class ycsb_bench_runner : public bench_runner {
     for (size_t i = 0; i < ermia::config::worker_threads; i++) {
       auto seed = r.next();
       LOG(INFO) << "RND SEED: " << seed;
-      ret.push_back(new WorkerType(i, seed, db, open_tables, &barrier_a, &barrier_b));
+      ret.push_back(
+          new WorkerType(i, seed, db, open_tables, &barrier_a, &barrier_b));
     }
     return ret;
   }
@@ -148,38 +156,42 @@ class ycsb_bench_runner : public bench_runner {
 
 class ycsb_base_worker : public bench_worker {
  public:
-  ycsb_base_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
-                   const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                   spin_barrier *barrier_a, spin_barrier *barrier_b)
-      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
-        table_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("USERTABLE")) {
-      const unsigned int key_rng_seed = 1237 + worker_id;
-      uniform_rng = foedus::assorted::UniformRandom(key_rng_seed);
-      if (g_zipfian_rng) {
-          zipfian_rng.init(g_initial_table_size, g_zipfian_theta, key_rng_seed);
-      }
+  ycsb_base_worker(
+      unsigned int worker_id, unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+      spin_barrier *barrier_a, spin_barrier *barrier_b)
+      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a,
+                     barrier_b),
+        table_index(
+            (ermia::ConcurrentMasstreeIndex *)open_tables.at("USERTABLE")) {
+    const unsigned int key_rng_seed = 1237 + worker_id;
+    uniform_rng = foedus::assorted::UniformRandom(key_rng_seed);
+    if (g_zipfian_rng) {
+      zipfian_rng.init(g_initial_table_size, g_zipfian_theta, key_rng_seed);
+    }
 
-      const unsigned int scan_length_rng_seed = 2358 + worker_id;
-      scan_length_uniform_rng =
-          foedus::assorted::UniformRandom(scan_length_rng_seed);
-      if (g_scan_length_zipfain_rng) {
-          scan_length_zipfian_rng.init(g_scan_max_length,
-                                       g_scan_length_zipfain_theta,
-                                       scan_length_rng_seed);
-      }
+    const unsigned int scan_length_rng_seed = 2358 + worker_id;
+    scan_length_uniform_rng =
+        foedus::assorted::UniformRandom(scan_length_rng_seed);
+    if (g_scan_length_zipfain_rng) {
+      scan_length_zipfian_rng.init(
+          g_scan_max_length, g_scan_length_zipfain_theta, scan_length_rng_seed);
+    }
   }
 
  protected:
   struct KeyCompare : public std::unary_function<ermia::varstr, bool> {
     explicit KeyCompare(ermia::varstr &baseline) : baseline(baseline) {}
-    bool operator() (const ermia::varstr &arg) {
-      return *(uint64_t*)arg.p == *(uint64_t*)baseline.p;
+    bool operator()(const ermia::varstr &arg) {
+      return *(uint64_t *)arg.p == *(uint64_t *)baseline.p;
     }
     ermia::varstr &baseline;
   };
 
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
-  ALWAYS_INLINE ermia::varstr &str(ermia::str_arena &a, uint64_t size) { return *a.next(size); }
+  ALWAYS_INLINE ermia::varstr &str(ermia::str_arena &a, uint64_t size) {
+    return *a.next(size);
+  }
 
   uint64_t rng_gen_key() {
     uint64_t r = 0;
@@ -193,18 +205,20 @@ class ycsb_base_worker : public bench_worker {
 
   uint64_t rng_gen_scan_length() {
     uint64_t r = 0;
-    if(g_scan_length_zipfain_rng) {
-      while (!r)
-        r = scan_length_zipfian_rng.next();
+    if (g_scan_length_zipfain_rng) {
+      while (!r) r = scan_length_zipfian_rng.next();
     } else {
-      r = scan_length_uniform_rng.uniform_within(g_scan_min_length, g_scan_max_length);
+      r = scan_length_uniform_rng.uniform_within(g_scan_min_length,
+                                                 g_scan_max_length);
     }
     return r;
   }
 
   ermia::varstr &GenerateKey(ermia::transaction *t) {
-    ermia::varstr &k = t ? *t->string_allocator().next(sizeof(ycsb_kv::key)) : str(sizeof(ycsb_kv::key));
-    new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(ycsb_kv::key));
+    ermia::varstr &k = t ? *t->string_allocator().next(sizeof(ycsb_kv::key))
+                         : str(sizeof(ycsb_kv::key));
+    new (&k)
+        ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(ycsb_kv::key));
     ::BuildKey(rng_gen_key(), k);
     return k;
   }
@@ -215,18 +229,23 @@ class ycsb_base_worker : public bench_worker {
   };
 
   ScanRange GenerateScanRange(ermia::transaction *t) {
-    ermia::varstr &start_key = t ? *t->string_allocator().next(sizeof(ycsb_kv::key)) : str(sizeof(ycsb_kv::key));
-    ermia::varstr &end_key = t ? *t->string_allocator().next(sizeof(ycsb_kv::key)) : str(sizeof(ycsb_kv::key));
+    ermia::varstr &start_key =
+        t ? *t->string_allocator().next(sizeof(ycsb_kv::key))
+          : str(sizeof(ycsb_kv::key));
+    ermia::varstr &end_key =
+        t ? *t->string_allocator().next(sizeof(ycsb_kv::key))
+          : str(sizeof(ycsb_kv::key));
 
-    new (&start_key) ermia::varstr((char *)&start_key + sizeof(ermia::varstr), sizeof(ycsb_kv::key));
-    new (&end_key) ermia::varstr((char *)&end_key + sizeof(ermia::varstr), sizeof(ycsb_kv::key));
+    new (&start_key) ermia::varstr((char *)&start_key + sizeof(ermia::varstr),
+                                   sizeof(ycsb_kv::key));
+    new (&end_key) ermia::varstr((char *)&end_key + sizeof(ermia::varstr),
+                                 sizeof(ycsb_kv::key));
     uint64_t r_start_key = rng_gen_key();
     uint64_t r_end_key = r_start_key + rng_gen_scan_length();
     ::BuildKey(r_start_key, start_key);
     ::BuildKey(r_end_key, end_key);
     return {start_key, end_key};
   }
-  
 
   ermia::ConcurrentMasstreeIndex *table_index;
   foedus::assorted::UniformRandom uniform_rng;
@@ -236,24 +255,25 @@ class ycsb_base_worker : public bench_worker {
 };
 
 class ycsb_scan_callback : public ermia::OrderedIndex::ScanCallback {
-  public:
-    ycsb_scan_callback() : n(0){}
-    bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) override {
-      MARK_REFERENCED(keyp);
-      MARK_REFERENCED(keylen);
+ public:
+  ycsb_scan_callback() : n(0) {}
+  bool Invoke(const char *keyp, size_t keylen,
+              const ermia::varstr &value) override {
+    MARK_REFERENCED(keyp);
+    MARK_REFERENCED(keylen);
 #if defined(SI)
-      ASSERT(*(char *)value.data() == 'a');
+    ASSERT(*(char *)value.data() == 'a');
 #endif
-      memcpy(value_buf, value.data(), sizeof(ycsb_kv::value));
-      memcpy(key_buf, keyp, keylen);
-      n++;
-      return true;
-    }
+    memcpy(value_buf, value.data(), sizeof(ycsb_kv::value));
+    memcpy(key_buf, keyp, keylen);
+    n++;
+    return true;
+  }
 
   inline size_t size() const { return n; }
 
-  private:
-    int32_t n;
-    unsigned char key_buf[sizeof(ycsb_kv::key)];
-    unsigned char value_buf[sizeof(ycsb_kv::value)];
+ private:
+  int32_t n;
+  unsigned char key_buf[sizeof(ycsb_kv::key)];
+  unsigned char value_buf[sizeof(ycsb_kv::value)];
 };

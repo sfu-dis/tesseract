@@ -1,9 +1,9 @@
 #include "sm-exceptions.h"
 
-#include "sm-common.h"
-
 #include <stdarg.h>
 #include <stdio.h>
+
+#include "sm-common.h"
 
 illegal_argument::illegal_argument(char const volatile *m, ...) {
   va_list ap;

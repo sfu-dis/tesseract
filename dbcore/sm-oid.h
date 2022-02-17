@@ -1,14 +1,12 @@
 #pragma once
 
-#include "epoch.h"
-#include "sm-common.h"
-#include "sm-oid-alloc.h"
-#include "sm-coroutine.h"
-
-#include "dynarray.h"
-
 #include "../macros.h"
 #include "../tuple.h"
+#include "dynarray.h"
+#include "epoch.h"
+#include "sm-common.h"
+#include "sm-coroutine.h"
+#include "sm-oid-alloc.h"
 
 namespace ermia {
 
@@ -89,19 +87,18 @@ struct OIDAMACState {
   fat_ptr tentative_next;
 
   OIDAMACState(OID oid)
-  : oid(oid)
-  , stage(0)
-  , tuple(nullptr)
-  , done(false)
-  , ptr(NULL_PTR)
-  , cur_obj(nullptr)
-  , prev_obj(nullptr)
-  , tentative_next(NULL_PTR)
-  {}
+      : oid(oid),
+        stage(0),
+        tuple(nullptr),
+        done(false),
+        ptr(NULL_PTR),
+        cur_obj(nullptr),
+        prev_obj(nullptr),
+        tentative_next(NULL_PTR) {}
 };
 
 class sm_oid_mgr {
-public:
+ public:
   friend class sm_chkpt_mgr;
 
   /* The object array for each file resides in the OID array for
@@ -117,11 +114,11 @@ public:
    */
   static FID const METADATA_FID = 2;
 
-private:
+ private:
   static FID const FIRST_FREE_FID = 3;
   static size_t const MUTEX_COUNT = 256;
 
-public:
+ public:
   /* Create a new OID manager.
 
      NOTE: the scan must be positioned at the first record of the
@@ -232,20 +229,24 @@ public:
   fat_ptr UpdateTuple(oid_array *oa, OID o, const varstr *value,
                       TXN::xid_context *updater_xc, fat_ptr *new_obj_ptr);
   inline fat_ptr UpdateTuple(FID f, OID o, const varstr *value,
-                             TXN::xid_context *updater_xc, fat_ptr *new_obj_ptr) {
+                             TXN::xid_context *updater_xc,
+                             fat_ptr *new_obj_ptr) {
     return UpdateTuple(get_array(f), o, value, updater_xc, new_obj_ptr);
   }
 
-  PROMISE(dbtuple *) oid_get_version(FID f, OID o, TXN::xid_context *visitor_xc) {
+  PROMISE(dbtuple *)
+  oid_get_version(FID f, OID o, TXN::xid_context *visitor_xc) {
     ASSERT(f);
     return oid_get_version(get_array(f), o, visitor_xc);
   }
-  PROMISE(dbtuple *) oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc);
-  dbtuple *oid_get_s2pl(oid_array *oa, OID o, TXN::xid_context *visitor_xc, bool for_write, rc_t &out_rc);
+  PROMISE(dbtuple *)
+  oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc);
+  dbtuple *oid_get_s2pl(oid_array *oa, OID o, TXN::xid_context *visitor_xc,
+                        bool for_write, rc_t &out_rc);
 
-  PROMISE(void) oid_get_version_amac(oid_array *oa,
-                            std::vector<OIDAMACState> &requests,
-                            TXN::xid_context *visitor_xc);
+  PROMISE(void)
+  oid_get_version_amac(oid_array *oa, std::vector<OIDAMACState> &requests,
+                       TXN::xid_context *visitor_xc);
 
   /* Helper function for oid_get_version to test visibility. Returns true if the
    * version ([object]) is visible to the given transaction ([xc]). Sets [retry]
@@ -317,7 +318,7 @@ public:
   inline fat_ptr *oid_access(FID f, OID o) { return get_array(f)->get(o); }
   inline bool file_exists(FID f) { return files->get(f)->offset(); }
 
-private:
+ private:
   int dfd;  // dir for storing OID chkpt data file
 
   /* And here they all are! */
@@ -329,7 +330,7 @@ private:
    */
   std::mutex mutexen[MUTEX_COUNT];
 
-public:
+ public:
   sm_oid_mgr();
   ~sm_oid_mgr();
 };

@@ -3,25 +3,23 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#include <sparsehash/dense_hash_map>
 #include <vector>
 
-#include "dbcore/dlog.h"
 #include "dbcore/dlog-tx.h"
-#include "dbcore/xid.h"
+#include "dbcore/dlog.h"
 #include "dbcore/sm-config.h"
-#include "dbcore/sm-oid.h"
 #include "dbcore/sm-object.h"
+#include "dbcore/sm-oid.h"
 #include "dbcore/sm-rc.h"
-#include "masstree/masstree_btree.h"
+#include "dbcore/xid.h"
 #include "macros.h"
+#include "masstree/masstree_btree.h"
 #include "str_arena.h"
 #include "tuple.h"
-
-#include <sparsehash/dense_hash_map>
 using google::dense_hash_map;
 
 namespace ermia {
-
 
 #if defined(SSN) || defined(SSI)
 #define set_tuple_xstamp(tuple, s)                                    \
@@ -45,8 +43,9 @@ struct write_record_t {
   uint64_t size;
   bool is_insert;
   write_record_t(fat_ptr *entry, FID fid, OID oid, uint64_t size, bool insert)
-    : entry(entry), fid(fid), oid(oid), size(size), is_insert(insert) {}
-  write_record_t() : entry(nullptr), fid(0), oid(0), size(0), is_insert(false) {}
+      : entry(entry), fid(fid), oid(oid), size(size), is_insert(insert) {}
+  write_record_t()
+      : entry(nullptr), fid(0), oid(0), size(0), is_insert(false) {}
   inline Object *get_object() { return (Object *)entry->offset(); }
 };
 
@@ -55,7 +54,8 @@ struct write_set_t {
   uint32_t num_entries;
   write_record_t entries[kMaxEntries];
   write_set_t() : num_entries(0) {}
-  inline void emplace_back(fat_ptr *oe, FID fid, OID oid, uint32_t size, bool insert) {
+  inline void emplace_back(fat_ptr *oe, FID fid, OID oid, uint32_t size,
+                           bool insert) {
     ALWAYS_ASSERT(num_entries < kMaxEntries);
     new (&entries[num_entries]) write_record_t(oe, fid, oid, size, insert);
     ++num_entries;
@@ -70,7 +70,7 @@ class transaction {
   friend class ConcurrentMasstreeIndex;
   friend struct sm_oid_mgr;
 
-public:
+ public:
   typedef TXN::txn_state txn_state;
 
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
@@ -89,18 +89,20 @@ public:
 
     TXN_FLAG_READ_MOSTLY = 0x3,
 
-    // A context-switch transaction doesn't enter/exit thread during construct/destruct.
+    // A context-switch transaction doesn't enter/exit thread during
+    // construct/destruct.
     TXN_FLAG_CSWITCH = 0x8,
   };
 
   inline bool is_read_mostly() { return flags & TXN_FLAG_READ_MOSTLY; }
   inline bool is_read_only() { return flags & TXN_FLAG_READ_ONLY; }
 
-protected:
+ protected:
   inline txn_state state() const { return xc->state; }
 
   // the absent set is a mapping from (masstree node -> version_number).
-  typedef dense_hash_map<const ConcurrentMasstree::node_opaque_t *, uint64_t > MasstreeAbsentSet;
+  typedef dense_hash_map<const ConcurrentMasstree::node_opaque_t *, uint64_t>
+      MasstreeAbsentSet;
   MasstreeAbsentSet masstree_absent_set;
 
  public:
@@ -134,7 +136,8 @@ protected:
   // Insert a record to the underlying table
   OID Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple = nullptr);
 
-  PROMISE(rc_t) Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
+  PROMISE(rc_t)
+  Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
 
   // Same as Update but without support for logging key
   inline PROMISE(rc_t) Update(TableDescriptor *td, OID oid, varstr *v) {
@@ -144,7 +147,7 @@ protected:
 
   void LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key);
 
-public:
+ public:
   // Reads the contents of tuple into v within this transaction context
   rc_t DoTupleRead(dbtuple *tuple, varstr *out_v);
 
@@ -152,7 +155,8 @@ public:
 
   inline str_arena &string_allocator() { return *sa; }
 
-  inline void add_to_write_set(fat_ptr *entry, FID fid, OID oid, uint64_t size, bool insert) {
+  inline void add_to_write_set(fat_ptr *entry, FID fid, OID oid, uint64_t size,
+                               bool insert) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto &w = write_set[i];
@@ -162,7 +166,8 @@ public:
 #endif
 
     // Work out the encoded size to be added to the log block later
-    auto logrec_size = align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
+    auto logrec_size =
+        align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
     log_size += logrec_size;
     // Each write set entry still just records the size of the actual "data" to
     // be inserted to the log excluding dlog::log_record, which will be
@@ -179,7 +184,7 @@ public:
   dlog::tls_log *log;
   uint32_t log_size;
   str_arena *sa;
-  uint32_t coro_batch_idx; // its index in the batch
+  uint32_t coro_batch_idx;  // its index in the batch
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t read_set;

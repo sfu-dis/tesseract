@@ -1,13 +1,16 @@
-#include <atomic>
+#include "dlog.h"
+
 #include <dirent.h>
 
-#include "dlog.h"
-#include "sm-common.h"
-#include "sm-config.h"
+#include <atomic>
+
 #include "../engine.h"
 #include "../macros.h"
+#include "sm-common.h"
+#include "sm-config.h"
 
-// io_uring code based off of examples from https://unixism.net/loti/tutorial/index.html
+// io_uring code based off of examples from
+// https://unixism.net/loti/tutorial/index.html
 
 namespace ermia {
 
@@ -29,7 +32,7 @@ thread_local struct io_uring tls_read_ring;
 std::thread *pcommit_thread = nullptr;
 std::condition_variable pcommit_daemon_cond;
 std::mutex pcommit_daemon_lock;
-std::atomic<bool>pcommit_daemon_has_work(false);
+std::atomic<bool> pcommit_daemon_has_work(false);
 
 void flush_all() {
   // Flush rest blocks
@@ -91,7 +94,8 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
   logbuf[1] = (char *)numa_alloc_onnode(logbuf_size, numa_node);
   LOG_IF(FATAL, !logbuf[1]) << "Unable to allocate log buffer";
   segment_size = max_segment_mb * uint32_t{1024 * 1024};
-  LOG_IF(FATAL, segment_size > SEGMENT_MAX_SIZE) << "Unable to allocate log buffer";
+  LOG_IF(FATAL, segment_size > SEGMENT_MAX_SIZE)
+      << "Unable to allocate log buffer";
 
   logbuf_offset = 0;
   active_logbuf = logbuf[0];
@@ -102,7 +106,8 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
   create_segment();
   current_segment()->start_offset = current_lsn;
 
-  DLOG(INFO) << "Log " << id << ": new segment " << segments.size() - 1 << ", start lsn " << current_lsn;
+  DLOG(INFO) << "Log " << id << ": new segment " << segments.size() - 1
+             << ", start lsn " << current_lsn;
 
   // Initialize io_uring
   int ret = io_uring_queue_init(256, &ring, 0);
@@ -170,7 +175,7 @@ void tls_log::issue_read(int fd, char *buf, uint64_t size, uint64_t offset) {
 }
 
 bool tls_log::peek_read(char *buf, uint64_t size) {
-  struct io_uring_cqe* cqe;
+  struct io_uring_cqe *cqe;
   int ret = io_uring_peek_cqe(&tls_read_ring, &cqe);
 
   if (ret < 0) {
@@ -186,7 +191,7 @@ bool tls_log::peek_read(char *buf, uint64_t size) {
   if (completed_buf != buf) {
     return false;
   }
-  
+
   ALWAYS_ASSERT(cqe->res == size);
 
   io_uring_cqe_seen(&tls_read_ring, cqe);
@@ -210,7 +215,8 @@ void tls_log::issue_flush(const char *buf, uint64_t size) {
   struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
   LOG_IF(FATAL, !sqe);
 
-  io_uring_prep_write(sqe, current_segment()->fd, buf, size, current_segment()->size);
+  io_uring_prep_write(sqe, current_segment()->fd, buf, size,
+                      current_segment()->size);
 
   // Encode data size which is useful upon completion (to add to durable_lsn)
   // Must be set after io_uring_prep_write (which sets user_data to 0)
@@ -225,8 +231,10 @@ void tls_log::poll_flush() {
   if (!config::null_log_device) {
     struct io_uring_cqe *cqe = nullptr;
     int ret = io_uring_wait_cqe(&ring, &cqe);
-    LOG_IF(FATAL, ret < 0) << "Error waiting for completion: " << strerror(-ret);
-    LOG_IF(FATAL, cqe->res < 0) << "Error in async operation: " << strerror(-cqe->res);
+    LOG_IF(FATAL, ret < 0) << "Error waiting for completion: "
+                           << strerror(-ret);
+    LOG_IF(FATAL, cqe->res < 0)
+        << "Error in async operation: " << strerror(-cqe->res);
     uint64_t size = cqe->user_data;
     io_uring_cqe_seen(&ring, cqe);
     durable_lsn += size;
@@ -248,8 +256,9 @@ void tls_log::poll_flush() {
   }
 }
 
-void tls_log::create_segment() { 
-  size_t n = snprintf(segment_name_buf, sizeof(segment_name_buf), SEGMENT_FILE_NAME_FMT, id, (unsigned int)segments.size());
+void tls_log::create_segment() {
+  size_t n = snprintf(segment_name_buf, sizeof(segment_name_buf),
+                      SEGMENT_FILE_NAME_FMT, id, (unsigned int)segments.size());
   DIR *logdir = opendir(dir);
   ALWAYS_ASSERT(logdir);
   segments.emplace_back(dirfd(logdir), segment_name_buf);
@@ -282,12 +291,13 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
   uint32_t alloc_size = payload_size + sizeof(log_block);
   LOG_IF(FATAL, alloc_size > logbuf_size) << "Total size too big";
 
-  
-  // If this allocated log block would span across segments, we need a new segment.
+  // If this allocated log block would span across segments, we need a new
+  // segment.
   bool create_new_segment = false;
-  if (alloc_size + logbuf_offset + current_segment()->expected_size > segment_size) {
-    create_new_segment = true; 
-  } 
+  if (alloc_size + logbuf_offset + current_segment()->expected_size >
+      segment_size) {
+    create_new_segment = true;
+  }
 
   // If the allocated size exceeds the available space in the active logbuf,
   // or we need to create a new segment for this log block,
@@ -338,11 +348,11 @@ void tls_log::enqueue_committed_xct(uint64_t csn) {
   bool flush = false;
   bool insert = true;
   uint count = 0;
-retry :
+retry:
   if (flush) {
     for (uint i = 0; i < tlogs.size(); ++i) {
       tls_log *tlog = tlogs[i];
-      if (tlog &&  volatile_read(pcommit::_tls_durable_csn[i])) {
+      if (tlog && volatile_read(pcommit::_tls_durable_csn[i])) {
         tlog->enqueue_flush();
       }
     }

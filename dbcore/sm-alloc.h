@@ -1,10 +1,11 @@
 #pragma once
 #include <unordered_map>
 #include <unordered_set>
+
+#include "epoch.h"
 #include "sm-config.h"
 #include "sm-defs.h"
 #include "sm-object.h"
-#include "epoch.h"
 
 namespace ermia {
 

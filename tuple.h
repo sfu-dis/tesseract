@@ -1,11 +1,10 @@
 #pragma once
 
-#include "macros.h"
-#include "varstr.h"
-
 #include "dbcore/serial.h"
 #include "dbcore/sm-object.h"
 #include "dbcore/xid.h"
+#include "macros.h"
+#include "varstr.h"
 
 #ifdef SSN
 // Indicate somebody has read this tuple and thought it was an old one
@@ -46,20 +45,20 @@ struct dbtuple {
                 // it will become the X in the dangerous structure above
                 // and must abort.
 #endif
-  uint32_t size;   // actual size of record
+  uint32_t size;           // actual size of record
   uint8_t value_start[0];  // must be last field
 
   dbtuple(uint32_t size)
-  :
+      :
 #if defined(SSN) || defined(SSI)
-    sstamp(NULL_PTR),
-    xstamp(0),
-    preader(0),
+        sstamp(NULL_PTR),
+        xstamp(0),
+        preader(0),
 #endif
 #ifdef SSI
-    s2(0),
+        s2(0),
 #endif
-    size(size) {
+        size(size) {
   }
 
   ~dbtuple() {}
@@ -139,11 +138,11 @@ struct dbtuple {
     return obj;
   }
 
-  inline PROMISE(dbtuple*) NextVolatile() {
+  inline PROMISE(dbtuple *) NextVolatile() {
     // So far this is only used by the primary
     Object *myobj = GetObject();
     ASSERT(myobj->GetPayload() == (char *)this);
-    Object *next_obj = (Object*)myobj->GetNextVolatile().offset();
+    Object *next_obj = (Object *)myobj->GetNextVolatile().offset();
     if (next_obj) {
       RETURN AWAIT next_obj->GetPinnedTuple();
     } else {
@@ -156,15 +155,16 @@ struct dbtuple {
     out_v->p = get_value_start();
     out_v->l = size;
 
-    // In the config::always_load scenario, the status of the object is not set to in memory
-    // until the payload is copied to out_v here.
-    if (config::always_load) { 
+    // In the config::always_load scenario, the status of the object is not set
+    // to in memory until the payload is copied to out_v here.
+    if (config::always_load) {
       if (!ermia::config::index_probe_only) {
         memcpy(out_v + sizeof(ermia::varstr), get_value_start(), size);
       }
       Object *myobj = GetObject();
-      myobj->SetStatus(1); // kStatusMemory = 1
-      // Have to return here because size may become 0 once status is set to 1 (another IO finishes and changes it)
+      myobj->SetStatus(1);  // kStatusMemory = 1
+      // Have to return here because size may become 0 once status is set to 1
+      // (another IO finishes and changes it)
       return rc_t{RC_TRUE};
     }
 

@@ -2,15 +2,14 @@
 
 #include <list>
 
-#include "dlog.h"
+#include "../varstr.h"
 #include "dlog-defs.h"
+#include "dlog.h"
 #include "epoch.h"
 #include "sm-common.h"
 #include "sm-config.h"
 #include "sm-coroutine.h"
-#include "../varstr.h"
 #include "xid.h"
-
 
 namespace ermia {
 
@@ -45,7 +44,7 @@ class Object {
   fat_ptr next_volatile_;
 
   // Commit timestamp of this version. Type is XID (CSN) before (after)
-  // commit. 
+  // commit.
   fat_ptr csn_;
 
  public:
@@ -76,8 +75,12 @@ class Object {
   inline fat_ptr* GetNextPersistentPtr() { return &next_pdest_; }
   inline fat_ptr GetNextVolatile() { return volatile_read(next_volatile_); }
   inline fat_ptr* GetNextVolatilePtr() { return &next_volatile_; }
-  inline void SetNextPersistent(fat_ptr next) { volatile_write(next_pdest_, next); }
-  inline void SetNextVolatile(fat_ptr next) { volatile_write(next_volatile_, next); }
+  inline void SetNextPersistent(fat_ptr next) {
+    volatile_write(next_pdest_, next);
+  }
+  inline void SetNextVolatile(fat_ptr next) {
+    volatile_write(next_volatile_, next);
+  }
   inline epoch_num GetAllocateEpoch() { return alloc_epoch_; }
   inline void SetAllocateEpoch(epoch_num e) { alloc_epoch_ = e; }
   inline char* GetPayload() { return (char*)((char*)this + sizeof(Object)); }
@@ -95,18 +98,17 @@ class Object {
         AWAIT Pin();
       }
     }
-    RETURN (dbtuple*)GetPayload();
+    RETURN(dbtuple*) GetPayload();
   }
   fat_ptr GenerateCsnPtr(uint64_t csn);
   PROMISE(void) Pin();  // Make sure the payload is in memory
 
-  static inline void PrefetchHeader(Object *p) {
+  static inline void PrefetchHeader(Object* p) {
     uint32_t i = 0;
     do {
-      ::prefetch((const char *)(p + i));
+      ::prefetch((const char*)(p + i));
       i += CACHE_LINE_SIZE;
     } while (i < sizeof(Object));
   }
-
 };
 }  // namespace ermia

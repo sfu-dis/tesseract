@@ -1,15 +1,14 @@
 #pragma once
 
 #include <set>
-#include <vector>
-#include <utility>
 #include <string>
-
-#include "../engine.h"
-#include "../util.h"
+#include <utility>
+#include <vector>
 
 #include "../dbcore/sm-coroutine.h"
 #include "../dbcore/sm-thread.h"
+#include "../engine.h"
+#include "../util.h"
 
 extern void ycsb_do_test(ermia::Engine *db, int argc, char **argv);
 extern void ycsb_cs_do_test(ermia::Engine *db, int argc, char **argv);
@@ -39,8 +38,7 @@ class bench_loader : public ermia::thread::Runner {
  public:
   bench_loader(unsigned long seed, ermia::Engine *db,
                const std::map<std::string, ermia::OrderedIndex *> &open_tables)
-      : Runner(true)
-      , r(seed), db(db), open_tables(open_tables) {
+      : Runner(true), r(seed), db(db), open_tables(open_tables) {
     // don't try_instantiate() here; do it when we start to load.
     // The way we reuse threads relies on this fact (see bench_runner::run()).
     txn_obj_buf = (ermia::transaction *)malloc(sizeof(ermia::transaction));
@@ -70,9 +68,13 @@ typedef std::map<std::string, tx_stat> tx_stat_map;
 class bench_worker : public ermia::thread::Runner {
  public:
   bench_worker(unsigned int worker_id, bool is_worker, unsigned long seed,
-               ermia::Engine *db, const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-               spin_barrier *barrier_a = nullptr, spin_barrier *barrier_b = nullptr)
-      : Runner(ermia::config::physical_workers_only ? true : (worker_id >= ermia::config::worker_threads / 2)),
+               ermia::Engine *db,
+               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+               spin_barrier *barrier_a = nullptr,
+               spin_barrier *barrier_b = nullptr)
+      : Runner(ermia::config::physical_workers_only
+                   ? true
+                   : (worker_id >= ermia::config::worker_threads / 2)),
         worker_id(worker_id),
         is_worker(is_worker),
         r(seed),
@@ -96,19 +98,20 @@ class bench_worker : public ermia::thread::Runner {
     txn_obj_buf = (ermia::transaction *)malloc(sizeof(ermia::transaction));
     arena = new ermia::str_arena(ermia::config::arena_size_mb);
     if (ermia::config::numa_spread) {
-      LOG(INFO) << "Worker " << worker_id << " going to node " << worker_id % ermia::config::numa_nodes;
+      LOG(INFO) << "Worker " << worker_id << " going to node "
+                << worker_id % ermia::config::numa_nodes;
       TryImpersonate(worker_id % ermia::config::numa_nodes);
     } else {
       TryImpersonate();
     }
 
     if (ermia::config::coro_tx) {
-      transactions = (ermia::transaction*)numa_alloc_onnode(
-        sizeof(ermia::transaction) * ermia::config::coro_batch_size,
-        numa_node_of_cpu(sched_getcpu()));
-      arenas = (ermia::str_arena*)numa_alloc_onnode(
-        sizeof(ermia::str_arena) * ermia::config::coro_batch_size,
-        numa_node_of_cpu(sched_getcpu()));
+      transactions = (ermia::transaction *)numa_alloc_onnode(
+          sizeof(ermia::transaction) * ermia::config::coro_batch_size,
+          numa_node_of_cpu(sched_getcpu()));
+      arenas = (ermia::str_arena *)numa_alloc_onnode(
+          sizeof(ermia::str_arena) * ermia::config::coro_batch_size,
+          numa_node_of_cpu(sched_getcpu()));
       for (auto i = 0; i < ermia::config::coro_batch_size; ++i) {
         new (arenas + i) ermia::str_arena(ermia::config::arena_size_mb);
       }
@@ -118,14 +121,18 @@ class bench_worker : public ermia::thread::Runner {
 
   /* For 'normal' workload (r/w on primary, r/o on backups) */
   typedef rc_t (*txn_fn_t)(bench_worker *);
-  typedef coroutine_handle<ermia::coro::generator<rc_t>::promise_type> CoroTxnHandle;
-  typedef ermia::coro::generator<rc_t> (*coro_txn_fn_t)(bench_worker *, uint32_t, ermia::epoch_num);
-  typedef ermia::coro::task<rc_t> (*task_fn_t)(bench_worker *, uint32_t, ermia::epoch_num);
+  typedef coroutine_handle<ermia::coro::generator<rc_t>::promise_type>
+      CoroTxnHandle;
+  typedef ermia::coro::generator<rc_t> (*coro_txn_fn_t)(bench_worker *,
+                                                        uint32_t,
+                                                        ermia::epoch_num);
+  typedef ermia::coro::task<rc_t> (*task_fn_t)(bench_worker *, uint32_t,
+                                               ermia::epoch_num);
   struct workload_desc {
     workload_desc() {}
     workload_desc(const std::string &name, double frequency, txn_fn_t fn,
-                  coro_txn_fn_t cf=nullptr, task_fn_t tf=nullptr)
-        : name(name), frequency(frequency), fn(fn), coro_fn(cf) , task_fn(tf) {
+                  coro_txn_fn_t cf = nullptr, task_fn_t tf = nullptr)
+        : name(name), frequency(frequency), fn(fn), coro_fn(cf), task_fn(tf) {
       ALWAYS_ASSERT(frequency > 0.0);
       ALWAYS_ASSERT(frequency <= 1.0);
     }
@@ -169,7 +176,7 @@ class bench_worker : public ermia::thread::Runner {
   void do_workload_function(uint32_t i);
   uint32_t fetch_workload();
   bool finish_workload(rc_t ret, uint32_t workload_idx, util::timer t);
-  
+
   inline ermia::dlog::tls_log *get_log() { return tlog; }
 
  protected:
@@ -257,7 +264,8 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
     ALWAYS_ASSERT(limit == -1 || limit > 0);
   }
 
-  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+  virtual bool Invoke(const char *keyp, size_t keylen,
+                      const ermia::varstr &value) {
     ASSERT(limit == -1 || n < size_t(limit));
     values.emplace_back(ermia::varstr(keyp, keylen), value);
     return (limit == -1) || (++n < size_t(limit));
@@ -274,86 +282,86 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
 
 // Note: try_catch_cond_abort might call __abort_txn with rc=RC_FALSE
 // so no need to assure rc must be RC_ABORT_*.
-#define __abort_txn(r)                            \
-{                                                 \
-  db->Abort(txn);                                 \
-  if (!r.IsAbort()) return {RC_ABORT_USER};       \
-  return r;                                       \
-}
+#define __abort_txn(r)                        \
+  {                                           \
+    db->Abort(txn);                           \
+    if (!r.IsAbort()) return {RC_ABORT_USER}; \
+    return r;                                 \
+  }
 
-#define __abort_txn_coro(r)                       \
-{                                                 \
-  db->Abort(txn);                                 \
-  if (!r.IsAbort()) co_return {RC_ABORT_USER};    \
-  co_return r;                                    \
-}
+#define __abort_txn_coro(r)                      \
+  {                                              \
+    db->Abort(txn);                              \
+    if (!r.IsAbort()) co_return {RC_ABORT_USER}; \
+    co_return r;                                 \
+  }
 
 // NOTE: only use these in transaction benchmark (e.g., TPCC) code, not in
 // engine code
 
 // reminescent the try...catch block:
 // if return code is one of those RC_ABORT* then abort
-#define TryCatch(rc)               \
-{                                  \
-  rc_t r = rc;                     \
-  if (r.IsAbort()) __abort_txn(r); \
-}
+#define TryCatch(rc)                 \
+  {                                  \
+    rc_t r = rc;                     \
+    if (r.IsAbort()) __abort_txn(r); \
+  }
 
-#define TryCatchCoro(rc)                \
-{                                       \
-  rc_t r = rc;                          \
-  if (r.IsAbort()) __abort_txn_coro(r); \
-}
+#define TryCatchCoro(rc)                  \
+  {                                       \
+    rc_t r = rc;                          \
+    if (r.IsAbort()) __abort_txn_coro(r); \
+  }
 
 // same as TryCatch but don't do abort, only return rc
 // So far the only user is TPC-E's TxnHarness***.h.
-#define TryReturn(rc)        \
-{                            \
-  rc_t r = rc;               \
-  if (r.IsAbort()) return r; \
-}
+#define TryReturn(rc)          \
+  {                            \
+    rc_t r = rc;               \
+    if (r.IsAbort()) return r; \
+  }
 
 // if rc == RC_FALSE then do op
-#define TryCatchCond(rc, op)       \
-{                                  \
-  rc_t r = rc;                     \
-  if (r.IsAbort()) __abort_txn(r); \
-  if (r._val == RC_FALSE) op;      \
-}
+#define TryCatchCond(rc, op)         \
+  {                                  \
+    rc_t r = rc;                     \
+    if (r.IsAbort()) __abort_txn(r); \
+    if (r._val == RC_FALSE) op;      \
+  }
 
 // if rc == RC_FALSE then do op
-#define TryCatchCondCoro(rc, op)        \
-{                                       \
-  rc_t r = rc;                          \
-  if (r.IsAbort()) __abort_txn_coro(r); \
-  if (r._val == RC_FALSE) op;           \
-}
+#define TryCatchCondCoro(rc, op)          \
+  {                                       \
+    rc_t r = rc;                          \
+    if (r.IsAbort()) __abort_txn_coro(r); \
+    if (r._val == RC_FALSE) op;           \
+  }
 
-#define TryCatchCondAbort(rc)                            \
-{                                                        \
-  rc_t r = rc;                                           \
-  if (r.IsAbort() or r._val == RC_FALSE) __abort_txn(r); \
-}
+#define TryCatchCondAbort(rc)                              \
+  {                                                        \
+    rc_t r = rc;                                           \
+    if (r.IsAbort() or r._val == RC_FALSE) __abort_txn(r); \
+  }
 
 // combines the try...catch block with ALWAYS_ASSERT and allows abort.
 // The rc_is_abort case is there because sometimes we want to make
 // sure say, a get, succeeds, but the read itsef could also cause
 // abort (by SSN). Use try_verify_strict if you need rc=true.
-#define TryVerifyRelaxed(oper)                     \
-{                                                  \
-  rc_t r = oper;                                   \
-  LOG_IF(FATAL, r._val != RC_TRUE && !r.IsAbort()) \
-    << "Wrong return value " << r._val;            \
-  if (r.IsAbort()) __abort_txn(r);                 \
-}
+#define TryVerifyRelaxed(oper)                       \
+  {                                                  \
+    rc_t r = oper;                                   \
+    LOG_IF(FATAL, r._val != RC_TRUE && !r.IsAbort()) \
+        << "Wrong return value " << r._val;          \
+    if (r.IsAbort()) __abort_txn(r);                 \
+  }
 
-#define TryVerifyRelaxedCoro(oper)                 \
-{                                                  \
-  rc_t r = oper;                                   \
-  LOG_IF(FATAL, r._val != RC_TRUE && !r.IsAbort()) \
-    << "Wrong return value " << r._val;            \
-  if (r.IsAbort()) __abort_txn_coro(r);            \
-}
+#define TryVerifyRelaxedCoro(oper)                   \
+  {                                                  \
+    rc_t r = oper;                                   \
+    LOG_IF(FATAL, r._val != RC_TRUE && !r.IsAbort()) \
+        << "Wrong return value " << r._val;          \
+    if (r.IsAbort()) __abort_txn_coro(r);            \
+  }
 
 // No abort is allowed, usually for loading
 inline void TryVerifyStrict(rc_t rc) {

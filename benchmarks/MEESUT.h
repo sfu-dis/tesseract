@@ -33,8 +33,9 @@
 
 #include <mutex>
 #include <queue>
-#include "egen/MEESUTInterface.h"
+
 #include "../dbcore/mcs_lock.h"
+#include "egen/MEESUTInterface.h"
 
 namespace TPCE {
 
@@ -97,6 +98,6 @@ class CMEESUT : public TPCE::CMEESUTInterface {
     return true;
   }
 };
-}
+}  // namespace TPCE
 
 #endif  // MEE_SUT

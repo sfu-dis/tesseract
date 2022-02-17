@@ -79,7 +79,7 @@ struct varstr {
 
   inline uint32_t size() const { return l; }
   inline const uint8_t *data() const { return p; }
-  inline uint8_t *data() { return (uint8_t *)(void*)p; }
+  inline uint8_t *data() { return (uint8_t *)(void *)p; }
   inline bool empty() const { return not size(); }
 
 #ifdef MASSTREE

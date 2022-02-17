@@ -27,13 +27,14 @@ struct log_record {
 };
 
 static uint32_t populate_log_record(log_record::logrec_type type,
-                                    log_block *block,
-                                    FID fid, OID oid,
+                                    log_block *block, FID fid, OID oid,
                                     const char *after_image,
                                     const uint32_t size) {
-  LOG_IF(FATAL, type != log_record::logrec_type::INSERT && type != log_record::logrec_type::UPDATE)
-                << "Wrong log record type";
-  LOG_IF(FATAL, block->payload_size + size > block->capacity) << "No enough space in log block";
+  LOG_IF(FATAL, type != log_record::logrec_type::INSERT &&
+                    type != log_record::logrec_type::UPDATE)
+      << "Wrong log record type";
+  LOG_IF(FATAL, block->payload_size + size > block->capacity)
+      << "No enough space in log block";
   uint32_t off = block->payload_size;
 
   // Initialize the logrecord header
@@ -52,15 +53,16 @@ static uint32_t populate_log_record(log_record::logrec_type type,
   return off;
 }
 
-inline static uint32_t log_insert(log_block *block, FID fid, OID oid, const char *image, const uint32_t size) {
+inline static uint32_t log_insert(log_block *block, FID fid, OID oid,
+                                  const char *image, const uint32_t size) {
   return populate_log_record(log_record::INSERT, block, fid, oid, image, size);
 }
 
-inline static uint32_t log_update(log_block *block, FID fid, OID oid, const char *image, const uint32_t size) {
+inline static uint32_t log_update(log_block *block, FID fid, OID oid,
+                                  const char *image, const uint32_t size) {
   return populate_log_record(log_record::UPDATE, block, fid, oid, image, size);
 }
 
-
-}
+}  // namespace dlog
 
 }  // namespace ermia

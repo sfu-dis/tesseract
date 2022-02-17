@@ -8,14 +8,14 @@
  * The basic design is a distributed log consisting of multiple log files, each
  * of which owns a dedicated log buffer.
  */
-#include <vector>
-#include <stdio.h>
-#include <string.h>
 #include <fcntl.h>
+#include <glog/logging.h>
 #include <liburing.h>
 #include <numa.h>
+#include <stdio.h>
+#include <string.h>
 
-#include <glog/logging.h>
+#include <vector>
 
 #include "dlog-defs.h"
 #include "pcommit.h"
@@ -44,7 +44,7 @@ extern std::thread *pcommit_thread;
 struct segment {
   // File descriptor for the underlying file
   int fd;
- 
+
   // The (global) beginning address this segment covers
   uint64_t start_offset;
 
@@ -63,10 +63,10 @@ struct segment {
 // CC because this is per thread, and it is expected that no more than one
 // transaction will be using the log at the same time.
 class tls_log {
-private:
+ private:
   // Directory where the segment files should be created.
   const char *dir;
-  
+
   // ID of this log; can be seen as 'partition ID' -
   // caller/user should make sure this is unique
   uint32_t id;
@@ -118,7 +118,7 @@ private:
   // Lock
   mcs_lock lock;
 
-private:
+ private:
   // Get the currently open segment
   inline segment *current_segment() { return &segments[segments.size() - 1]; }
 
@@ -132,10 +132,11 @@ private:
   // (io_uring requests may come back out of order).
   void poll_flush();
 
-  // Create a new segment when the current segment is about to exceed the max segment size.
+  // Create a new segment when the current segment is about to exceed the max
+  // segment size.
   void create_segment();
 
-public:
+ public:
   // Dummy ctor and dtor. The user must use initialize/uninitialize() to make
   // sure we capture the proper parameters set in ermia::config which may get
   // initialized/created after tls_logs are created.
@@ -143,7 +144,8 @@ public:
   ~tls_log() {}
 
   // Initialize/uninitialize this tls-log object
-  void initialize(const char *log_dir, uint32_t log_id, uint32_t node, uint64_t logbuf_mb, uint64_t max_segment_mb);
+  void initialize(const char *log_dir, uint32_t log_id, uint32_t node,
+                  uint64_t logbuf_mb, uint64_t max_segment_mb);
   void uninitialize();
 
   inline uint32_t get_id() { return id; }
@@ -154,12 +156,10 @@ public:
   inline pcommit::tls_committer *get_committer() { return &tcommitter; }
 
   inline uint64_t get_latency() { return tcommitter.get_latency(); }
- 
+
   // Allocate a log block in-place on the log buffer
-  log_block *allocate_log_block(uint32_t payload_size,
-                                uint64_t *out_cur_lsn,
-                                uint64_t *out_seg_num,
-                                uint64_t block_csn);
+  log_block *allocate_log_block(uint32_t payload_size, uint64_t *out_cur_lsn,
+                                uint64_t *out_seg_num, uint64_t block_csn);
 
   // Enqueue commit queue
   void enqueue_committed_xct(uint64_t csn);
@@ -167,7 +167,9 @@ public:
   // Dequeue commit queue
   inline void dequeue_committed_xcts() { tcommitter.dequeue_committed_xcts(); }
 
-  inline uint32_t get_commit_queue_size() { return tcommitter.get_queue_size(); }
+  inline uint32_t get_commit_queue_size() {
+    return tcommitter.get_queue_size();
+  }
 
   // Last flush
   void last_flush();
@@ -182,7 +184,7 @@ public:
   bool peek_read(char *buf, uint64_t size);
 };
 
-extern std::vector<tls_log *>tlogs;
+extern std::vector<tls_log *> tlogs;
 
 }  // namespace dlog
 

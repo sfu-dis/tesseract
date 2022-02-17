@@ -1,9 +1,9 @@
 #pragma once
 
+#include <type_traits>
+
 #include "mcs_lock.h"
 #include "sm-common.h"
-
-#include <type_traits>
 
 namespace ermia {
 

@@ -1,17 +1,17 @@
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <vector>
-#include <utility>
-#include <string>
+#include "bench.h"
 
 #include <stdlib.h>
-#include <unistd.h>
 #include <sys/sysinfo.h>
 #include <sys/times.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
-#include "bench.h"
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-config.h"
@@ -38,7 +38,7 @@ uint32_t bench_worker::fetch_workload() {
   double d = r.next_uniform();
   for (size_t i = 0; i < workload.size(); i++) {
     if ((i + 1) == workload.size() || d < workload[i].frequency) {
-        return i;
+      return i;
     }
     d -= workload[i].frequency;
   }
@@ -47,7 +47,8 @@ uint32_t bench_worker::fetch_workload() {
   return 0;
 }
 
-bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer t) {
+bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx,
+                                   util::timer t) {
   if (!ret.IsAbort()) {
     ++ntxn_commits;
     std::get<0>(txn_counts[workload_idx])++;
@@ -85,7 +86,8 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
       default:
         ALWAYS_ASSERT(false);
     }
-    if (ermia::config::retry_aborted_transactions && !ret.IsUserAbort() && running) {
+    if (ermia::config::retry_aborted_transactions && !ret.IsUserAbort() &&
+        running) {
       if (ermia::config::backoff_aborted_transactions) {
         if (backoff_shifts < 63) backoff_shifts++;
         uint64_t spins = 1UL << backoff_shifts;
@@ -120,8 +122,9 @@ void bench_runner::run() {
   // Get a thread to use benchmark-provided prepare(), which gathers
   // information about index pointers created by create_file_task.
   ermia::thread::Thread::Task runner_task =
-    std::bind(&bench_runner::prepare, this, std::placeholders::_1);
-  ermia::thread::Thread *runner_thread = ermia::thread::GetThread(true /* physical */);
+      std::bind(&bench_runner::prepare, this, std::placeholders::_1);
+  ermia::thread::Thread *runner_thread =
+      ermia::thread::GetThread(true /* physical */);
   runner_thread->StartTask(runner_task);
   runner_thread->Join();
   ermia::thread::PutThread(runner_thread);
@@ -135,10 +138,11 @@ void bench_runner::run() {
     uint32_t done = 0;
     uint32_t n_running = 0;
   process:
-    // force bench_loader to use physical thread and use all the physical threads 
-    // in the same socket to load (assuming 2HT per core).
-    uint32_t n_loader_threads =
-      std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
+    // force bench_loader to use physical thread and use all the physical
+    // threads in the same socket to load (assuming 2HT per core).
+    uint32_t n_loader_threads = std::thread::hardware_concurrency() /
+                                (numa_max_node() + 1) / 2 *
+                                ermia::config::numa_nodes;
 
     for (uint i = 0; i < loaders.size(); i++) {
       auto *loader = loaders[i];
@@ -151,8 +155,7 @@ void bench_runner::run() {
       // run 10 threads on the first socket, we won't want the loader to be run
       // on a thread from socket 2. So limit the number of concurrently running
       // loaders to the number of workers.
-      if (loader && !loader->IsImpersonated() &&
-          n_running < n_loader_threads &&
+      if (loader && !loader->IsImpersonated() && n_running < n_loader_threads &&
           loader->TryImpersonate()) {
         loader->Start();
         ++n_running;
@@ -172,8 +175,6 @@ void bench_runner::run() {
         }
       }
     }
-
-
   }
 
   // FIXME:SSI safesnap to work with CSN.
@@ -195,13 +196,14 @@ void bench_runner::run() {
   //  ermia::chkptmgr->do_chkpt();  // this is synchronous
   // }
 
-/*
-  // Start checkpointer after database is ready
-  if (ermia::config::enable_chkpt) {
-    ermia::chkptmgr->start_chkpt_thread();
-  }
-  */
-  ermia::volatile_write(ermia::config::state, ermia::config::kStateForwardProcessing);
+  /*
+    // Start checkpointer after database is ready
+    if (ermia::config::enable_chkpt) {
+      ermia::chkptmgr->start_chkpt_thread();
+    }
+    */
+  ermia::volatile_write(ermia::config::state,
+                        ermia::config::kStateForwardProcessing);
 
   if (ermia::config::worker_threads) {
     ermia::config::kStateRunning = true;
@@ -230,12 +232,15 @@ void bench_runner::start_measurement() {
     pid_t pid = fork();
     // Launch profiler
     if (pid == 0) {
-      if(ermia::config::perf_record_event != "") {
-        exit(execl("/usr/bin/perf","perf","record", "-F", "99", "-e", ermia::config::perf_record_event.c_str(),
-                   "-p", parent_pid.str().c_str(), nullptr));
+      if (ermia::config::perf_record_event != "") {
+        exit(execl("/usr/bin/perf", "perf", "record", "-F", "99", "-e",
+                   ermia::config::perf_record_event.c_str(), "-p",
+                   parent_pid.str().c_str(), nullptr));
       } else {
-        exit(execl("/usr/bin/perf","perf","stat", "-B", "-e",  "cache-references,cache-misses,cycles,instructions,branches,faults", 
-                   "-p", parent_pid.str().c_str(), nullptr));
+        exit(execl(
+            "/usr/bin/perf", "perf", "stat", "-B", "-e",
+            "cache-references,cache-misses,cycles,instructions,branches,faults",
+            "-p", parent_pid.str().c_str(), nullptr));
       }
     } else {
       perf_pid = pid;
@@ -245,7 +250,8 @@ void bench_runner::start_measurement() {
   barrier_a.wait_for();  // wait for all threads to start up
   std::map<std::string, size_t> table_sizes_before;
   if (ermia::config::verbose) {
-    for (std::map<std::string, ermia::OrderedIndex *>::iterator it = open_tables.begin();
+    for (std::map<std::string, ermia::OrderedIndex *>::iterator it =
+             open_tables.begin();
          it != open_tables.end(); ++it) {
       const size_t s = it->second->Size();
       std::cerr << "table " << it->first << " size " << s << std::endl;
@@ -260,7 +266,7 @@ void bench_runner::start_measurement() {
 
   // Print CPU utilization as well. Code adapted from:
   // https://stackoverflow.com/questions/63166/how-to-determine-cpu-and-memory-consumption-from-inside-a-process
-  FILE* file;
+  FILE *file;
   struct tms timeSample;
   char line[128];
 
@@ -280,12 +286,11 @@ void bench_runner::start_measurement() {
 
     now = times(&timeSample);
     if (now <= lastCPU || timeSample.tms_stime < lastSysCPU ||
-      timeSample.tms_utime < lastUserCPU){
+        timeSample.tms_utime < lastUserCPU) {
       percent = -1.0;
-    }
-    else{
+    } else {
       percent = (timeSample.tms_stime - lastSysCPU) +
-      (timeSample.tms_utime - lastUserCPU);
+                (timeSample.tms_utime - lastUserCPU);
       percent /= (now - lastCPU);
       percent /= nprocs;
       percent *= 100;
@@ -322,7 +327,8 @@ void bench_runner::start_measurement() {
     if (ermia::config::print_cpu_util) {
       sec_util = get_cpu_util();
       total_util += sec_util;
-      printf("%lu,%lu,%lu,%.2f%%\n", slept + 1, sec_commits, sec_aborts, sec_util);
+      printf("%lu,%lu,%lu,%.2f%%\n", slept + 1, sec_commits, sec_aborts,
+             sec_util);
     } else {
       printf("%lu,%lu,%lu\n", slept + 1, sec_commits, sec_aborts);
     }
@@ -419,13 +425,14 @@ void bench_runner::start_measurement() {
     }
   }
 
-  //if (ermia::config::enable_chkpt) {
+  // if (ermia::config::enable_chkpt) {
   //  delete ermia::chkptmgr;
   //}
 
   if (ermia::config::verbose) {
     std::cerr << "--- table statistics ---" << std::endl;
-    for (std::map<std::string, ermia::OrderedIndex *>::iterator it = open_tables.begin();
+    for (std::map<std::string, ermia::OrderedIndex *>::iterator it =
+             open_tables.begin();
          it != open_tables.end(); ++it) {
       const size_t s = it->second->Size();
       const ssize_t delta = ssize_t(s) - ssize_t(table_sizes_before[it->first]);
@@ -438,47 +445,53 @@ void bench_runner::start_measurement() {
     std::cerr << "--- benchmark statistics ---" << std::endl;
     std::cerr << "runtime: " << elapsed_sec << " sec" << std::endl;
     std::cerr << "cpu_util: " << total_util / elapsed_sec << "%" << std::endl;
-    std::cerr << "agg_nosync_throughput: " << agg_nosync_throughput << " ops/sec"
-         << std::endl;
-    std::cerr << "avg_nosync_per_core_throughput: " << avg_nosync_per_core_throughput
-         << " ops/sec/core" << std::endl;
-    std::cerr << "agg_throughput: " << agg_throughput << " ops/sec" << std::endl;
+    std::cerr << "agg_nosync_throughput: " << agg_nosync_throughput
+              << " ops/sec" << std::endl;
+    std::cerr << "avg_nosync_per_core_throughput: "
+              << avg_nosync_per_core_throughput << " ops/sec/core" << std::endl;
+    std::cerr << "agg_throughput: " << agg_throughput << " ops/sec"
+              << std::endl;
     std::cerr << "avg_per_core_throughput: " << avg_per_core_throughput
-         << " ops/sec/core" << std::endl;
+              << " ops/sec/core" << std::endl;
     std::cerr << "avg_latency: " << avg_latency_ms << " ms" << std::endl;
-    std::cerr << "agg_abort_rate: " << agg_abort_rate << " aborts/sec" << std::endl;
+    std::cerr << "agg_abort_rate: " << agg_abort_rate << " aborts/sec"
+              << std::endl;
     std::cerr << "avg_per_core_abort_rate: " << avg_per_core_abort_rate
-         << " aborts/sec/core" << std::endl;
+              << " aborts/sec/core" << std::endl;
 #ifndef __clang__
-    std::cerr << "txn breakdown: " << util::format_list(agg_txn_counts.begin(),
-                                                   agg_txn_counts.end()) << std::endl;
+    std::cerr << "txn breakdown: "
+              << util::format_list(agg_txn_counts.begin(), agg_txn_counts.end())
+              << std::endl;
 #endif
   }
 
   // output for plotting script
   std::cout << "---------------------------------------\n";
-  std::cout << agg_throughput << " commits/s, "
-       //       << avg_latency_ms << " "
-       << agg_abort_rate << " total_aborts/s, " << agg_system_abort_rate
-       << " system_aborts/s, " << agg_user_abort_rate << " user_aborts/s, "
-       << agg_int_abort_rate << " internal aborts/s, " << agg_si_abort_rate
-       << " si_aborts/s, " << agg_serial_abort_rate << " serial_aborts/s, "
-       << agg_rw_abort_rate << " rw_aborts/s, " << agg_phantom_abort_rate
-       << " phantom aborts/s." << std::endl;
-  std::cout << n_commits << " commits, " << n_query_commits << " query_commits, "
-       << n_aborts << " total_aborts, " << n_aborts - n_user_aborts
-       << " system_aborts, " << n_user_aborts << " user_aborts, "
-       << n_int_aborts << " internal_aborts, " << n_si_aborts << " si_aborts, "
-       << n_serial_aborts << " serial_aborts, " << n_rw_aborts << " rw_aborts, "
-       << n_phantom_aborts << " phantom_aborts" << std::endl;
+  std::cout << agg_throughput
+            << " commits/s, "
+            //       << avg_latency_ms << " "
+            << agg_abort_rate << " total_aborts/s, " << agg_system_abort_rate
+            << " system_aborts/s, " << agg_user_abort_rate << " user_aborts/s, "
+            << agg_int_abort_rate << " internal aborts/s, " << agg_si_abort_rate
+            << " si_aborts/s, " << agg_serial_abort_rate << " serial_aborts/s, "
+            << agg_rw_abort_rate << " rw_aborts/s, " << agg_phantom_abort_rate
+            << " phantom aborts/s." << std::endl;
+  std::cout << n_commits << " commits, " << n_query_commits
+            << " query_commits, " << n_aborts << " total_aborts, "
+            << n_aborts - n_user_aborts << " system_aborts, " << n_user_aborts
+            << " user_aborts, " << n_int_aborts << " internal_aborts, "
+            << n_si_aborts << " si_aborts, " << n_serial_aborts
+            << " serial_aborts, " << n_rw_aborts << " rw_aborts, "
+            << n_phantom_aborts << " phantom_aborts" << std::endl;
 
   std::cout << "---------------------------------------\n";
   for (auto &c : agg_txn_counts) {
     std::cout << c.first << "\t" << std::get<0>(c.second) / (double)elapsed_sec
-         << " commits/s\t" << std::get<1>(c.second) / (double)elapsed_sec
-         << " aborts/s\t" << std::get<2>(c.second) / (double)elapsed_sec
-         << " system aborts/s\t" << std::get<3>(c.second) / (double)elapsed_sec
-         << " user aborts/s\n";
+              << " commits/s\t" << std::get<1>(c.second) / (double)elapsed_sec
+              << " aborts/s\t" << std::get<2>(c.second) / (double)elapsed_sec
+              << " system aborts/s\t"
+              << std::get<3>(c.second) / (double)elapsed_sec
+              << " user aborts/s\n";
   }
   std::cout.flush();
 }
@@ -502,19 +515,24 @@ const tx_stat_map bench_worker::get_txn_counts() const {
 
 void bench_worker::PipelineScheduler() {
 #ifdef BATCH_SAME_TRX
-  LOG(FATAL) << "Pipeline scheduler doesn't work with batching same-type transactoins";
+  LOG(FATAL)
+      << "Pipeline scheduler doesn't work with batching same-type transactoins";
 #endif
-  LOG(INFO) << "Epoch management and latency recorder in Pipeline scheduler are not logically correct";
+  LOG(INFO) << "Epoch management and latency recorder in Pipeline scheduler "
+               "are not logically correct";
 
   CoroTxnHandle *handles = (CoroTxnHandle *)numa_alloc_onnode(
-    sizeof(CoroTxnHandle) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+      sizeof(CoroTxnHandle) * ermia::config::coro_batch_size,
+      numa_node_of_cpu(sched_getcpu()));
   memset(handles, 0, sizeof(CoroTxnHandle) * ermia::config::coro_batch_size);
 
   uint32_t *workload_idxs = (uint32_t *)numa_alloc_onnode(
-    sizeof(uint32_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+      sizeof(uint32_t) * ermia::config::coro_batch_size,
+      numa_node_of_cpu(sched_getcpu()));
 
-  rc_t *rcs = (rc_t *)numa_alloc_onnode(
-    sizeof(rc_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+  rc_t *rcs =
+      (rc_t *)numa_alloc_onnode(sizeof(rc_t) * ermia::config::coro_batch_size,
+                                numa_node_of_cpu(sched_getcpu()));
 
   barrier_a->count_down();
   barrier_b->wait_for();
@@ -543,7 +561,8 @@ void bench_worker::PipelineScheduler() {
       uint32_t workload_idx = fetch_workload();
       workload_idxs[i] = workload_idx;
       handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
-    } else if (!handles[i].promise().callee_coro || handles[i].promise().callee_coro.done()) {
+    } else if (!handles[i].promise().callee_coro ||
+               handles[i].promise().callee_coro.done()) {
       handles[i].resume();
     } else {
       handles[i].promise().callee_coro.resume();
@@ -555,23 +574,26 @@ void bench_worker::PipelineScheduler() {
   ermia::MM::epoch_exit(coroutine_batch_end_epoch, begin_epoch);
 }
 
-
 void bench_worker::Scheduler() {
 #ifdef BATCH_SAME_TRX
-  LOG(FATAL) << "General scheduler doesn't work with batching same-type transactoins";
+  LOG(FATAL)
+      << "General scheduler doesn't work with batching same-type transactoins";
 #endif
 #ifdef CORO_BATCH_COMMIT
   LOG(FATAL) << "General scheduler doesn't work with batching commits";
 #endif
   CoroTxnHandle *handles = (CoroTxnHandle *)numa_alloc_onnode(
-    sizeof(CoroTxnHandle) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+      sizeof(CoroTxnHandle) * ermia::config::coro_batch_size,
+      numa_node_of_cpu(sched_getcpu()));
   memset(handles, 0, sizeof(CoroTxnHandle) * ermia::config::coro_batch_size);
 
   uint32_t *workload_idxs = (uint32_t *)numa_alloc_onnode(
-    sizeof(uint32_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+      sizeof(uint32_t) * ermia::config::coro_batch_size,
+      numa_node_of_cpu(sched_getcpu()));
 
-  rc_t *rcs = (rc_t *)numa_alloc_onnode(
-    sizeof(rc_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+  rc_t *rcs =
+      (rc_t *)numa_alloc_onnode(sizeof(rc_t) * ermia::config::coro_batch_size,
+                                numa_node_of_cpu(sched_getcpu()));
 
   barrier_a->count_down();
   barrier_b->wait_for();
@@ -599,7 +621,8 @@ void bench_worker::Scheduler() {
           handles[i].destroy();
           handles[i] = nullptr;
           --todo;
-        } else if (!handles[i].promise().callee_coro || handles[i].promise().callee_coro.done()) {
+        } else if (!handles[i].promise().callee_coro ||
+                   handles[i].promise().callee_coro.done()) {
           handles[i].resume();
         } else {
           handles[i].promise().callee_coro.resume();
@@ -613,11 +636,13 @@ void bench_worker::Scheduler() {
 
 void bench_worker::BatchScheduler() {
   CoroTxnHandle *handles = (CoroTxnHandle *)numa_alloc_onnode(
-    sizeof(CoroTxnHandle) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+      sizeof(CoroTxnHandle) * ermia::config::coro_batch_size,
+      numa_node_of_cpu(sched_getcpu()));
   memset(handles, 0, sizeof(CoroTxnHandle) * ermia::config::coro_batch_size);
 
-  rc_t *rcs = (rc_t *)numa_alloc_onnode(
-    sizeof(rc_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+  rc_t *rcs =
+      (rc_t *)numa_alloc_onnode(sizeof(rc_t) * ermia::config::coro_batch_size,
+                                numa_node_of_cpu(sched_getcpu()));
 
 #ifndef BATCH_SAME_TRX
   LOG(FATAL) << "Batch scheduler batches same-type transactoins";
@@ -651,7 +676,8 @@ void bench_worker::BatchScheduler() {
           handles[i].destroy();
           handles[i] = nullptr;
           --todo;
-        } else if (!handles[i].promise().callee_coro || handles[i].promise().callee_coro.done()) {
+        } else if (!handles[i].promise().callee_coro ||
+                   handles[i].promise().callee_coro.done()) {
           handles[i].resume();
         } else {
           handles[i].promise().callee_coro.resume();
@@ -672,5 +698,3 @@ void bench_worker::BatchScheduler() {
     ermia::MM::epoch_exit(coroutine_batch_end_epoch, begin_epoch);
   }
 }
-
-

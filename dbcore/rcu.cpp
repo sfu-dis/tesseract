@@ -1,17 +1,18 @@
-#include <stdint.h>
+#include "rcu.h"
+
 #include <pthread.h>
+#include <stdint.h>
+
+#include <algorithm>
 #include <map>
 #include <new>
-#include <algorithm>
 
 #include "../macros.h"
-
 #include "epoch.h"
-#include "rcu.h"
 #include "size-encode.h"
-#include "sm-exceptions.h"
 #include "sm-common.h"
 #include "sm-defs.h"
+#include "sm-exceptions.h"
 
 namespace ermia {
 namespace RCU {
@@ -101,7 +102,9 @@ size_t rcu_gc_threshold_nbytes = 10 * RCU_THREAD_GC_THRESHOLD_NBYTES;
 rcu_gc_info rcu_free_counts = {0, 0, 0};
 
 rcu_gc_info rcu_free_target = {
-    1, 10 * RCU_THREAD_GC_THRESHOLD_NOBJ, 10 * RCU_THREAD_GC_THRESHOLD_NBYTES,
+    1,
+    10 * RCU_THREAD_GC_THRESHOLD_NOBJ,
+    10 * RCU_THREAD_GC_THRESHOLD_NBYTES,
 };
 
 void rcu_delete_p(pointer *p) { std::free(p); }
@@ -381,7 +384,7 @@ void rcu_pend_global_quiesce() {
 void rcu_exit() {
   // exit? or just decrease nesting level?
   rcu_tcb *self = rcu_tcb::tls();
-  if (not--self->enter_count) rcu_epochs.thread_exit();
+  if (not --self->enter_count) rcu_epochs.thread_exit();
 }
 
 bool pointer_stash::give(pointer *p) {

@@ -2,6 +2,7 @@
 
 #include <string>
 #include <unordered_map>
+
 #include "sm-common.h"
 #include "sm-oid.h"
 
@@ -20,7 +21,7 @@ class TableDescriptor {
   // Map index name to OrderedIndex (primary or secondary), global, no CC
   static std::unordered_map<std::string, OrderedIndex*> index_map;
 
-  static inline OrderedIndex *GetIndex(const std::string &name) {
+  static inline OrderedIndex* GetIndex(const std::string& name) {
     return index_map[name];
   }
   static inline bool NameExists(std::string name) {
@@ -47,8 +48,8 @@ class TableDescriptor {
 
  private:
   std::string name;
-  OrderedIndex *primary_index;
-  std::vector<OrderedIndex *> sec_indexes;
+  OrderedIndex* primary_index;
+  std::vector<OrderedIndex*> sec_indexes;
 
   FID tuple_fid;
   oid_array* tuple_array;
@@ -61,24 +62,16 @@ class TableDescriptor {
   TableDescriptor(std::string& name);
 
   void Initialize();
-  void SetPrimaryIndex(OrderedIndex *index, const std::string &name);
-  void AddSecondaryIndex(OrderedIndex *index, const std::string &name);
+  void SetPrimaryIndex(OrderedIndex* index, const std::string& name);
+  void AddSecondaryIndex(OrderedIndex* index, const std::string& name);
   void Recover(FID tuple_fid, FID key_fid, OID himark = 0);
   inline std::string& GetName() { return name; }
   inline OrderedIndex* GetPrimaryIndex() { return primary_index; }
   inline FID GetTupleFid() { return tuple_fid; }
-  inline FID GetKeyFid() {
-    return aux_fid_;
-  }
-  inline oid_array* GetKeyArray() {
-    return aux_array_;
-  }
-  inline FID GetPersistentAddressFid() {
-    return aux_fid_;
-  }
-  inline oid_array* GetPersistentAddressArray() {
-    return aux_array_;
-  }
+  inline FID GetKeyFid() { return aux_fid_; }
+  inline oid_array* GetKeyArray() { return aux_array_; }
+  inline FID GetPersistentAddressFid() { return aux_fid_; }
+  inline oid_array* GetPersistentAddressArray() { return aux_array_; }
   inline oid_array* GetTupleArray() { return tuple_array; }
 };
 }  // namespace ermia

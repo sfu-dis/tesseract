@@ -1,6 +1,7 @@
+#include "engine.h"
+
 #include "dbcore/rcu.h"
 #include "dbcore/sm-thread.h"
-#include "engine.h"
 #include "txn.h"
 
 namespace ermia {
@@ -20,10 +21,8 @@ dlog::tls_log *GetLog() {
   thread_local bool initialized = false;
   if (!initialized) {
     std::lock_guard<std::mutex> guard(tlog_lock);
-    tlog.initialize(config::log_dir.c_str(),
-                    dlog::tlogs.size(),
-                    numa_node_of_cpu(sched_getcpu()),
-                    config::log_buffer_mb,
+    tlog.initialize(config::log_dir.c_str(), dlog::tlogs.size(),
+                    numa_node_of_cpu(sched_getcpu()), config::log_buffer_mb,
                     config::log_segment_mb);
     initialized = true;
     dlog::tlogs.push_back(&tlog);
@@ -42,32 +41,31 @@ Engine::Engine() {
   ermia::dlog::initialize();
 }
 
-Engine::~Engine() {
-  ermia::dlog::uninitialize();
-}
+Engine::~Engine() { ermia::dlog::uninitialize(); }
 
 TableDescriptor *Engine::CreateTable(const char *name) {
   auto *td = TableDescriptor::New(name);
 
-  if (true) { //!sm_log::need_recovery) {
+  if (true) {  //! sm_log::need_recovery) {
     // Note: this will insert to the log and therefore affect min_flush_lsn,
     // so must be done in an sm-thread which must be created by the user
     // application (not here in ERMIA library).
-    //ASSERT(ermia::logmgr);
+    // ASSERT(ermia::logmgr);
 
     // TODO(tzwang): perhaps make this transactional to allocate it from
     // transaction string arena to avoid malloc-ing memory (~10k size).
-    //char *log_space = (char *)malloc(sizeof(sm_tx_log));
-    //ermia::sm_tx_log *log = ermia::logmgr->new_tx_log(log_space);
+    // char *log_space = (char *)malloc(sizeof(sm_tx_log));
+    // ermia::sm_tx_log *log = ermia::logmgr->new_tx_log(log_space);
     td->Initialize();
-    //log->log_table(td->GetTupleFid(), td->GetKeyFid(), td->GetName());
-    //log->commit(nullptr);
-    //free(log_space);
+    // log->log_table(td->GetTupleFid(), td->GetKeyFid(), td->GetName());
+    // log->commit(nullptr);
+    // free(log_space);
   }
   return td;
 }
 
-void Engine::LogIndexCreation(bool primary, FID table_fid, FID index_fid, const std::string &index_name) {
+void Engine::LogIndexCreation(bool primary, FID table_fid, FID index_fid,
+                              const std::string &index_name) {
   /*
   if (!sm_log::need_recovery) {
     // Note: this will insert to the log and therefore affect min_flush_lsn,
@@ -86,7 +84,8 @@ void Engine::LogIndexCreation(bool primary, FID table_fid, FID index_fid, const 
   */
 }
 
-void Engine::CreateIndex(const char *table_name, const std::string &index_name, bool is_primary) {
+void Engine::CreateIndex(const char *table_name, const std::string &index_name,
+                         bool is_primary) {
   auto *td = TableDescriptor::Get(table_name);
   ALWAYS_ASSERT(td);
   auto *index = new ConcurrentMasstreeIndex(table_name, is_primary);
@@ -99,8 +98,9 @@ void Engine::CreateIndex(const char *table_name, const std::string &index_name, 
   LogIndexCreation(is_primary, td->GetTupleFid(), index_fid, index_name);
 }
 
-PROMISE(rc_t) ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
-                                   const varstr *end_key, ScanCallback &callback) {
+PROMISE(rc_t)
+ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
+                              const varstr *end_key, ScanCallback &callback) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 
@@ -117,15 +117,16 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_
 
   if (!unlikely(end_key && *end_key <= start_key)) {
     XctSearchRangeCallback cb(t, &c);
-    AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr, cb, t->xc);
+    AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
+                                      cb, t->xc);
   }
   RETURN c.return_code;
 }
 
-PROMISE(rc_t) ConcurrentMasstreeIndex::ReverseScan(transaction *t,
-                                          const varstr &start_key,
-                                          const varstr *end_key,
-                                          ScanCallback &callback) {
+PROMISE(rc_t)
+ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
+                                     const varstr *end_key,
+                                     ScanCallback &callback) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 
@@ -137,8 +138,8 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::ReverseScan(transaction *t,
     if (end_key) {
       lowervk = *end_key;
     }
-    AWAIT masstree_.rsearch_range_call(start_key, end_key ? &lowervk : nullptr, cb,
-                                 t->xc);
+    AWAIT masstree_.rsearch_range_call(start_key, end_key ? &lowervk : nullptr,
+                                       cb, t->xc);
   }
   RETURN c.return_code;
 }
@@ -150,8 +151,9 @@ std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
   return std::map<std::string, uint64_t>();
 }
 
-PROMISE(void) ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
-                                        varstr &value, OID *out_oid) {
+PROMISE(void)
+ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
+                                   varstr &value, OID *out_oid) {
   OID oid = INVALID_OID;
   rc = {RC_INVALID};
   ConcurrentMasstree::versioned_node_t sinfo;
@@ -167,7 +169,8 @@ PROMISE(void) ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const
     dbtuple *tuple = nullptr;
     if (found) {
       // Key-OID mapping exists, now try to get the actual tuple to be sure
-      tuple = AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oid, t->xc);
+      tuple = AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(),
+                                            oid, t->xc);
       if (!tuple) {
         found = false;
       }
@@ -204,8 +207,9 @@ void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_failure() {
   spec_values.clear();
 }
 
-PROMISE(bool) ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key,
-                                             OID oid) {
+PROMISE(bool)
+ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key,
+                                        OID oid) {
   typename ConcurrentMasstree::insert_info_t ins_info;
   bool inserted = AWAIT masstree_.insert_if_absent(key, oid, t->xc, &ins_info);
 
@@ -232,7 +236,8 @@ PROMISE(bool) ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const vars
 
 ////////////////// Index interfaces /////////////////
 
-PROMISE(bool) ConcurrentMasstreeIndex::InsertOID(transaction *t, const varstr &key, OID oid) {
+PROMISE(bool)
+ConcurrentMasstreeIndex::InsertOID(transaction *t, const varstr &key, OID oid) {
   bool inserted = AWAIT InsertIfAbsent(t, key, oid);
   if (inserted) {
     t->LogIndexInsert(this, oid, &key);
@@ -244,7 +249,9 @@ PROMISE(bool) ConcurrentMasstreeIndex::InsertOID(transaction *t, const varstr &k
   RETURN inserted;
 }
 
-PROMISE(rc_t) ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid) {
+PROMISE(rc_t)
+ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
+                                      varstr &value, OID *out_oid) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
@@ -269,8 +276,7 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr
     // XXX(tzwang): only need to install this key if we need chkpt; not a
     // realistic setting here to not generate it, the purpose of skipping
     // this is solely for benchmarking CC.
-    varstr *new_key =
-        (varstr *)MM::allocate(sizeof(varstr) + key.size());
+    varstr *new_key = (varstr *)MM::allocate(sizeof(varstr) + key.size());
     new (new_key) varstr((char *)new_key + sizeof(varstr), 0);
     new_key->copy_from(&key);
     auto *key_array = table_descriptor->GetKeyArray();
@@ -286,7 +292,9 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr
   RETURN rc_t{RC_TRUE};
 }
 
-PROMISE(rc_t) ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key, varstr &value) {
+PROMISE(rc_t)
+ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
+                                      varstr &value) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
@@ -303,7 +311,8 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr
   }
 }
 
-PROMISE(rc_t) ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key) {
+PROMISE(rc_t)
+ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
@@ -314,7 +323,7 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr
 
   if (rc._val == RC_TRUE) {
     // Allocate an empty record version as the "new" version
-		varstr *null_val = t->string_allocator().next(0);
+    varstr *null_val = t->string_allocator().next(0);
     rc_t rc = AWAIT t->Update(table_descriptor, oid, &key, null_val);
     RETURN rc;
   } else {
@@ -376,7 +385,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     // ^^^^^ note: see masstree_scan.hh, whose scan() calls
     // visit_value(), which calls this function to determine
     // if it should stop reading.
-    return false; // don't continue the read if the tx should abort
+    return false;  // don't continue the read if the tx should abort
   }
   return true;
 }
@@ -394,7 +403,8 @@ rc_t Table::Insert(transaction &t, varstr *value, OID *out_oid) {
 }
 
 rc_t Table::Read(transaction &t, OID oid, varstr *out_value) {
-  auto *tuple = sync_wait_coro(oidmgr->oid_get_version(td->GetTupleArray(), oid, t.GetXIDContext()));
+  auto *tuple = sync_wait_coro(
+      oidmgr->oid_get_version(td->GetTupleArray(), oid, t.GetXIDContext()));
   rc_t rc = {RC_INVALID};
   if (tuple) {
     // Record exists
@@ -418,9 +428,10 @@ PROMISE(rc_t) Table::Remove(transaction &t, OID oid) {
 
 ////////////////// End of Table interfaces //////////
 
-OrderedIndex::OrderedIndex(std::string table_name, bool is_primary) : is_primary(is_primary) {
+OrderedIndex::OrderedIndex(std::string table_name, bool is_primary)
+    : is_primary(is_primary) {
   table_descriptor = TableDescriptor::Get(table_name);
   self_fid = oidmgr->create_file(true);
 }
 
-} // namespace ermia
+}  // namespace ermia

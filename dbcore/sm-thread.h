@@ -1,6 +1,7 @@
 #pragma once
 
 #include <numa.h>
+#include <sys/stat.h>
 
 #include <condition_variable>
 #include <fstream>
@@ -8,11 +9,9 @@
 #include <mutex>
 #include <thread>
 
-#include <sys/stat.h>
-
+#include "../util.h"
 #include "sm-defs.h"
 #include "xid.h"
-#include "../util.h"
 
 namespace ermia {
 namespace thread {
@@ -71,8 +70,8 @@ struct Thread {
 
   void IdleTask();
   static void *StaticIdleTask(void *context) {
-      ((Thread *)context)->IdleTask();
-      return nullptr;
+    ((Thread *)context)->IdleTask();
+    return nullptr;
   }
 
   // No CC whatsoever, caller must know what it's doing
@@ -90,7 +89,10 @@ struct Thread {
     }
   }
 
-  inline void Join() { while (volatile_read(state) == kStateHasWork) {} }
+  inline void Join() {
+    while (volatile_read(state) == kStateHasWork) {
+    }
+  }
   inline bool TryJoin() { return volatile_read(state) != kStateHasWork; }
   inline void Destroy() {
     volatile_write(shutdown, true);
@@ -173,7 +175,8 @@ struct Runner {
     ALWAYS_ASSERT(not me);
     me = thread::GetThread(physical);
     if (me) {
-      LOG_IF(FATAL, config::threadpool && me->is_physical != physical) << "Not the requested thread type";
+      LOG_IF(FATAL, config::threadpool && me->is_physical != physical)
+          << "Not the requested thread type";
       me->sleep_when_idle = sleep_when_idle;
       if (config::threadpool) {
         LOG(INFO) << "Impersonated on thread " << me->node << ", " << me->core;
@@ -186,7 +189,8 @@ struct Runner {
     ALWAYS_ASSERT(not me);
     me = thread::GetThread(node, physical);
     if (me) {
-      LOG_IF(FATAL, me->is_physical != physical) << "Not the requested thread type";
+      LOG_IF(FATAL, me->is_physical != physical)
+          << "Not the requested thread type";
       me->sleep_when_idle = sleep_when_idle;
     }
     return me != nullptr;

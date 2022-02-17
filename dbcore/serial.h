@@ -1,7 +1,7 @@
 #pragma once
+#include "../macros.h"
 #include "sm-rc.h"
 #include "xid.h"
-#include "../macros.h"
 
 namespace ermia {
 
@@ -64,8 +64,10 @@ struct readers_list {
 
 uint64_t serial_get_last_read_mostly_cstamp(int xid_idx);
 void serial_stamp_last_committed_lsn(uint32_t coro_batch_idx, uint64_t lsn);
-void serial_deregister_reader_tx(uint32_t coro_batch_idx, readers_list::bitmap_t* tuple_readers_bitmap);
-void serial_register_reader_tx(uint32_t coro_batch_idx, readers_list::bitmap_t* tuple_readers_bitmap);
+void serial_deregister_reader_tx(uint32_t coro_batch_idx,
+                                 readers_list::bitmap_t* tuple_readers_bitmap);
+void serial_register_reader_tx(uint32_t coro_batch_idx,
+                               readers_list::bitmap_t* tuple_readers_bitmap);
 void serial_register_tx(uint32_t coro_batch_idx, XID xid);
 void serial_deregister_tx(uint32_t coro_batch_idx, XID xid);
 

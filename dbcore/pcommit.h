@@ -23,7 +23,9 @@ struct commit_queue {
   uint32_t length;
   mcs_lock lock;
   commit_queue()
-      : start(0), items(0), total_latency_us(0),
+      : start(0),
+        items(0),
+        total_latency_us(0),
         length(config::pcommit_queue_length) {
     queue = new Entry[length];
   }
@@ -34,12 +36,12 @@ struct commit_queue {
 };
 
 class tls_committer {
-private:
+ private:
   // Same as log id and thread id
   uint32_t id;
   commit_queue *_commit_queue CACHE_ALIGNED;
 
-public:
+ public:
   tls_committer() {}
   ~tls_committer() {}
 
@@ -81,6 +83,6 @@ public:
   inline void extend_queue() { _commit_queue->extend(); }
 };
 
-} // namespace pcommit
+}  // namespace pcommit
 
-} // namespace ermia
+}  // namespace ermia

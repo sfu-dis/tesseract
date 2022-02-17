@@ -1,15 +1,16 @@
+#include "pcommit.h"
+
 #include <atomic>
 
-#include "pcommit.h"
-#include "sm-common.h"
 #include "../engine.h"
 #include "../macros.h"
+#include "sm-common.h"
 
 namespace ermia {
 
 namespace pcommit {
 
-// tls_committer-local durable CSNs - belongs to tls_committer 
+// tls_committer-local durable CSNs - belongs to tls_committer
 // but stored here together
 uint64_t *_tls_durable_csn =
     (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
@@ -17,7 +18,8 @@ uint64_t *_tls_durable_csn =
 // Up to which CSN are we sure all transcations are durable
 std::atomic<uint64_t> global_durable_csn(0);
 
-void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush, bool *insert) {
+void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush,
+                             bool *insert) {
   CRITICAL_SECTION(cs, lock);
   // Signal a flush if the queue is over 80% full
   if (items >= length * 0.8) {
@@ -52,7 +54,7 @@ uint64_t tls_committer::get_global_durable_csn() {
   uint64_t max_clean = 0;
   for (uint32_t i = 0; i < ermia::dlog::tlogs.size(); i++) {
     uint64_t csn = volatile_read(_tls_durable_csn[i]);
-    if (csn) {  
+    if (csn) {
       if (csn & DIRTY_FLAG) {
         min_dirty = std::min(csn & ~DIRTY_FLAG, min_dirty);
         found = true;
@@ -87,6 +89,6 @@ void tls_committer::dequeue_committed_xcts() {
   volatile_write(_commit_queue->start, (n + dequeue) % _commit_queue->length);
 }
 
-} // namespace pcommit
+}  // namespace pcommit
 
-} // namespace ermia
+}  // namespace ermia

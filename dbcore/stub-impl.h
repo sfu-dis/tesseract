@@ -1,9 +1,9 @@
 #pragma once
 
-#include "sm-defs.h"
-
-#include <typeinfo>
 #include <type_traits>
+#include <typeinfo>
+
+#include "sm-defs.h"
 
 namespace ermia {
 

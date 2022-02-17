@@ -3,8 +3,8 @@
 #ifndef _STOPWATCH_H
 #define _STOPWATCH_H
 
-#include <time.h>
 #include <stdint.h>
+#include <time.h>
 
 /**
  *  @brief a timer object.

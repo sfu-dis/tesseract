@@ -1,15 +1,15 @@
+#include "sm-alloc.h"
+
 #include <numa.h>
 #include <sched.h>
 #include <sys/mman.h>
 
 #include <atomic>
 #include <future>
-
-#include "sm-alloc.h"
 //#include "sm-chkpt.h"
+#include "../txn.h"
 #include "sm-common.h"
 #include "sm-object.h"
-#include "../txn.h"
 
 namespace ermia {
 namespace MM {

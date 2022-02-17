@@ -1,4 +1,5 @@
 #include "serial.h"
+
 #include "../macros.h"
 namespace ermia {
 
@@ -168,7 +169,8 @@ namespace TXN {
 */
 
 readers_list rlist;
-static thread_local readers_list::tls_bitmap_info tls_bitmap_infos[config::MAX_COROS];
+static thread_local readers_list::tls_bitmap_info
+    tls_bitmap_infos[config::MAX_COROS];
 
 void assign_reader_bitmap_entry() {
   if (tls_bitmap_infos[0].entry) return;
@@ -198,8 +200,8 @@ void assign_reader_bitmap_entry() {
 }
 
 void deassign_reader_bitmap_entry() {
-  //ASSERT(tls_bitmap_info.entry);
-  //ASSERT(rlist.bitmap.array[tls_bitmap_info.index] & tls_bitmap_info.entry);
+  // ASSERT(tls_bitmap_info.entry);
+  // ASSERT(rlist.bitmap.array[tls_bitmap_info.index] & tls_bitmap_info.entry);
   for (auto tls_bitmap_info : tls_bitmap_infos) {
     __sync_fetch_and_xor(&rlist.bitmap.array[tls_bitmap_info.index],
                          tls_bitmap_info.entry);
@@ -210,55 +212,69 @@ void deassign_reader_bitmap_entry() {
 // register tx in the global rlist (called at tx start)
 void serial_register_tx(uint32_t coro_batch_idx, XID xid) {
   ASSERT(not rlist.xids[tls_bitmap_infos[coro_batch_idx].xid_index()]._val);
-  volatile_write(rlist.xids[tls_bitmap_infos[coro_batch_idx].xid_index()]._val, xid._val);
+  volatile_write(rlist.xids[tls_bitmap_infos[coro_batch_idx].xid_index()]._val,
+                 xid._val);
 }
 
 // deregister tx in the global rlist (called at tx end)
 void serial_deregister_tx(uint32_t coro_batch_idx, XID xid) {
   MARK_REFERENCED(xid);
-  ASSERT(rlist.xids[tls_bitmap_infos[coro_batch_idx].xid_index()]._val == xid._val);
-  volatile_write(rlist.xids[tls_bitmap_infos[coro_batch_idx].xid_index()]._val, 0);
+  ASSERT(rlist.xids[tls_bitmap_infos[coro_batch_idx].xid_index()]._val ==
+         xid._val);
+  volatile_write(rlist.xids[tls_bitmap_infos[coro_batch_idx].xid_index()]._val,
+                 0);
   ASSERT(not rlist.xids[tls_bitmap_infos[coro_batch_idx].xid_index()]._val);
 }
 
-void serial_register_reader_tx(uint32_t coro_batch_idx, readers_list::bitmap_t* tuple_readers_bitmap) {
+void serial_register_reader_tx(uint32_t coro_batch_idx,
+                               readers_list::bitmap_t* tuple_readers_bitmap) {
   ASSERT(tls_bitmap_infos[coro_batch_idx].entry);
-  ASSERT(rlist.bitmap.array[tls_bitmap_infos[coro_batch_idx].index] & tls_bitmap_infos[coro_batch_idx].entry);
+  ASSERT(rlist.bitmap.array[tls_bitmap_infos[coro_batch_idx].index] &
+         tls_bitmap_infos[coro_batch_idx].entry);
   // With read optimization, a transaction might not clear the bit,
   // so no need to set it again if it's set already (by a previous reader).
   if (config::ssn_read_opt_enabled() &&
-      (volatile_read(tuple_readers_bitmap->array[tls_bitmap_infos[coro_batch_idx].index]) &
+      (volatile_read(tuple_readers_bitmap
+                         ->array[tls_bitmap_infos[coro_batch_idx].index]) &
        tls_bitmap_infos[coro_batch_idx].entry) != 0) {
     return;
   }
-  __sync_fetch_and_or(&tuple_readers_bitmap->array[tls_bitmap_infos[coro_batch_idx].index],
-                      tls_bitmap_infos[coro_batch_idx].entry);
+  __sync_fetch_and_or(
+      &tuple_readers_bitmap->array[tls_bitmap_infos[coro_batch_idx].index],
+      tls_bitmap_infos[coro_batch_idx].entry);
 }
 
-void serial_deregister_reader_tx(uint32_t coro_batch_idx, readers_list::bitmap_t* tuple_readers_bitmap) {
+void serial_deregister_reader_tx(uint32_t coro_batch_idx,
+                                 readers_list::bitmap_t* tuple_readers_bitmap) {
   ASSERT(tls_bitmap_infos[coro_batch_idx].entry);
   // if a tx reads a tuple multiple times (e.g., 3 times),
   // then during post-commit it will call this function
   // multiple times, so we take a look to see if it's still set before the xor.
-  auto b = volatile_read(tuple_readers_bitmap->array[tls_bitmap_infos[coro_batch_idx].index]);
+  auto b = volatile_read(
+      tuple_readers_bitmap->array[tls_bitmap_infos[coro_batch_idx].index]);
   if (b & tls_bitmap_infos[coro_batch_idx].entry) {
-    __sync_fetch_and_xor(&tuple_readers_bitmap->array[tls_bitmap_infos[coro_batch_idx].index],
-                         tls_bitmap_infos[coro_batch_idx].entry);
+    __sync_fetch_and_xor(
+        &tuple_readers_bitmap->array[tls_bitmap_infos[coro_batch_idx].index],
+        tls_bitmap_infos[coro_batch_idx].entry);
   }
-  ASSERT(not(tuple_readers_bitmap->array[tls_bitmap_infos[coro_batch_idx].index] &
-             tls_bitmap_infos[coro_batch_idx].entry));
+  ASSERT(
+      not(tuple_readers_bitmap->array[tls_bitmap_infos[coro_batch_idx].index] &
+          tls_bitmap_infos[coro_batch_idx].entry));
 }
 
 void serial_stamp_last_committed_lsn(uint32_t coro_batch_idx, uint64_t lsn) {
-  volatile_write(rlist.last_read_mostly_clsns[tls_bitmap_infos[coro_batch_idx].xid_index()],
-                 lsn);
+  volatile_write(
+      rlist
+          .last_read_mostly_clsns[tls_bitmap_infos[coro_batch_idx].xid_index()],
+      lsn);
 }
 
 uint64_t serial_get_last_read_mostly_cstamp(int xid_idx) {
   return volatile_read(rlist.last_read_mostly_clsns[xid_idx]);
 }
 
-bool readers_list::bitmap_t::is_empty(uint32_t coro_batch_idx, bool exclude_self) {
+bool readers_list::bitmap_t::is_empty(uint32_t coro_batch_idx,
+                                      bool exclude_self) {
   for (uint32_t i = 0; i < ARRAY_SIZE; ++i) {
     auto bits = volatile_read(array[i]);
     if (bits) {
@@ -276,13 +292,15 @@ int32_t readers_bitmap_iterator::next(uint32_t coro_batch_idx, bool skip_self) {
     if (cur_entry) {
       auto pos = __builtin_ctzll(cur_entry);
       cur_entry &= (cur_entry - 1);
-      if (skip_self and cur_entry_index == tls_bitmap_infos[coro_batch_idx].index and
+      if (skip_self and
+          cur_entry_index == tls_bitmap_infos[coro_batch_idx].index and
           pos == __builtin_ctzll(tls_bitmap_infos[coro_batch_idx].entry)) {
         continue;
       }
       return cur_entry_index * 64 + pos;
     }
-    if ((cur_entry_index + 1) * 64 >= readers_list::bitmap_t::CAPACITY) return -1;
+    if ((cur_entry_index + 1) * 64 >= readers_list::bitmap_t::CAPACITY)
+      return -1;
     cur_entry = volatile_read(array[++cur_entry_index]);
   }
 }

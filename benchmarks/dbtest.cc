@@ -1,36 +1,49 @@
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <utility>
-#include <string>
-
 #include <gflags/gflags.h>
 
-#include "bench.h"
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <utility>
+
 #include "../dbcore/rcu.h"
+#include "bench.h"
 
 #if defined(SSI) && defined(SSN)
 #error "SSI + SSN?"
 #endif
 
-DEFINE_bool(threadpool, true, "Whether to use ERMIA thread pool (no oversubscription)");
-DEFINE_uint64(arena_size_mb, 4, "Size of transaction arena (private workspace) in MB");
-DEFINE_bool(tls_alloc, true, "Whether to use the TLS allocator defined in sm-alloc.h");
-DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
-  "Ignored if auto-detection of physical cores succeeded.");
-DEFINE_bool(physical_workers_only, true, "Whether to only use one thread per physical core as transaction workers.");
-DEFINE_bool(amac_version_chain, false, "Whether to use AMAC for traversing version chain; applicable only for multi-get.");
-DEFINE_bool(coro_tx, false, "Whether to turn each transaction into a coroutine");
+DEFINE_bool(threadpool, true,
+            "Whether to use ERMIA thread pool (no oversubscription)");
+DEFINE_uint64(arena_size_mb, 4,
+              "Size of transaction arena (private workspace) in MB");
+DEFINE_bool(tls_alloc, true,
+            "Whether to use the TLS allocator defined in sm-alloc.h");
+DEFINE_bool(htt, true,
+            "Whether the HW has hyper-threading enabled."
+            "Ignored if auto-detection of physical cores succeeded.");
+DEFINE_bool(
+    physical_workers_only, true,
+    "Whether to only use one thread per physical core as transaction workers.");
+DEFINE_bool(amac_version_chain, false,
+            "Whether to use AMAC for traversing version chain; applicable only "
+            "for multi-get.");
+DEFINE_bool(coro_tx, false,
+            "Whether to turn each transaction into a coroutine");
 DEFINE_uint64(coro_batch_size, 5, "Number of in-flight coroutines");
-DEFINE_bool(coro_batch_schedule, false, "Whether to run the same type of transactions per batch");
-DEFINE_bool(scan_with_iterator, false, "Whether to run scan with iterator version or callback version");
+DEFINE_bool(coro_batch_schedule, false,
+            "Whether to run the same type of transactions per batch");
+DEFINE_bool(scan_with_iterator, false,
+            "Whether to run scan with iterator version or callback version");
 DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
 DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
-DEFINE_bool(index_probe_only, false, "Whether the read is only probing into index");
+DEFINE_bool(index_probe_only, false,
+            "Whether the read is only probing into index");
 DEFINE_uint64(threads, 1, "Number of worker threads to run transactions.");
 DEFINE_uint64(node_memory_gb, 12, "GBs of memory to allocate per node.");
-DEFINE_bool(numa_spread, false, "Whether to pin threads in spread mode (compact if false)");
+DEFINE_bool(numa_spread, false,
+            "Whether to pin threads in spread mode (compact if false)");
 DEFINE_string(tmpfs_dir, "/dev/shm",
               "Path to a tmpfs location. Used by log buffer.");
 DEFINE_string(log_data_dir, "/tmpfs/ermia-log", "Log directory.");
@@ -38,7 +51,8 @@ DEFINE_uint64(log_buffer_mb, 16, "Log buffer size in MB.");
 DEFINE_uint64(log_segment_mb, 16384, "Log segment size in MB.");
 DEFINE_bool(phantom_prot, false, "Whether to enable phantom protection.");
 DEFINE_bool(print_cpu_util, false, "Whether to print CPU utilization.");
-DEFINE_bool(enable_perf, false, "Whether to run Linux perf along with benchmark.");
+DEFINE_bool(enable_perf, false,
+            "Whether to run Linux perf along with benchmark.");
 DEFINE_string(perf_record_event, "", "Perf record event");
 #if defined(SSN) || defined(SSI)
 DEFINE_bool(safesnap, false,
@@ -72,9 +86,9 @@ DEFINE_string(
 DEFINE_bool(enable_chkpt, false, "Whether to enable checkpointing.");
 DEFINE_uint64(chkpt_interval, 10, "Checkpoint interval in seconds.");
 DEFINE_bool(null_log_device, false, "Whether to skip writing log records.");
-DEFINE_bool(
-    truncate_at_bench_start, false,
-    "Whether truncate the log/chkpt file written before starting benchmark (save tmpfs space).");
+DEFINE_bool(truncate_at_bench_start, false,
+            "Whether truncate the log/chkpt file written before starting "
+            "benchmark (save tmpfs space).");
 DEFINE_bool(log_key_for_update, false,
             "Whether to store the key in update log records.");
 // Group (pipelined) commit related settings. The daemon will flush the log
@@ -87,16 +101,20 @@ DEFINE_uint64(pcommit_timeout_ms, 1000,
               "Pipelined commit flush interval (in milliseconds).");
 DEFINE_uint64(pcommit_size_kb, 4,
               "Pipelined commit flush size interval in KB.");
-DEFINE_bool(pcommit_thread, false, "Whether to use a dedicated pipelined committer thread.");
+DEFINE_bool(pcommit_thread, false,
+            "Whether to use a dedicated pipelined committer thread.");
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
 DEFINE_bool(always_load, false, "Whether to load versions from logs.");
-DEFINE_bool(kStateRunning, false, "Whether the benchmark is in the running phase.");
-DEFINE_bool(iouring_read_log, false, "Whether to use iouring to load versions from logs.");
+DEFINE_bool(kStateRunning, false,
+            "Whether the benchmark is in the running phase.");
+DEFINE_bool(iouring_read_log, false,
+            "Whether to use iouring to load versions from logs.");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
   std::istringstream iss(s);
-  copy(std::istream_iterator<std::string>(iss), std::istream_iterator<std::string>(),
+  copy(std::istream_iterator<std::string>(iss),
+       std::istream_iterator<std::string>(),
        std::back_inserter<std::vector<std::string>>(r));
   return r;
 }
@@ -132,7 +150,8 @@ int main(int argc, char **argv) {
   ermia::config::log_buffer_mb = FLAGS_log_buffer_mb;
   ermia::config::log_segment_mb = FLAGS_log_segment_mb;
   ermia::config::phantom_prot = FLAGS_phantom_prot;
-  //ermia::config::recover_functor = new ermia::parallel_oid_replay(FLAGS_threads);
+  // ermia::config::recover_functor = new
+  // ermia::parallel_oid_replay(FLAGS_threads);
 
   ermia::config::amac_version_chain = FLAGS_amac_version_chain;
 
@@ -158,7 +177,8 @@ int main(int argc, char **argv) {
   ermia::config::benchmark_seconds = FLAGS_seconds;
   ermia::config::benchmark_scale_factor = FLAGS_scale_factor;
   ermia::config::retry_aborted_transactions = FLAGS_retry_aborted_transactions;
-  ermia::config::backoff_aborted_transactions = FLAGS_backoff_aborted_transactions;
+  ermia::config::backoff_aborted_transactions =
+      FLAGS_backoff_aborted_transactions;
   ermia::config::null_log_device = FLAGS_null_log_device;
   ermia::config::truncate_at_bench_start = FLAGS_truncate_at_bench_start;
 
@@ -186,8 +206,7 @@ int main(int argc, char **argv) {
   } else if (FLAGS_recovery_warm_up == "eager") {
     ermia::config::recovery_warm_up_policy = ermia::config::WARM_UP_EAGER;
   } else {
-    LOG(FATAL) << "Invalid recovery warm up policy: "
-               << FLAGS_recovery_warm_up;
+    LOG(FATAL) << "Invalid recovery warm up policy: " << FLAGS_recovery_warm_up;
   }
 
   ermia::config::log_key_for_update = FLAGS_log_key_for_update;
@@ -198,20 +217,23 @@ int main(int argc, char **argv) {
   std::cerr << "CC: ";
 #ifdef SSI
   std::cerr << "SSI";
-  std::cerr << "  safe snapshot          : " << ermia::config::enable_safesnap << std::endl;
-  std::cerr << "  read-only optimization : " << ermia::config::enable_ssi_read_only_opt
-       << std::endl;
+  std::cerr << "  safe snapshot          : " << ermia::config::enable_safesnap
+            << std::endl;
+  std::cerr << "  read-only optimization : "
+            << ermia::config::enable_ssi_read_only_opt << std::endl;
 #elif defined(SSN)
 #ifdef RC
   std::cerr << "RC+SSN";
-  std::cerr << "  safe snapshot          : " << ermia::config::enable_safesnap << std::endl;
+  std::cerr << "  safe snapshot          : " << ermia::config::enable_safesnap
+            << std::endl;
   std::cerr << "  read opt threshold     : 0x" << std::hex
-       << ermia::config::ssn_read_opt_threshold << std::dec << std::endl;
+            << ermia::config::ssn_read_opt_threshold << std::dec << std::endl;
 #else
   std::cerr << "SI+SSN";
-  std::cerr << "  safe snapshot          : " << ermia::config::enable_safesnap << std::endl;
+  std::cerr << "  safe snapshot          : " << ermia::config::enable_safesnap
+            << std::endl;
   std::cerr << "  read opt threshold     : 0x" << std::hex
-       << ermia::config::ssn_read_opt_threshold << std::dec << std::endl;
+            << ermia::config::ssn_read_opt_threshold << std::dec << std::endl;
 #endif
 #elif defined(MVCC)
   std::cerr << "MVOCC";
@@ -219,37 +241,56 @@ int main(int argc, char **argv) {
   std::cerr << "SI";
 #endif
   std::cerr << std::endl;
-  std::cerr << "  phantom-protection: " << ermia::config::phantom_prot << std::endl;
+  std::cerr << "  phantom-protection: " << ermia::config::phantom_prot
+            << std::endl;
 
   std::cerr << "Settings and properties" << std::endl;
   std::cerr << "  always-load       : " << FLAGS_always_load << std::endl;
-  std::cerr << "  amac-version-chain: " << FLAGS_amac_version_chain << std::endl;
+  std::cerr << "  amac-version-chain: " << FLAGS_amac_version_chain
+            << std::endl;
   std::cerr << "  arena-size-mb     : " << FLAGS_arena_size_mb << std::endl;
   std::cerr << "  benchmark         : " << FLAGS_benchmark << std::endl;
   std::cerr << "  coro-tx           : " << FLAGS_coro_tx << std::endl;
-  std::cerr << "  coro-batch-schedule: " << FLAGS_coro_batch_schedule << std::endl;
+  std::cerr << "  coro-batch-schedule: " << FLAGS_coro_batch_schedule
+            << std::endl;
   std::cerr << "  coro-batch-size   : " << FLAGS_coro_batch_size << std::endl;
-  std::cerr << "  scan-use-iterator : " << FLAGS_scan_with_iterator << std::endl;
-  std::cerr << "  enable-perf       : " << ermia::config::enable_perf << std::endl;
+  std::cerr << "  scan-use-iterator : " << FLAGS_scan_with_iterator
+            << std::endl;
+  std::cerr << "  enable-perf       : " << ermia::config::enable_perf
+            << std::endl;
   std::cerr << "  pipelined commit  : " << ermia::config::pcommit << std::endl;
-  std::cerr << "  dedicated pcommit thread: " << ermia::config::pcommit_thread << std::endl;
+  std::cerr << "  dedicated pcommit thread: " << ermia::config::pcommit_thread
+            << std::endl;
   std::cerr << "  index-probe-only  : " << FLAGS_index_probe_only << std::endl;
   std::cerr << "  iouring-read-log  : " << FLAGS_iouring_read_log << std::endl;
-  std::cerr << "  log-buffer-mb     : " << ermia::config::log_buffer_mb << std::endl;
+  std::cerr << "  log-buffer-mb     : " << ermia::config::log_buffer_mb
+            << std::endl;
   std::cerr << "  log-dir           : " << ermia::config::log_dir << std::endl;
-  std::cerr << "  log-segment-mb    : " << ermia::config::log_segment_mb << std::endl;
-  std::cerr << "  masstree_internal_node_size: " << ermia::ConcurrentMasstree::InternalNodeSize() << std::endl;
-  std::cerr << "  masstree_leaf_node_size    : " << ermia::ConcurrentMasstree::LeafNodeSize() << std::endl;
-  std::cerr << "  node-memory       : " << ermia::config::node_memory_gb << "GB" << std::endl;
-  std::cerr << "  null-log-device   : " << ermia::config::null_log_device << std::endl;
+  std::cerr << "  log-segment-mb    : " << ermia::config::log_segment_mb
+            << std::endl;
+  std::cerr << "  masstree_internal_node_size: "
+            << ermia::ConcurrentMasstree::InternalNodeSize() << std::endl;
+  std::cerr << "  masstree_leaf_node_size    : "
+            << ermia::ConcurrentMasstree::LeafNodeSize() << std::endl;
+  std::cerr << "  node-memory       : " << ermia::config::node_memory_gb << "GB"
+            << std::endl;
+  std::cerr << "  null-log-device   : " << ermia::config::null_log_device
+            << std::endl;
   std::cerr << "  num-threads       : " << ermia::config::threads << std::endl;
-  std::cerr << "  numa-nodes        : " << ermia::config::numa_nodes << std::endl;
-  std::cerr << "  numa-mode         : " << (ermia::config::numa_spread ? "spread" : "compact") << std::endl;
-  std::cerr << "  perf-record-event : " << ermia::config::perf_record_event << std::endl;
-  std::cerr << "  physical-workers-only: " << ermia::config::physical_workers_only << std::endl;
-  std::cerr << "  print-cpu-util    : " << ermia::config::print_cpu_util << std::endl;
-  std::cerr << "  threadpool        : " << ermia::config::threadpool << std::endl;
-  std::cerr << "  tmpfs-dir         : " << ermia::config::tmpfs_dir << std::endl;
+  std::cerr << "  numa-nodes        : " << ermia::config::numa_nodes
+            << std::endl;
+  std::cerr << "  numa-mode         : "
+            << (ermia::config::numa_spread ? "spread" : "compact") << std::endl;
+  std::cerr << "  perf-record-event : " << ermia::config::perf_record_event
+            << std::endl;
+  std::cerr << "  physical-workers-only: "
+            << ermia::config::physical_workers_only << std::endl;
+  std::cerr << "  print-cpu-util    : " << ermia::config::print_cpu_util
+            << std::endl;
+  std::cerr << "  threadpool        : " << ermia::config::threadpool
+            << std::endl;
+  std::cerr << "  tmpfs-dir         : " << ermia::config::tmpfs_dir
+            << std::endl;
   std::cerr << "  tls-alloc         : " << FLAGS_tls_alloc << std::endl;
   std::cerr << "  total-threads     : " << ermia::config::threads << std::endl;
 #ifdef USE_VARINT_ENCODING
@@ -257,7 +298,8 @@ int main(int argc, char **argv) {
 #else
   std::cerr << "  var-encode        : no" << std::endl;
 #endif
-  std::cerr << "  worker-threads    : " << ermia::config::worker_threads << std::endl;
+  std::cerr << "  worker-threads    : " << ermia::config::worker_threads
+            << std::endl;
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");
   ermia::MM::prepare_node_memory();
@@ -271,7 +313,7 @@ int main(int argc, char **argv) {
   // Must have everything in config ready by this point
   ermia::config::sanity_check();
   ermia::Engine *db = new ermia::Engine();
-  void (*test_fn)(ermia::Engine*, int argc, char **argv) = NULL;
+  void (*test_fn)(ermia::Engine *, int argc, char **argv) = NULL;
   if (FLAGS_benchmark == "ycsb") {
 #ifdef ADV_COROUTINE
     ALWAYS_ASSERT(ermia::config::coro_tx);

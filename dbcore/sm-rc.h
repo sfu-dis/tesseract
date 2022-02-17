@@ -39,5 +39,3 @@ struct rc_t {
   inline bool IsInvalid() { return _val == RC_INVALID; }
   inline bool IsAbort() { return _val & RC_ABORT; }
 };
-
-

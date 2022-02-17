@@ -1,5 +1,6 @@
 #pragma once
 #include <map>
+
 #include "dbcore/sm-common.h"
 
 namespace ermia {
@@ -8,12 +9,12 @@ namespace ermia {
 class OrderedIndex {
   friend class transaction;
 
-protected:
+ protected:
   TableDescriptor *table_descriptor;
   bool is_primary;
   FID self_fid;
 
-public:
+ public:
   OrderedIndex(std::string table_name, bool is_primary);
   virtual ~OrderedIndex() {}
   inline TableDescriptor *GetTableDescriptor() { return table_descriptor; }
@@ -22,7 +23,7 @@ public:
   virtual void *GetTable() = 0;
 
   class ScanCallback {
-  public:
+   public:
     virtual ~ScanCallback() {}
     virtual bool Invoke(const char *keyp, size_t keylen,
                         const varstr &value) = 0;
@@ -30,26 +31,29 @@ public:
 
   // Get a record with a key of length keylen. The underlying DB does not manage
   // the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
-  virtual PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-                                  OID *out_oid = nullptr) = 0;
+  virtual PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key,
+                                  varstr &value, OID *out_oid = nullptr) = 0;
 
   // Return the OID that corresponds the given key
-  virtual PROMISE(void) GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                               ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
+  virtual PROMISE(void)
+      GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+             ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
 
-  // Update a database record with a key of length keylen, with mapping of length
-  // valuelen.  The underlying DB does not manage the memory pointed to by key or
-  // value (a copy is made).
+  // Update a database record with a key of length keylen, with mapping of
+  // length valuelen.  The underlying DB does not manage the memory pointed to
+  // by key or value (a copy is made).
   //
   // If the does not already exist and config::upsert is set to true, insert.
-  virtual PROMISE(rc_t) UpdateRecord(transaction *t, const varstr &key, varstr &value) = 0;
+  virtual PROMISE(rc_t)
+      UpdateRecord(transaction *t, const varstr &key, varstr &value) = 0;
 
   // Insert a record with a key of length keylen.
-  virtual PROMISE(rc_t) InsertRecord(transaction *t, const varstr &key, varstr &value,
-                                     OID *out_oid = nullptr) = 0;
+  virtual PROMISE(rc_t) InsertRecord(transaction *t, const varstr &key,
+                                     varstr &value, OID *out_oid = nullptr) = 0;
 
   // Map a key to an existing OID. Could be used for primary or secondary index.
-  virtual PROMISE(bool) InsertOID(transaction *t, const varstr &key, OID oid) = 0;
+  virtual PROMISE(bool)
+      InsertOID(transaction *t, const varstr &key, OID oid) = 0;
 
   // Search [start_key, *end_key) if end_key is not null, otherwise
   // search [start_key, +infty)
@@ -58,8 +62,9 @@ public:
   // Search (*end_key, start_key] if end_key is not null, otherwise
   // search (-infty, start_key] (starting at start_key and traversing
   // backwards)
-  virtual PROMISE(rc_t) ReverseScan(transaction *t, const varstr &start_key,
-                                    const varstr *end_key, ScanCallback &callback) = 0;
+  virtual PROMISE(rc_t)
+      ReverseScan(transaction *t, const varstr &start_key,
+                  const varstr *end_key, ScanCallback &callback) = 0;
 
   // Default implementation calls put() with NULL (zero-length) value
   virtual PROMISE(rc_t) RemoveRecord(transaction *t, const varstr &key) = 0;
@@ -73,7 +78,8 @@ public:
    *
    * Returns false if the record already exists or there is potential phantom.
    */
-  virtual PROMISE(bool) InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
+  virtual PROMISE(bool)
+      InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
 };
 
 }  // namespace ermia

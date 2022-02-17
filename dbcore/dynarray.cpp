@@ -23,12 +23,12 @@
 
 #include "dynarray.h"
 
-#include "sm-common.h"
-#include "sm-config.h"
+#include <sys/mman.h>
 
 #include <cerrno>
 
-#include <sys/mman.h>
+#include "sm-common.h"
+#include "sm-config.h"
 
 namespace ermia {
 
@@ -93,7 +93,8 @@ dynarray::~dynarray() {
   if (not _capacity) return;
 
   int err = munmap(_data, capacity());
-  LOG_IF(FATAL, err) << "Unable to unmap " << capacity() << " bytes starting at " << _data;
+  LOG_IF(FATAL, err) << "Unable to unmap " << capacity()
+                     << " bytes starting at " << _data;
 }
 
 dynarray::dynarray(dynarray &&victim) noexcept : dynarray() {

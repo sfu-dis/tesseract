@@ -1,13 +1,13 @@
 #pragma once
 
+#include "../macros.h"
 #include "record/encoder.h"
 #include "record/inline_str.h"
-#include "../macros.h"
 
 // These correspond to the their index in the workload desc vector
 #define TPCC_CLID_NEW_ORDER 0
-#define TPCC_CLID_PAYMENT   1
-#define TPCC_CLID_DELIVERY  2
+#define TPCC_CLID_PAYMENT 1
+#define TPCC_CLID_DELIVERY 2
 
 #define CUSTOMER_KEY_FIELDS(x, y) \
   x(int32_t, c_w_id) y(int32_t, c_d_id) y(int32_t, c_id)

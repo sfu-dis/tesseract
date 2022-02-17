@@ -57,10 +57,7 @@ struct mcs_lock {
     mcs_lock* _held;
   };
 #define MCS_EXT_QNODE_INITIALIZER \
-  {                               \
-    { 0, false, 0 }               \
-    , 0                           \
-  }
+  { {0, false, 0}, 0 }
   qnode* volatile _tail = 0;
   constexpr mcs_lock() : _tail(0) {}
 
