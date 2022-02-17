@@ -48,7 +48,7 @@ class Object {
   fat_ptr csn_;
 
  public:
-  static fat_ptr Create(const varstr* tuple_value, epoch_num epoch);
+  static fat_ptr Create(const varstr *tuple_value, epoch_num epoch);
 
   Object()
       : alloc_epoch_(0),
@@ -66,15 +66,15 @@ class Object {
 
   inline bool IsDeleted() { return status_ == kStatusDeleted; }
   inline bool IsInMemory() { return status_ == kStatusMemory; }
-  inline fat_ptr* GetPersistentAddressPtr() { return &pdest_; }
+  inline fat_ptr *GetPersistentAddressPtr() { return &pdest_; }
   inline fat_ptr GetPersistentAddress() { return pdest_; }
   inline void SetPersistentAddress(fat_ptr ptr) { pdest_._ptr = ptr._ptr; }
   inline fat_ptr GetCSN() { return csn_; }
   inline void SetCSN(fat_ptr csnptr) { volatile_write(csn_._ptr, csnptr._ptr); }
   inline fat_ptr GetNextPersistent() { return volatile_read(next_pdest_); }
-  inline fat_ptr* GetNextPersistentPtr() { return &next_pdest_; }
+  inline fat_ptr *GetNextPersistentPtr() { return &next_pdest_; }
   inline fat_ptr GetNextVolatile() { return volatile_read(next_volatile_); }
-  inline fat_ptr* GetNextVolatilePtr() { return &next_volatile_; }
+  inline fat_ptr *GetNextVolatilePtr() { return &next_volatile_; }
   inline void SetNextPersistent(fat_ptr next) {
     volatile_write(next_pdest_, next);
   }
@@ -83,9 +83,9 @@ class Object {
   }
   inline epoch_num GetAllocateEpoch() { return alloc_epoch_; }
   inline void SetAllocateEpoch(epoch_num e) { alloc_epoch_ = e; }
-  inline char* GetPayload() { return (char*)((char*)this + sizeof(Object)); }
+  inline char *GetPayload() { return (char *)((char *)this + sizeof(Object)); }
   inline void SetStatus(uint32_t s) { volatile_write(status_, s); }
-  inline PROMISE(dbtuple*) GetPinnedTuple() {
+  inline PROMISE(dbtuple *) GetPinnedTuple() {
     if (IsDeleted()) {
       RETURN nullptr;
     }
@@ -98,15 +98,15 @@ class Object {
         AWAIT Pin();
       }
     }
-    RETURN(dbtuple*) GetPayload();
+    RETURN(dbtuple *) GetPayload();
   }
   fat_ptr GenerateCsnPtr(uint64_t csn);
   PROMISE(void) Pin();  // Make sure the payload is in memory
 
-  static inline void PrefetchHeader(Object* p) {
+  static inline void PrefetchHeader(Object *p) {
     uint32_t i = 0;
     do {
-      ::prefetch((const char*)(p + i));
+      ::prefetch((const char *)(p + i));
       i += CACHE_LINE_SIZE;
     } while (i < sizeof(Object));
   }
