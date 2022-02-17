@@ -3,19 +3,18 @@
 /* Common definitions for the storage manager.
  */
 
-#include "sm-defs.h"
-#include "sm-exceptions.h"
-
-#include "size-encode.h"
-#include "defer.h"
-
-#include <cstddef>
+#include <dirent.h>
+#include <pthread.h>
 #include <stdarg.h>
 #include <stdint.h>
-#include <pthread.h>
 
-#include <dirent.h>
 #include <cerrno>
+#include <cstddef>
+
+#include "defer.h"
+#include "size-encode.h"
+#include "sm-defs.h"
+#include "sm-exceptions.h"
 
 namespace ermia {
 
@@ -123,7 +122,9 @@ struct fat_ptr {
 
   static uint64_t const ASI_SEGMENT_MASK = 0x0f;
 
-  static_assert(!((ASI_LOG | ASI_CSN | ASI_HEAP | ASI_EXT | ASI_XID | ASI_CHK) & ~ASI_MASK), "Go fix ASI_MASK");
+  static_assert(!((ASI_LOG | ASI_CSN | ASI_HEAP | ASI_EXT | ASI_XID | ASI_CHK) &
+                  ~ASI_MASK),
+                "Go fix ASI_MASK");
   static_assert(NUM_LOG_SEGMENTS == 16, "The constant above is out of sync");
   static_assert(FLAG_BITS >= 1 + 1 + NUM_LOG_SEGMENT_BITS, "Need more bits");
 
@@ -232,12 +233,13 @@ struct LSN {
     ASSERT(!(segnum & ~fat_ptr::ASI_SEGMENT_MASK));
     ASSERT(!(loff & LOG_ID_MASK));
     uintptr_t flags = segnum << fat_ptr::ASI_START_BIT;
-    return (LSN){(logid << (fat_ptr::VALUE_START_BIT + LOFFSET_BITS)) | (loff << fat_ptr::VALUE_START_BIT) | flags | size_code};
+    return (LSN){(logid << (fat_ptr::VALUE_START_BIT + LOFFSET_BITS)) |
+                 (loff << fat_ptr::VALUE_START_BIT) | flags | size_code};
   }
 
   static LSN from_ptr(fat_ptr const &p) {
-    LOG_IF(FATAL, p.asi_type() != fat_ptr::ASI_LOG) <<
-        "Attempt to convert non-LSN fat_ptr to LSN";
+    LOG_IF(FATAL, p.asi_type() != fat_ptr::ASI_LOG)
+        << "Attempt to convert non-LSN fat_ptr to LSN";
     uint64_t off = p.offset();
     return LSN::make(off >> LOFFSET_BITS, off & LOFFSET_MASK, p.asi_segment());
   }
@@ -249,7 +251,9 @@ struct LSN {
   inline uint64_t logid() const {
     return _val >> (fat_ptr::VALUE_START_BIT + LOFFSET_BITS);
   }
-  inline uint64_t loffset() const { return (_val >> fat_ptr::VALUE_START_BIT) & LOFFSET_MASK; }
+  inline uint64_t loffset() const {
+    return (_val >> fat_ptr::VALUE_START_BIT) & LOFFSET_MASK;
+  }
   inline uint16_t flags() const { return _val & fat_ptr::ASI_FLAG_MASK; }
   inline uint32_t segment() const {
     return (_val >> fat_ptr::ASI_START_BIT) & fat_ptr::ASI_SEGMENT_MASK;
@@ -258,7 +262,8 @@ struct LSN {
 
   // true comparison operators
   bool operator<(LSN const &other) const {
-    LOG_IF(FATAL, logid() != other.logid()) << "Cannot compare two LSNs globally"; 
+    LOG_IF(FATAL, logid() != other.logid())
+        << "Cannot compare two LSNs globally";
     return _val < other._val;
   }
   bool operator==(LSN const &other) const { return _val == other._val; }
@@ -301,7 +306,7 @@ struct XID {
 
   static XID from_ptr(fat_ptr const &p) {
     LOG_IF(FATAL, p.asi_type() != fat_ptr::ASI_XID)
-      << "Attempt to convert non-XID fat_ptr to XID";
+        << "Attempt to convert non-XID fat_ptr to XID";
     return XID{p._ptr};
   }
 
@@ -336,7 +341,7 @@ struct CSN {
 
   static CSN from_ptr(fat_ptr const &p) {
     LOG_IF(FATAL, p.asi_type() != fat_ptr::ASI_CSN)
-      << "Attempt to convert non-CSN fat_ptr to CSN";
+        << "Attempt to convert non-CSN fat_ptr to CSN";
     return CSN{p._ptr};
   }
 

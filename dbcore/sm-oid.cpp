@@ -1,18 +1,17 @@
-#include <thread>
-
 #include <fcntl.h>
 #include <unistd.h>
+
+#include <thread>
 
 #include "../engine.h"
 #include "../txn.h"
 #include "../util.h"
-
 #include "burt-hash.h"
 #include "sc-hash.h"
 #include "sm-alloc.h"
 #include "sm-config.h"
-#include "sm-table.h"
 #include "sm-object.h"
+#include "sm-table.h"
 
 namespace ermia {
 
@@ -767,7 +766,7 @@ sm_oid_mgr::oid_get_version_amac(oid_array *oa,
             s.tuple = AWAIT s.cur_obj->GetPinnedTuple();
             s.done = true;
             ++finished;
-          } else  {
+          } else {
             s.ptr = s.tentative_next;
             s.prev_obj = s.cur_obj;
             if (s.ptr.offset()) {
@@ -793,7 +792,7 @@ sm_oid_mgr::oid_get_version_amac(oid_array *oa,
           if (s.ptr.offset()) {
             s.cur_obj = (Object *)s.ptr.offset();
             Object::PrefetchHeader(s.cur_obj);
-            s.stage = 1;  
+            s.stage = 1;
           } else {
             s.done = true;
             ++finished;
@@ -834,7 +833,7 @@ start_over:
     fat_ptr tentative_next = NULL_PTR;
     ASSERT(ptr.asi_type() == 0);
     cur_obj = (Object *)ptr.offset();
-    ::prefetch((const char*)cur_obj);
+    ::prefetch((const char *)cur_obj);
     SUSPEND;
     tentative_next = cur_obj->GetNextVolatile();
     ASSERT(tentative_next.asi_type() == 0);
@@ -853,7 +852,8 @@ start_over:
   RETURN nullptr;  // No Visible records
 }
 
-bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retry) {
+bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc,
+                                bool &retry) {
   fat_ptr csn = object->GetCSN();
   uint16_t asi_type = csn.asi_type();
   if (csn == NULL_PTR) {
@@ -867,17 +867,17 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
     XID holder_xid = XID::from_ptr(csn);
     // Dirty data made by me is visible!
     if (holder_xid == xc->owner) {
-      ASSERT(!object->GetNextVolatile().offset() ||
-             ((Object *)object->GetNextVolatile().offset())
-                     ->GetCSN()
-                     .asi_type() == fat_ptr::ASI_CSN);
+      ASSERT(
+          !object->GetNextVolatile().offset() ||
+          ((Object *)object->GetNextVolatile().offset())->GetCSN().asi_type() ==
+              fat_ptr::ASI_CSN);
       return true;
     }
 
   wait_for_commit:
     auto *holder = TXN::xid_get_context(holder_xid);
-    if (!holder) { // invalid XID (dead tuple, must retry than goto next in the
-                   // chain)
+    if (!holder) {  // invalid XID (dead tuple, must retry than goto next in the
+                    // chain)
       retry = true;
       return false;
     }
@@ -923,7 +923,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
     }
   } else {
     // Already committed, now do visibility test
-    //ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG ||
+    // ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG ||
     //       object->GetPersistentAddress().asi_type() == fat_ptr::ASI_CHK ||
     //       object->GetPersistentAddress() == NULL_PTR);  // Delete
     uint64_t csn_offset = CSN::from_ptr(csn).offset();
@@ -953,7 +953,8 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
   return false;
 }
 
-void sm_oid_mgr::oid_check_phantom(TXN::xid_context *visitor_xc, uint64_t vcstamp) {
+void sm_oid_mgr::oid_check_phantom(TXN::xid_context *visitor_xc,
+                                   uint64_t vcstamp) {
 #if !defined(SSI) && !defined(SSN)
   MARK_REFERENCED(visitor_xc);
   MARK_REFERENCED(vcstamp);
@@ -962,31 +963,31 @@ void sm_oid_mgr::oid_check_phantom(TXN::xid_context *visitor_xc, uint64_t vcstam
     return;
   }
 /*
-* tzwang (May 05, 2016): Preventing phantom:
-* Consider an example:
-*
-* Assume the database has tuples B (key=1) and C (key=2).
-*
-* Time      T1             T2
-* 1        ...           Read B
-* 2        ...           Insert A
-* 3        ...           Commit
-* 4       Scan key > 1
-* 5       Update B
-* 6       Commit (?)
-*
-* At time 6 T1 should abort, but checking index version changes
-* wouldn't make T1 abort, since its scan happened after T2's
-* commit and yet its begin timestamp is before T2 - T1 wouldn't
-* see A (oid_get_version will skip it even it saw it from the tree)
-* but the scanning wouldn't record a version change in tree structure
-* either (T2 already finished all SMOs).
-*
-* Under SSN/SSI, this essentially requires we update the corresponding
-* stamps upon hitting an invisible version, treating it like some
-* successor updated our read set. For SSI, this translates to updating
-* ct3; for SSN, update the visitor's sstamp.
-*/
+ * tzwang (May 05, 2016): Preventing phantom:
+ * Consider an example:
+ *
+ * Assume the database has tuples B (key=1) and C (key=2).
+ *
+ * Time      T1             T2
+ * 1        ...           Read B
+ * 2        ...           Insert A
+ * 3        ...           Commit
+ * 4       Scan key > 1
+ * 5       Update B
+ * 6       Commit (?)
+ *
+ * At time 6 T1 should abort, but checking index version changes
+ * wouldn't make T1 abort, since its scan happened after T2's
+ * commit and yet its begin timestamp is before T2 - T1 wouldn't
+ * see A (oid_get_version will skip it even it saw it from the tree)
+ * but the scanning wouldn't record a version change in tree structure
+ * either (T2 already finished all SMOs).
+ *
+ * Under SSN/SSI, this essentially requires we update the corresponding
+ * stamps upon hitting an invisible version, treating it like some
+ * successor updated our read set. For SSI, this translates to updating
+ * ct3; for SSN, update the visitor's sstamp.
+ */
 #ifdef SSI
   auto vct3 = volatile_read(visitor_xc->ct3);
   if (not vct3 or vct3 > vcstamp) {

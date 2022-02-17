@@ -1,9 +1,9 @@
 #pragma once
 
-#include "sm-defs.h"
-
 #include <cstddef>
 #include <cstdint>
+
+#include "sm-defs.h"
 
 namespace ermia {
 

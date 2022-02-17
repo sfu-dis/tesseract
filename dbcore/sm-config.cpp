@@ -1,9 +1,12 @@
-#include <unistd.h>
-#include <numa.h>
-#include "../macros.h"
 #include "sm-config.h"
-#include "sm-thread.h"
+
+#include <numa.h>
+#include <unistd.h>
+
 #include <iostream>
+
+#include "../macros.h"
+#include "sm-thread.h"
 
 namespace ermia {
 namespace config {
@@ -83,8 +86,8 @@ bool iouring_read_log = false;
 
 void init() {
   ALWAYS_ASSERT(threads);
-  // Here [threads] refers to worker threads, so use the number of physical cores
-  // to calculate # of numa nodes
+  // Here [threads] refers to worker threads, so use the number of physical
+  // cores to calculate # of numa nodes
   if (numa_spread) {
     numa_nodes = threads > numa_max_node() + 1 ? numa_max_node() + 1 : threads;
   } else {
@@ -97,8 +100,9 @@ void init() {
 }
 
 void sanity_check() {
-  LOG_IF(FATAL, tls_alloc && !threadpool) << "Cannot use TLS allocator without threadpool";
-  //ALWAYS_ASSERT(recover_functor);
+  LOG_IF(FATAL, tls_alloc && !threadpool)
+      << "Cannot use TLS allocator without threadpool";
+  // ALWAYS_ASSERT(recover_functor);
   ALWAYS_ASSERT(numa_nodes || !threadpool);
   ALWAYS_ASSERT(!pcommit || pcommit_queue_length);
 }

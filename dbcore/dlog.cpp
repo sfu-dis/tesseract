@@ -1,13 +1,16 @@
-#include <atomic>
+#include "dlog.h"
+
 #include <dirent.h>
+
+#include <atomic>
 
 #include "../engine.h"
 #include "../macros.h"
-#include "dlog.h"
 #include "sm-common.h"
 #include "sm-config.h"
 
-// io_uring code based off of examples from https://unixism.net/loti/tutorial/index.html
+// io_uring code based off of examples from
+// https://unixism.net/loti/tutorial/index.html
 
 namespace ermia {
 
@@ -93,7 +96,8 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
   logbuf[1] = (char *)numa_alloc_onnode(logbuf_size, numa_node);
   LOG_IF(FATAL, !logbuf[1]) << "Unable to allocate log buffer";
   segment_size = max_segment_mb * uint32_t{1024 * 1024};
-  LOG_IF(FATAL, segment_size > SEGMENT_MAX_SIZE) << "Unable to allocate log buffer";
+  LOG_IF(FATAL, segment_size > SEGMENT_MAX_SIZE)
+      << "Unable to allocate log buffer";
 
   logbuf_offset = 0;
   active_logbuf = logbuf[0];
@@ -239,7 +243,8 @@ void tls_log::issue_flush(const char *buf, uint64_t size) {
   struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
   LOG_IF(FATAL, !sqe);
 
-  io_uring_prep_write(sqe, current_segment()->fd, buf, size, current_segment()->size);
+  io_uring_prep_write(sqe, current_segment()->fd, buf, size,
+                      current_segment()->size);
 
   // Encode data size which is useful upon completion (to add to durable_lsn)
   // Must be set after io_uring_prep_write (which sets user_data to 0)
@@ -254,16 +259,17 @@ void tls_log::poll_flush() {
   if (!config::null_log_device) {
     struct io_uring_cqe *cqe = nullptr;
     int ret = io_uring_wait_cqe(&ring, &cqe);
-    LOG_IF(FATAL, ret < 0) << "Error waiting for completion: " << strerror(-ret);
-    LOG_IF(FATAL, cqe->res < 0) << "Error in async operation: " << strerror(-cqe->res);
+    LOG_IF(FATAL, ret < 0) << "Error waiting for completion: "
+                           << strerror(-ret);
+    LOG_IF(FATAL, cqe->res < 0)
+        << "Error in async operation: " << strerror(-cqe->res);
     uint64_t size = cqe->user_data;
     io_uring_cqe_seen(&ring, cqe);
     durable_lsn += size;
     current_segment()->size += size;
   }
 
-  if (!normal || (doing_ddl && dirty))
-    return;
+  if (!normal || (doing_ddl && dirty)) return;
 
   // get last tls durable csn
   uint64_t last_tls_durable_csn =
@@ -310,19 +316,19 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
   }
 
   CRITICAL_SECTION(cs, lock);
-  if (normal)
-    tcommitter.set_dirty_flag();
+  if (normal) tcommitter.set_dirty_flag();
   set_dirty(true);
 
   uint32_t alloc_size = payload_size + sizeof(log_block);
   LOG_IF(FATAL, alloc_size > logbuf_size) << "Total size too big";
 
-  
-  // If this allocated log block would span across segments, we need a new segment.
+  // If this allocated log block would span across segments, we need a new
+  // segment.
   bool create_new_segment = false;
-  if (alloc_size + logbuf_offset + current_segment()->expected_size > segment_size) {
-    create_new_segment = true; 
-  } 
+  if (alloc_size + logbuf_offset + current_segment()->expected_size >
+      segment_size) {
+    create_new_segment = true;
+  }
 
   // If the allocated size exceeds the available space in the active logbuf,
   // or we need to create a new segment for this log block,

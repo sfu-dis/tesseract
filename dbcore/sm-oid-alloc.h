@@ -1,12 +1,12 @@
 #pragma once
 
-#include "sm-common.h"
-
-#include "dynarray.h"
-
 #include <x86intrin.h>
+
 #include <cstdint>
 #include <utility>
+
+#include "dynarray.h"
+#include "sm-common.h"
 
 // used for sparse bitmaps
 typedef __v8hi v8hi;
@@ -70,7 +70,8 @@ struct sparse_bitset {
       */
       int where = entries[0][0] ? 0 : 1;
 #ifdef __clang__
-      entries[0] = __builtin_shufflevector(entries[0], entries[0], 7, 0, 1, 2, 3, 4, 5, 6);
+      entries[0] = __builtin_shufflevector(entries[0], entries[0], 7, 0, 1, 2,
+                                           3, 4, 5, 6);
 #else
       entries[0] = __builtin_shuffle(entries[0], rotr_shufmask);
 #endif
@@ -90,7 +91,8 @@ struct sparse_bitset {
 
     // working on the second half now
 #ifdef __clang__
-    entries[1] = __builtin_shufflevector(entries[1], entries[1], 7, 0, 1, 2, 3, 4, 5, 6);
+    entries[1] =
+        __builtin_shufflevector(entries[1], entries[1], 7, 0, 1, 2, 3, 4, 5, 6);
 #else
     entries[1] = __builtin_shuffle(entries[1], rotr_shufmask);
 #endif
@@ -575,9 +577,10 @@ struct sm_allocator {
   uint64_t l3_words[];
 };
 
-//static_assert(sm_allocator::l1_alloc_size() == sm_allocator::ASSUMED_PAGE_SIZE,
+// static_assert(sm_allocator::l1_alloc_size() ==
+// sm_allocator::ASSUMED_PAGE_SIZE,
 //              "Go fix allocator::L1_CAPACITY");
-//static_assert(is_aligned(sm_allocator::l2_alloc_size(),
+// static_assert(is_aligned(sm_allocator::l2_alloc_size(),
 //                         sm_allocator::ASSUMED_PAGE_SIZE),
 //              "Something went wrong with L2 sizing");
 }  // namespace ermia

@@ -1,21 +1,21 @@
 #pragma once
 
-#include <iostream>
-#include <sstream>
-#include <string>
-#include <limits>
-#include <queue>
-#include <utility>
-#include <memory>
-#include <atomic>
-#include <tuple>
-#include <algorithm>
-
-#include <stdint.h>
+#include <cxxabi.h>
 #include <pthread.h>
+#include <stdint.h>
 #include <sys/time.h>
 #include <time.h>
-#include <cxxabi.h>
+
+#include <algorithm>
+#include <atomic>
+#include <iostream>
+#include <limits>
+#include <memory>
+#include <queue>
+#include <sstream>
+#include <string>
+#include <tuple>
+#include <utility>
 
 #include "macros.h"
 
@@ -26,9 +26,8 @@ template <typename T, bool Pedantic = true>
 class aligned_padded_elem {
  public:
   template <class... Args>
-  aligned_padded_elem(Args &&... args)
-      : elem(std::forward<Args>(args)...) {
-    if (Pedantic) ALWAYS_ASSERT(((uintptr_t) this % CACHELINE_SIZE) == 0);
+  aligned_padded_elem(Args &&... args) : elem(std::forward<Args>(args)...) {
+    if (Pedantic) ALWAYS_ASSERT(((uintptr_t)this % CACHELINE_SIZE) == 0);
   }
 
   T elem;
@@ -59,44 +58,32 @@ struct host_endian_trfm {
 
 template <>
 struct host_endian_trfm<uint16_t> {
-  ALWAYS_INLINE uint16_t operator()(uint16_t t) const {
-    return be16toh(t);
-  }
+  ALWAYS_INLINE uint16_t operator()(uint16_t t) const { return be16toh(t); }
 };
 
 template <>
 struct host_endian_trfm<int16_t> {
-  ALWAYS_INLINE int16_t operator()(int16_t t) const {
-    return be16toh(t);
-  }
+  ALWAYS_INLINE int16_t operator()(int16_t t) const { return be16toh(t); }
 };
 
 template <>
 struct host_endian_trfm<int32_t> {
-  ALWAYS_INLINE int32_t operator()(int32_t t) const {
-    return be32toh(t);
-  }
+  ALWAYS_INLINE int32_t operator()(int32_t t) const { return be32toh(t); }
 };
 
 template <>
 struct host_endian_trfm<uint32_t> {
-  ALWAYS_INLINE uint32_t operator()(uint32_t t) const {
-    return be32toh(t);
-  }
+  ALWAYS_INLINE uint32_t operator()(uint32_t t) const { return be32toh(t); }
 };
 
 template <>
 struct host_endian_trfm<int64_t> {
-  ALWAYS_INLINE int64_t operator()(int64_t t) const {
-    return be64toh(t);
-  }
+  ALWAYS_INLINE int64_t operator()(int64_t t) const { return be64toh(t); }
 };
 
 template <>
 struct host_endian_trfm<uint64_t> {
-  ALWAYS_INLINE uint64_t operator()(uint64_t t) const {
-    return be64toh(t);
-  }
+  ALWAYS_INLINE uint64_t operator()(uint64_t t) const { return be64toh(t); }
 };
 
 template <typename T>
@@ -106,44 +93,32 @@ struct big_endian_trfm {
 
 template <>
 struct big_endian_trfm<uint16_t> {
-  ALWAYS_INLINE uint16_t operator()(uint16_t t) const {
-    return htobe16(t);
-  }
+  ALWAYS_INLINE uint16_t operator()(uint16_t t) const { return htobe16(t); }
 };
 
 template <>
 struct big_endian_trfm<int16_t> {
-  ALWAYS_INLINE int16_t operator()(int16_t t) const {
-    return htobe16(t);
-  }
+  ALWAYS_INLINE int16_t operator()(int16_t t) const { return htobe16(t); }
 };
 
 template <>
 struct big_endian_trfm<int32_t> {
-  ALWAYS_INLINE int32_t operator()(int32_t t) const {
-    return htobe32(t);
-  }
+  ALWAYS_INLINE int32_t operator()(int32_t t) const { return htobe32(t); }
 };
 
 template <>
 struct big_endian_trfm<uint32_t> {
-  ALWAYS_INLINE uint32_t operator()(uint32_t t) const {
-    return htobe32(t);
-  }
+  ALWAYS_INLINE uint32_t operator()(uint32_t t) const { return htobe32(t); }
 };
 
 template <>
 struct big_endian_trfm<int64_t> {
-  ALWAYS_INLINE int64_t operator()(int64_t t) const {
-    return htobe64(t);
-  }
+  ALWAYS_INLINE int64_t operator()(int64_t t) const { return htobe64(t); }
 };
 
 template <>
 struct big_endian_trfm<uint64_t> {
-  ALWAYS_INLINE uint64_t operator()(uint64_t t) const {
-    return htobe64(t);
-  }
+  ALWAYS_INLINE uint64_t operator()(uint64_t t) const { return htobe64(t); }
 };
 
 inline std::string hexify_buf(const char *buf, size_t len) {
@@ -297,7 +272,7 @@ class timer {
 
  public:
   timer() { lap(); }
-  timer(const timer &t) : start(t.start) {};
+  timer(const timer &t) : start(t.start){};
 
   inline uint64_t lap() {
     uint64_t t0 = start;
@@ -539,7 +514,7 @@ struct helper<Idx, false, Types...> {
     MARK_REFERENCED(t);
   }
 };
-}
+}  // namespace private_
 
 template <class... Types>
 static inline std::ostream &operator<<(std::ostream &o,

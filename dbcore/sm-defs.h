@@ -1,13 +1,13 @@
 #pragma once
 
+#include <glog/logging.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <tuple>
 #include <type_traits>
 #include <utility>
-
-#include <glog/logging.h>
 
 namespace ermia {
 
@@ -88,9 +88,8 @@ objzero(T *begin, size_t n) {
   return (T *)std::memset(begin, 0, sizeof(T) * n);
 }
 template <typename T, size_t N>
-static inline
-    typename std::enable_if<std::is_trivial<T>::value, T>::type *objzero(
-        T(&arr)[N]) {
+static inline typename std::enable_if<std::is_trivial<T>::value, T>::type *
+objzero(T (&arr)[N]) {
   return objzero(arr, N);
 }
 
@@ -228,7 +227,8 @@ static inline void volatile_write(T volatile &x, U const &y) {
 
    Work around: good old-fashioned null pointer arithmetic...
  */
-#define OFFSETOF(tp, expr) (((uint64_t)(&((tp *)0)->expr)) - ((uint64_t)((tp *)0)))
+#define OFFSETOF(tp, expr) \
+  (((uint64_t)(&((tp *)0)->expr)) - ((uint64_t)((tp *)0)))
 #else
 #define OFFSETOF(tp, expr) offsetof(tp, expr)
 #endif

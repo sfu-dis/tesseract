@@ -1,4 +1,5 @@
 #include "catalog_mgr.h"
+
 #include "benchmarks/oddlb-schemas.h"
 #include "benchmarks/tpcc.h"
 
@@ -302,4 +303,3 @@ void create_schema_table(ermia::Engine *db, const char *name) {
   thread->Join();
   ermia::thread::PutThread(thread);
 }
-

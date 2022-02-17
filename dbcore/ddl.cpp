@@ -1,4 +1,5 @@
 #include "ddl.h"
+
 #include "../benchmarks/oddlb-schemas.h"
 #include "../benchmarks/tpcc.h"
 #include "../schema.h"
@@ -13,16 +14,16 @@ std::vector<uint32_t> ddl_worker_logical_threads;
 
 ddl_type ddl_type_map(uint32_t type) {
   switch (type) {
-  case 1:
-    return COPY_ONLY;
-  case 2:
-    return VERIFICATION_ONLY;
-  case 3:
-    return COPY_VERIFICATION;
-  case 4:
-    return NO_COPY_VERIFICATION;
-  default:
-    LOG(FATAL) << "Not supported";
+    case 1:
+      return COPY_ONLY;
+    case 2:
+      return VERIFICATION_ONLY;
+    case 3:
+      return COPY_VERIFICATION;
+    case 4:
+      return NO_COPY_VERIFICATION;
+    default:
+      LOG(FATAL) << "Not supported";
   }
 }
 
@@ -57,9 +58,9 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   for (uint32_t i = 1; i < scan_threads; i++) {
     uint32_t begin = i * num_per_scan_thread;
     uint32_t end = (i + 1) * num_per_scan_thread;
-    if (i == scan_threads - 1)
-      end = himark;
-    thread::Thread *thread = thread::GetThread(config::scan_physical_workers_only);
+    if (i == scan_threads - 1) end = himark;
+    thread::Thread *thread =
+        thread::GetThread(config::scan_physical_workers_only);
     ALWAYS_ASSERT(thread);
     scan_workers.push_back(thread);
     auto parallel_scan = [=](char *) {
@@ -76,8 +77,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
           for (std::vector<struct ddl_executor_paras *>::const_iterator it =
                    ddl_executor_paras_list.begin();
                it != ddl_executor_paras_list.end(); ++it) {
-            if ((*it)->old_td != old_td)
-              continue;
+            if ((*it)->old_td != old_td) continue;
             if ((*it)->type == VERIFICATION_ONLY ||
                 (*it)->type == COPY_VERIFICATION) {
               if (!constraints[(*it)->constraint_idx](tuple_value,
@@ -93,8 +93,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
                                           : (*it)->scan_reformat_idx;
               varstr *new_tuple_value = reformats[reformat_idx](
                   key, tuple_value, arena, (*it)->new_v, fid, oid);
-              if (!new_tuple_value)
-                continue;
+              if (!new_tuple_value) continue;
 #ifdef COPYDDL
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
               fat_ptr *out_entry = nullptr;
@@ -159,8 +158,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
       for (std::vector<struct ddl_executor_paras *>::const_iterator it =
                ddl_executor_paras_list.begin();
            it != ddl_executor_paras_list.end(); ++it) {
-        if ((*it)->old_td != old_td)
-          continue;
+        if ((*it)->old_td != old_td) continue;
         if ((*it)->type == VERIFICATION_ONLY ||
             (*it)->type == COPY_VERIFICATION) {
           if (!constraints[(*it)->constraint_idx](tuple_value, (*it)->new_v)) {
@@ -175,8 +173,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
                                       : (*it)->scan_reformat_idx;
           varstr *new_tuple_value = reformats[reformat_idx](
               key, tuple_value, arena, (*it)->new_v, fid, oid);
-          if (!new_tuple_value)
-            continue;
+          if (!new_tuple_value) continue;
 #ifdef COPYDDL
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
           fat_ptr *out_entry = nullptr;
@@ -450,6 +447,6 @@ rc_t ddl_executor::build_map(transaction *t, str_arena *arena,
   ;
 }
 
-} // namespace ddl
+}  // namespace ddl
 
-} // namespace ermia
+}  // namespace ermia

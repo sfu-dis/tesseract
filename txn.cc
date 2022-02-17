@@ -1,8 +1,9 @@
-#include "macros.h"
 #include "txn.h"
+
 #include "dbcore/rcu.h"
 #include "dbcore/serial.h"
 #include "engine.h"
+#include "macros.h"
 
 extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 
@@ -24,7 +25,11 @@ std::mutex transaction::map_rw_latch;
 #endif
 
 transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
-    : flags(flags), log(nullptr), log_size(0), sa(&sa), coro_batch_idx(coro_batch_idx) {
+    : flags(flags),
+      log(nullptr),
+      log_size(0),
+      sa(&sa),
+      coro_batch_idx(coro_batch_idx) {
   if (config::phantom_prot) {
     masstree_absent_set.set_empty_key(NULL);  // google dense map
     masstree_absent_set.clear();
@@ -39,7 +44,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   }
   write_set.clear();
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
- read_set.clear();
+  read_set.clear();
 #endif
   xid = TXN::xid_alloc();
   xc = TXN::xid_get_context(xid);
@@ -65,7 +70,8 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     xc->begin = volatile_read(MM::safesnap_lsn);
   } else {
     TXN::serial_register_tx(coro_batch_idx, xid);
-    log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log))->data());
+    log = logmgr->new_tx_log(
+        (char *)string_allocator().next(sizeof(sm_tx_log))->data());
     // Must +1: a tx T can only update a tuple if its latest version was
     // created before T's begin timestamp (i.e., version.clsn < T.begin,
     // note the range is exclusive; see first updater wins rule in
@@ -81,7 +87,8 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
 #endif
   }
 #elif defined(MVOCC)
-  log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log))->data());
+  log = logmgr->new_tx_log(
+      (char *)string_allocator().next(sizeof(sm_tx_log))->data());
   xc->begin = logmgr->cur_lsn().offset() + 1;
 #else
   // Give a log regardless - with pipelined commit, read-only tx needs
@@ -425,8 +432,7 @@ rc_t transaction::si_commit() {
       for (uint32_t i = 0; i < ddl_log_threads; i++) {
         uint32_t begin = i * num_per_scan_thread;
         uint32_t end = (i + 1) * num_per_scan_thread;
-        if (i == ddl_log_threads - 1)
-          end = himark;
+        if (i == ddl_log_threads - 1) end = himark;
 
         thread::Thread *thread =
             thread::GetThread(config::scan_physical_workers_only);
@@ -444,8 +450,7 @@ rc_t transaction::si_commit() {
 
           lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
           for (uint32_t oid = 0; oid <= himark; ++oid) {
-            if (oid % ddl_log_threads != i)
-              continue;
+            if (oid % ddl_log_threads != i) continue;
             // for (uint32_t oid = begin; oid <= end; ++oid) {
             fat_ptr *entry = new_tuple_array->get(oid);
             fat_ptr ptr = volatile_read(*entry);
@@ -615,10 +620,10 @@ std::vector<thread::Thread *> transaction::changed_data_capture() {
   for (uint32_t i = 0; i < cdc_threads; i++) {
     uint32_t begin_log = normal_workers[i * logs_per_cdc_thread];
     uint32_t end_log = normal_workers[(i + 1) * logs_per_cdc_thread - 1];
-    if (i == cdc_threads - 1)
-      end_log = normal_workers[--j];
+    if (i == cdc_threads - 1) end_log = normal_workers[--j];
 
-    thread::Thread *thread = thread::GetThread(config::cdc_physical_workers_only);
+    thread::Thread *thread =
+        thread::GetThread(config::cdc_physical_workers_only);
     ALWAYS_ASSERT(thread);
     cdc_workers.push_back(thread);
 
@@ -694,9 +699,9 @@ bool transaction::DMLConsistencyHandler() {
   uint64_t begin = xc->begin;
   tmp_xc->begin = xc->end;
 
-  for (auto& v : schema_read_map) {
+  for (auto &v : schema_read_map) {
     dbtuple *tuple =
-            oidmgr->oid_get_version(schema_td->GetTupleArray(), v.second, tmp_xc);
+        oidmgr->oid_get_version(schema_td->GetTupleArray(), v.second, tmp_xc);
     if (!tuple) {
       tmp_xc->begin = begin;
       return true;
@@ -754,8 +759,7 @@ transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
     if (xc->ct3) {
       // Check if we are the T2 with a committed T3 earlier than a safesnap
       // (being T1)
-      if (xc->ct3 <= xc->last_safesnap)
-        RETURN{RC_ABORT_SERIAL};
+      if (xc->ct3 <= xc->last_safesnap) RETURN{RC_ABORT_SERIAL};
 
       if (volatile_read(prev->xstamp) >= xc->ct3 or
           not prev->readers_bitmap.is_empty(coro_batch_idx, true)) {
@@ -841,7 +845,7 @@ transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
       // causing readers to not find any visible version. Fix this together with
       // GC later.
       // MM::deallocate(prev_obj_ptr);
-    } else { // prev is committed (or precommitted but in post-commit now) head
+    } else {  // prev is committed (or precommitted but in post-commit now) head
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       volatile_write(prev->sstamp, xc->owner.to_ptr());
       ASSERT(prev->sstamp.asi_type() == fat_ptr::ASI_XID);
@@ -861,7 +865,8 @@ transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
     }
 
     ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_XID);
-    ASSERT(sync_wait_coro(oidmgr->oid_get_version(tuple_fid, oid, xc)) == tuple);
+    ASSERT(sync_wait_coro(oidmgr->oid_get_version(tuple_fid, oid, xc)) ==
+           tuple);
     ASSERT(log);
 
     // FIXME(tzwang): mark deleted in all 2nd indexes as well?
@@ -971,8 +976,7 @@ transaction::DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value,
 retry:
   fat_ptr *entry_ptr = tuple_array->get(oid);
   fat_ptr expected = *entry_ptr;
-  if (!tuple_csn)
-    new_object->SetNextVolatile(expected);
+  if (!tuple_csn) new_object->SetNextVolatile(expected);
   Object *obj = (Object *)expected.offset();
   fat_ptr csn = NULL_PTR;
   bool overwrite = true;
@@ -1215,7 +1219,8 @@ OID transaction::table_scan(TableDescriptor *td, const varstr *key, OID oid) {
   return 0;
 }
 
-void transaction::LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key) {
+void transaction::LogIndexInsert(OrderedIndex *index, OID oid,
+                                 const varstr *key) {
   /*
   // Note: here we log the whole key varstr so that recovery can figure out the
   // real key length with key->size(), otherwise it'll have to use the decoded
@@ -1269,4 +1274,4 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
   return tuple->DoRead(out_v);
 }
 
-} // namespace ermia
+}  // namespace ermia

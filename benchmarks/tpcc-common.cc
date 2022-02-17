@@ -1,8 +1,10 @@
 #ifndef ADV_COROUTINE
 
-#include <getopt.h>
-#include "bench.h"
 #include "tpcc-common.h"
+
+#include <getopt.h>
+
+#include "bench.h"
 
 // configuration flags
 int g_disable_xpartition_txn = 0;
@@ -25,11 +27,11 @@ int g_hybrid = 0;
 // 3: Delivery
 // 4: OrderStatus
 // 5: StockLevel
-// 6: TPC-CH query 2 variant - original query 2, but /w marginal stock table update
-// 7: Microbenchmark-random - same as Microbenchmark, but uses random read-set range
-// 8: DDL
+// 6: TPC-CH query 2 variant - original query 2, but /w marginal stock table
+// update 7: Microbenchmark-random - same as Microbenchmark, but uses random
+// read-set range 8: DDL
 unsigned g_txn_workload_mix[8] = {45, 43, 0, 4,
-                                  4,  4,  0, 0}; // default TPC-C workload mix
+                                  4,  4,  0, 0};  // default TPC-C workload mix
 
 // how much % of time a worker should use a random home wh
 // 0 - always use home wh
@@ -41,75 +43,45 @@ util::aligned_padded_elem<std::atomic<uint64_t>> *g_district_ids = nullptr;
 
 SuppStockMap supp_stock_map(10000);  // value ranges 0 ~ 9999 ( modulo by 10k )
 
-const Nation nations[] = {{48, "ALGERIA", 0},
-                          {49, "ARGENTINA", 1},
-                          {50, "BRAZIL", 1},
-                          {51, "CANADA", 1},
-                          {52, "EGYPT", 4},
-                          {53, "ETHIOPIA", 0},
-                          {54, "FRANCE", 3},
-                          {55, "GERMANY", 3},
-                          {56, "INDIA", 2},
-                          {57, "INDONESIA", 2},
-                          {65, "IRAN", 4},
-                          {66, "IRAQ", 4},
-                          {67, "JAPAN", 2},
-                          {68, "JORDAN", 4},
-                          {69, "KENYA", 0},
-                          {70, "MOROCCO", 0},
-                          {71, "MOZAMBIQUE", 0},
-                          {72, "PERU", 1},
-                          {73, "CHINA", 2},
-                          {74, "ROMANIA", 3},
-                          {75, "SAUDI ARABIA", 4},
-                          {76, "VIETNAM", 2},
-                          {77, "RUSSIA", 3},
-                          {78, "UNITED KINGDOM", 3},
-                          {79, "UNITED STATES", 1},
-                          {80, "CHINA", 2},
-                          {81, "PAKISTAN", 2},
-                          {82, "BANGLADESH", 2},
-                          {83, "MEXICO", 1},
-                          {84, "PHILIPPINES", 2},
-                          {85, "THAILAND", 2},
-                          {86, "ITALY", 3},
-                          {87, "SOUTH AFRICA", 0},
-                          {88, "SOUTH KOREA", 2},
-                          {89, "COLOMBIA", 1},
-                          {90, "SPAIN", 3},
-                          {97, "UKRAINE", 3},
-                          {98, "POLAND", 3},
-                          {99, "SUDAN", 0},
-                          {100, "UZBEKISTAN", 2},
-                          {101, "MALAYSIA", 2},
-                          {102, "VENEZUELA", 1},
-                          {103, "NEPAL", 2},
-                          {104, "AFGHANISTAN", 2},
-                          {105, "NORTH KOREA", 2},
-                          {106, "TAIWAN", 2},
-                          {107, "GHANA", 0},
-                          {108, "IVORY COAST", 0},
-                          {109, "SYRIA", 4},
-                          {110, "MADAGASCAR", 0},
-                          {111, "CAMEROON", 0},
-                          {112, "SRI LANKA", 2},
-                          {113, "ROMANIA", 3},
-                          {114, "NETHERLANDS", 3},
-                          {115, "CAMBODIA", 2},
-                          {116, "BELGIUM", 3},
-                          {117, "GREECE", 3},
-                          {118, "PORTUGAL", 3},
-                          {119, "ISRAEL", 4},
-                          {120, "FINLAND", 3},
-                          {121, "SINGAPORE", 2},
-                          {122, "NORWAY", 3}};
+const Nation nations[] = {{48, "ALGERIA", 0},       {49, "ARGENTINA", 1},
+                          {50, "BRAZIL", 1},        {51, "CANADA", 1},
+                          {52, "EGYPT", 4},         {53, "ETHIOPIA", 0},
+                          {54, "FRANCE", 3},        {55, "GERMANY", 3},
+                          {56, "INDIA", 2},         {57, "INDONESIA", 2},
+                          {65, "IRAN", 4},          {66, "IRAQ", 4},
+                          {67, "JAPAN", 2},         {68, "JORDAN", 4},
+                          {69, "KENYA", 0},         {70, "MOROCCO", 0},
+                          {71, "MOZAMBIQUE", 0},    {72, "PERU", 1},
+                          {73, "CHINA", 2},         {74, "ROMANIA", 3},
+                          {75, "SAUDI ARABIA", 4},  {76, "VIETNAM", 2},
+                          {77, "RUSSIA", 3},        {78, "UNITED KINGDOM", 3},
+                          {79, "UNITED STATES", 1}, {80, "CHINA", 2},
+                          {81, "PAKISTAN", 2},      {82, "BANGLADESH", 2},
+                          {83, "MEXICO", 1},        {84, "PHILIPPINES", 2},
+                          {85, "THAILAND", 2},      {86, "ITALY", 3},
+                          {87, "SOUTH AFRICA", 0},  {88, "SOUTH KOREA", 2},
+                          {89, "COLOMBIA", 1},      {90, "SPAIN", 3},
+                          {97, "UKRAINE", 3},       {98, "POLAND", 3},
+                          {99, "SUDAN", 0},         {100, "UZBEKISTAN", 2},
+                          {101, "MALAYSIA", 2},     {102, "VENEZUELA", 1},
+                          {103, "NEPAL", 2},        {104, "AFGHANISTAN", 2},
+                          {105, "NORTH KOREA", 2},  {106, "TAIWAN", 2},
+                          {107, "GHANA", 0},        {108, "IVORY COAST", 0},
+                          {109, "SYRIA", 4},        {110, "MADAGASCAR", 0},
+                          {111, "CAMEROON", 0},     {112, "SRI LANKA", 2},
+                          {113, "ROMANIA", 3},      {114, "NETHERLANDS", 3},
+                          {115, "CAMBODIA", 2},     {116, "BELGIUM", 3},
+                          {117, "GREECE", 3},       {118, "PORTUGAL", 3},
+                          {119, "ISRAEL", 4},       {120, "FINLAND", 3},
+                          {121, "SINGAPORE", 2},    {122, "NORWAY", 3}};
 
 const char *regions[] = {"AFRICA", "AMERICA", "ASIA", "EUROPE", "MIDDLE EAST"};
 
 std::string tpcc_worker_mixin::NameTokens[] = {
-    std::string("BAR"),   std::string("OUGHT"), std::string("ABLE"), std::string("PRI"),
-    std::string("PRES"),  std::string("ESE"),   std::string("ANTI"), std::string("CALLY"),
-    std::string("ATION"), std::string("EING"),
+    std::string("BAR"),  std::string("OUGHT"), std::string("ABLE"),
+    std::string("PRI"),  std::string("PRES"),  std::string("ESE"),
+    std::string("ANTI"), std::string("CALLY"), std::string("ATION"),
+    std::string("EING"),
 };
 
 std::vector<uint> tpcc_worker_mixin::hot_whs;
@@ -140,7 +112,8 @@ class tpcc_bench_runner : public bench_runner {
       } else {
         const unsigned nwhse_per_partition =
             NumWarehouses() / ermia::config::worker_threads;
-        for (size_t partid = 0; partid < ermia::config::worker_threads; partid++) {
+        for (size_t partid = 0; partid < ermia::config::worker_threads;
+             partid++) {
           const unsigned wstart = partid * nwhse_per_partition;
           const unsigned wend = (partid + 1 == ermia::config::worker_threads)
                                     ? NumWarehouses()
@@ -176,26 +149,31 @@ class tpcc_bench_runner : public bench_runner {
           for (size_t i = 0; i < NumWarehouses(); i++) {
             if (!is_primary) {
               // Secondary index
-              db->CreateMasstreeSecondaryIndex(table_name, std::string(index_name));
+              db->CreateMasstreeSecondaryIndex(table_name,
+                                               std::string(index_name));
             } else {
               db->CreateTable(table_name);
-              db->CreateMasstreePrimaryIndex(table_name, std::string(index_name));
+              db->CreateMasstreePrimaryIndex(table_name,
+                                             std::string(index_name));
             }
           }
         } else {
           const unsigned nwhse_per_partition =
               NumWarehouses() / ermia::config::worker_threads;
-          for (size_t partid = 0; partid < ermia::config::worker_threads; partid++) {
+          for (size_t partid = 0; partid < ermia::config::worker_threads;
+               partid++) {
             const unsigned wstart = partid * nwhse_per_partition;
             const unsigned wend = (partid + 1 == ermia::config::worker_threads)
                                       ? NumWarehouses()
                                       : (partid + 1) * nwhse_per_partition;
             if (!is_primary) {
-              auto s_primary_name = std::string(table_name) + "_" + std::to_string(partid);
+              auto s_primary_name =
+                  std::string(table_name) + "_" + std::to_string(partid);
               db->CreateMasstreeSecondaryIndex(table_name, s_primary_name);
             } else {
               db->CreateTable(table_name);
-              auto ss_name = std::string(table_name) + std::string("_") + std::to_string(partid);
+              auto ss_name = std::string(table_name) + std::string("_") +
+                             std::to_string(partid);
               db->CreateMasstreePrimaryIndex(table_name, ss_name);
             }
           }
@@ -223,21 +201,21 @@ class tpcc_bench_runner : public bench_runner {
  public:
   tpcc_bench_runner(ermia::Engine *db) : bench_runner(db) {
     // Register all tables and indexes with the engine
-    RegisterIndex(db, "customer",   "customer",         true);
-    RegisterIndex(db, "customer",   "customer_name_idx",         false);
-    RegisterIndex(db, "district",   "district",         true);
-    RegisterIndex(db, "history",    "history",          true);
-    RegisterIndex(db, "item",       "item",             true);
-    RegisterIndex(db, "new_order",  "new_order",        true);
-    RegisterIndex(db, "oorder",     "oorder",           true);
-    RegisterIndex(db, "oorder",     "oorder_c_id_idx",  false);
-    RegisterIndex(db, "order_line", "order_line",       true);
-    RegisterIndex(db, "stock",      "stock",            true);
-    RegisterIndex(db, "stock_data", "stock_data",       true);
-    RegisterIndex(db, "nation",     "nation",           true);
-    RegisterIndex(db, "region",     "region",           true);
-    RegisterIndex(db, "supplier",   "supplier",         true);
-    RegisterIndex(db, "warehouse",  "warehouse",        true);
+    RegisterIndex(db, "customer", "customer", true);
+    RegisterIndex(db, "customer", "customer_name_idx", false);
+    RegisterIndex(db, "district", "district", true);
+    RegisterIndex(db, "history", "history", true);
+    RegisterIndex(db, "item", "item", true);
+    RegisterIndex(db, "new_order", "new_order", true);
+    RegisterIndex(db, "oorder", "oorder", true);
+    RegisterIndex(db, "oorder", "oorder_c_id_idx", false);
+    RegisterIndex(db, "order_line", "order_line", true);
+    RegisterIndex(db, "stock", "stock", true);
+    RegisterIndex(db, "stock_data", "stock_data", true);
+    RegisterIndex(db, "nation", "nation", true);
+    RegisterIndex(db, "region", "region", true);
+    RegisterIndex(db, "supplier", "supplier", true);
+    RegisterIndex(db, "warehouse", "warehouse", true);
     create_schema_table(db, "SCHEMA");
   }
 
@@ -257,11 +235,13 @@ class tpcc_bench_runner : public bench_runner {
     open_tables["SCHEMA"] = ermia::Catalog::GetPrimaryIndex("SCHEMA");
 
     if (g_new_order_fast_id_gen) {
-      void *const px = memalign(
-          CACHELINE_SIZE, sizeof(util::aligned_padded_elem<std::atomic<uint64_t>>) *
-                              NumWarehouses() * NumDistrictsPerWarehouse());
+      void *const px =
+          memalign(CACHELINE_SIZE,
+                   sizeof(util::aligned_padded_elem<std::atomic<uint64_t>>) *
+                       NumWarehouses() * NumDistrictsPerWarehouse());
       g_district_ids =
-          reinterpret_cast<util::aligned_padded_elem<std::atomic<uint64_t>> *>(px);
+          reinterpret_cast<util::aligned_padded_elem<std::atomic<uint64_t>> *>(
+              px);
       for (size_t i = 0; i < NumWarehouses() * NumDistrictsPerWarehouse(); i++)
         new (&g_district_ids[i]) std::atomic<uint64_t>(3001);
     }
@@ -315,8 +295,8 @@ class tpcc_bench_runner : public bench_runner {
     if (NumWarehouses() <= ermia::config::worker_threads) {
       for (size_t i = 0; i < ermia::config::worker_threads; i++)
         ret.push_back(new WorkerType(i, r.next(), db, open_tables, partitions,
-                                    &barrier_a, &barrier_b,
-                                    (i % NumWarehouses()) + 1));
+                                     &barrier_a, &barrier_b,
+                                     (i % NumWarehouses()) + 1));
     } else {
       for (size_t i = 0; i < ermia::config::worker_threads; i++) {
         ret.push_back(new WorkerType(i, r.next(), db, open_tables, partitions,
@@ -329,9 +309,6 @@ class tpcc_bench_runner : public bench_runner {
  private:
   std::map<std::string, std::vector<ermia::OrderedIndex *>> partitions;
 };
-
-
-
 
 void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
   // parse options
@@ -414,8 +391,10 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
 
   if (did_spec_remote_pct && g_disable_xpartition_txn) {
     std::cerr << "WARNING: --new-order-remote-item-pct given with "
-            "--disable-cross-partition-transactions" << std::endl;
-    std::cerr << "  --new-order-remote-item-pct will have no effect" << std::endl;
+                 "--disable-cross-partition-transactions"
+              << std::endl;
+    std::cerr << "  --new-order-remote-item-pct will have no effect"
+              << std::endl;
   }
 
   if (g_wh_temperature) {
@@ -450,29 +429,34 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
         std::cerr << " " << tpcc_worker::hot_whs[i];
       std::cerr << std::endl;
     } else {
-      std::cerr << "  random home warehouse (%)    : " << g_wh_spread * 100 << std::endl;
+      std::cerr << "  random home warehouse (%)    : " << g_wh_spread * 100
+                << std::endl;
     }
-    std::cerr << "  cross_partition_transactions : " << !g_disable_xpartition_txn
-         << std::endl;
+    std::cerr << "  cross_partition_transactions : "
+              << !g_disable_xpartition_txn << std::endl;
     std::cerr << "  separate_tree_per_partition  : "
-         << g_enable_separate_tree_per_partition << std::endl;
-    std::cerr << "  new_order_remote_item_pct    : " << g_new_order_remote_item_pct
-         << std::endl;
+              << g_enable_separate_tree_per_partition << std::endl;
+    std::cerr << "  new_order_remote_item_pct    : "
+              << g_new_order_remote_item_pct << std::endl;
     std::cerr << "  new_order_fast_id_gen        : " << g_new_order_fast_id_gen
-         << std::endl;
-    std::cerr << "  uniform_item_dist            : " << g_uniform_item_dist << std::endl;
+              << std::endl;
+    std::cerr << "  uniform_item_dist            : " << g_uniform_item_dist
+              << std::endl;
     std::cerr << "  order_status_scan_hack       : " << g_order_status_scan_hack
-         << std::endl;
-    std::cerr << "  microbench rows            : " << g_microbench_rows << std::endl;
+              << std::endl;
+    std::cerr << "  microbench rows            : " << g_microbench_rows
+              << std::endl;
     std::cerr << "  microbench wr ratio (%)    : "
-         << g_microbench_wr_rows / g_microbench_rows << std::endl;
-    std::cerr << "  microbench wr rows         : " << g_microbench_wr_rows << std::endl;
+              << g_microbench_wr_rows / g_microbench_rows << std::endl;
+    std::cerr << "  microbench wr rows         : " << g_microbench_wr_rows
+              << std::endl;
     std::cerr << "  number of suppliers : " << g_nr_suppliers << std::endl;
     std::cerr << "  hybrid : " << g_hybrid << std::endl;
     std::cerr << "  workload_mix                 : "
-         << util::format_list(g_txn_workload_mix,
-                        g_txn_workload_mix + ARRAY_NELEMS(g_txn_workload_mix))
-         << std::endl;
+              << util::format_list(
+                     g_txn_workload_mix,
+                     g_txn_workload_mix + ARRAY_NELEMS(g_txn_workload_mix))
+              << std::endl;
   }
 
   if (ermia::config::coro_tx) {
@@ -483,4 +467,4 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
     r.run();
   }
 }
-#endif // ADV_COROUTINE
+#endif  // ADV_COROUTINE

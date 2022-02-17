@@ -4,10 +4,10 @@ namespace ermia {
 
 namespace dlog {
 
-// CSNs are 64-bit integers and are global; used for ordering transactions. 
+// CSNs are 64-bit integers and are global; used for ordering transactions.
 // TLog LSNs (not to be confused with the "LSN" defined by sm-common.h and
 // encoded in a fat_ptr) are 64-bit integers and are local to a log; the <log
-// id, lsn> pair uniquely identifies a log record. 
+// id, lsn> pair uniquely identifies a log record.
 //
 // Note that out of the 64 bits, an LSN only uses 40 bits out of it, limiting
 // the max size of each tlog to 1TB. The rationale is to still be able to fit
@@ -51,7 +51,8 @@ struct log_block {
   // must be the last element
   char payload[0];
 
-  log_block(uint32_t cap) : csn(INVALID_TLOG_CSN), payload_size(0), capacity(cap) {}
+  log_block(uint32_t cap)
+      : csn(INVALID_TLOG_CSN), payload_size(0), capacity(cap) {}
   ~log_block() {}
 
   // Size of this whole log block

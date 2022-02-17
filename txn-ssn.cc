@@ -1,9 +1,9 @@
 #ifdef SSN
-#include "macros.h"
-#include "txn.h"
 #include "dbcore/rcu.h"
 #include "dbcore/serial.h"
 #include "engine.h"
+#include "macros.h"
+#include "txn.h"
 
 namespace ermia {
 
@@ -159,7 +159,8 @@ rc_t transaction::parallel_ssn_commit() {
     // lockout_read_mostly_tx()
     // first. Readers who think this is a young version can still come at any
     // time - they will be handled by the orignal SSN machinery.
-    TXN::readers_bitmap_iterator readers_iter(&overwritten_tuple->readers_bitmap);
+    TXN::readers_bitmap_iterator readers_iter(
+        &overwritten_tuple->readers_bitmap);
     while (true) {
       int32_t xid_idx = readers_iter.next(coro_batch_idx, true);
       if (xid_idx == -1) break;
@@ -208,7 +209,8 @@ rc_t transaction::parallel_ssn_commit() {
           // pstamp to cstamp-1 because the updater here has no clue what the
           // previous
           // owner of this bit position did and how its cstamp compares to mine.
-          uint64_t last_cstamp = TXN::serial_get_last_read_mostly_cstamp(xid_idx);
+          uint64_t last_cstamp =
+              TXN::serial_get_last_read_mostly_cstamp(xid_idx);
           if (last_cstamp > cstamp) {
             // Reader committed without knowing my existence with a larger
             // cstamp,
@@ -251,7 +253,8 @@ rc_t transaction::parallel_ssn_commit() {
             // if reader_xc isn't read-mostly, then it's definitely not him,
             // consult last_read_mostly_cstamp.
             // Need to account for previously committed read-mostly txs anyway
-            uint64_t last_cstamp = TXN::serial_get_last_read_mostly_cstamp(xid_idx);
+            uint64_t last_cstamp =
+                TXN::serial_get_last_read_mostly_cstamp(xid_idx);
             if (reader_xc->xct->is_read_mostly() and
                 not reader_xc->set_sstamp(
                     (~TXN::xid_context::sstamp_final_mark) &
@@ -265,10 +268,12 @@ rc_t transaction::parallel_ssn_commit() {
                 ALWAYS_ASSERT(reader_end);
                 while (last_cstamp < reader_end) {
                   // Wait until the tx sets last_cstamp or aborts
-                  last_cstamp = TXN::serial_get_last_read_mostly_cstamp(xid_idx);
+                  last_cstamp =
+                      TXN::serial_get_last_read_mostly_cstamp(xid_idx);
                   if (volatile_read(reader_xc->state) == TXN::TXN_ABRTD or
                       !reader_xc->verify_owner(rxid)) {
-                    last_cstamp = TXN::serial_get_last_read_mostly_cstamp(xid_idx);
+                    last_cstamp =
+                        TXN::serial_get_last_read_mostly_cstamp(xid_idx);
                     break;
                   }
                 }

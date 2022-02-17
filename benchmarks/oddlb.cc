@@ -2,28 +2,27 @@
  * An Online DDL Benchmark.
  */
 #include "oddlb.h"
-#include "bench.h"
+
 #include <sstream>
 
+#include "bench.h"
+
 class oddlb_sequential_worker : public oddlb_base_worker {
-public:
+ public:
   oddlb_sequential_worker(
       unsigned int worker_id, unsigned long seed, ermia::Engine *db,
       const std::map<std::string, ermia::OrderedIndex *> &open_tables,
       spin_barrier *barrier_a, spin_barrier *barrier_b)
       : oddlb_base_worker(worker_id, seed, db, open_tables, barrier_a,
-                          barrier_b) {
-  }
+                          barrier_b) {}
 
   double read_ratio = 0.2, write_ratio = 0.8;
 
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
 
-    if (read_ratio)
-      w.push_back(workload_desc("Read", read_ratio, TxnRead));
-    if (write_ratio)
-      w.push_back(workload_desc("RMW", write_ratio, TxnRMW));
+    if (read_ratio) w.push_back(workload_desc("Read", read_ratio, TxnRead));
+    if (write_ratio) w.push_back(workload_desc("RMW", write_ratio, TxnRMW));
 
     return w;
   }
@@ -268,7 +267,7 @@ public:
 
   rc_t txn_read() {
     uint64_t a =
-        r.next() % oddl_initial_table_size; // 0 ~ oddl_initial_table_size-1
+        r.next() % oddl_initial_table_size;  // 0 ~ oddl_initial_table_size-1
 
 #ifdef SIDDL
   retry:
@@ -323,8 +322,7 @@ public:
 #else
     table_index->GetRecord(txn, rc, k2, v2, &oid);
 #endif
-    if (rc._val != RC_TRUE)
-      TryCatch(rc_t{RC_ABORT_USER});
+    if (rc._val != RC_TRUE) TryCatch(rc_t{RC_ABORT_USER});
 
     struct ermia::Schema_base record_test;
     memcpy(&record_test, (char *)v2.data(), sizeof(record_test));
@@ -394,7 +392,7 @@ public:
 
   rc_t txn_rmw() {
     uint64_t a =
-        r.next() % oddl_initial_table_size; // 0 ~ oddl_initial_table_size-1
+        r.next() % oddl_initial_table_size;  // 0 ~ oddl_initial_table_size-1
 
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());

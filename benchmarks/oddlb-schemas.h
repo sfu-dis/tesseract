@@ -51,4 +51,4 @@ struct Schema6 : public Schema_base_ {
   uint64_t g;
 };
 
-} // namespace ermia
+}  // namespace ermia

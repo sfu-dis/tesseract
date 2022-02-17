@@ -5,5 +5,5 @@ namespace coro {
 
 thread_local tcalloc coroutine_allocator;
 
-} // namespace coro
-} // namespace ermia
+}  // namespace coro
+}  // namespace ermia

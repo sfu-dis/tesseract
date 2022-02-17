@@ -1,20 +1,20 @@
 #include "sm-table.h"
+
 #include "../engine.h"
 
 namespace ermia {
 
-std::unordered_map<std::string, TableDescriptor*> Catalog::name_map;
-std::unordered_map<FID, TableDescriptor*> Catalog::fid_map;
-std::unordered_map<std::string, OrderedIndex*> Catalog::index_map;
+std::unordered_map<std::string, TableDescriptor *> Catalog::name_map;
+std::unordered_map<FID, TableDescriptor *> Catalog::fid_map;
+std::unordered_map<std::string, OrderedIndex *> Catalog::index_map;
 
-TableDescriptor::TableDescriptor(std::string& name)
+TableDescriptor::TableDescriptor(std::string &name)
     : name(name),
       primary_index(nullptr),
       tuple_fid(0),
       tuple_array(nullptr),
       aux_fid_(0),
-      aux_array_(nullptr) {
-}
+      aux_array_(nullptr) {}
 
 void TableDescriptor::Initialize() {
   tuple_fid = oidmgr->create_file(true);
@@ -26,7 +26,8 @@ void TableDescriptor::Initialize() {
   aux_array_ = oidmgr->get_array(aux_fid_);
 }
 
-void TableDescriptor::SetPrimaryIndex(OrderedIndex *index, const std::string &name) {
+void TableDescriptor::SetPrimaryIndex(OrderedIndex *index,
+                                      const std::string &name) {
   ALWAYS_ASSERT(index);
   ALWAYS_ASSERT(!primary_index);
   primary_index = index;
@@ -34,7 +35,8 @@ void TableDescriptor::SetPrimaryIndex(OrderedIndex *index, const std::string &na
   index->SetArrays(true);
 }
 
-void TableDescriptor::AddSecondaryIndex(OrderedIndex *index, const std::string &name) {
+void TableDescriptor::AddSecondaryIndex(OrderedIndex *index,
+                                        const std::string &name) {
   ALWAYS_ASSERT(index);
   sec_indexes.push_back(index);
   Catalog::index_map[name] = index;

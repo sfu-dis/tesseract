@@ -8,14 +8,14 @@
  * The basic design is a distributed log consisting of multiple log files, each
  * of which owns a dedicated log buffer.
  */
-#include <vector>
-#include <stdio.h>
-#include <string.h>
 #include <fcntl.h>
+#include <glog/logging.h>
 #include <liburing.h>
 #include <numa.h>
+#include <stdio.h>
+#include <string.h>
 
-#include <glog/logging.h>
+#include <vector>
 
 #include "dlog-defs.h"
 #include "pcommit.h"
@@ -65,10 +65,10 @@ struct segment {
 // CC because this is per thread, and it is expected that no more than one
 // transaction will be using the log at the same time.
 class tls_log {
-private:
+ private:
   // Directory where the segment files should be created.
   const char *dir;
-  
+
   // ID of this log; can be seen as 'partition ID' -
   // caller/user should make sure this is unique
   uint32_t id;
@@ -129,7 +129,7 @@ private:
   // Whether doing DDL
   bool doing_ddl;
 
-private:
+ private:
   // Get the currently open segment
   inline segment *current_segment() { return &segments[segments.size() - 1]; }
 
@@ -143,10 +143,11 @@ private:
   // (io_uring requests may come back out of order).
   void poll_flush();
 
-  // Create a new segment when the current segment is about to exceed the max segment size.
+  // Create a new segment when the current segment is about to exceed the max
+  // segment size.
   void create_segment();
 
-public:
+ public:
   // Dummy ctor and dtor. The user must use initialize/uninitialize() to make
   // sure we capture the proper parameters set in ermia::config which may get
   // initialized/created after tls_logs are created.
@@ -154,7 +155,8 @@ public:
   ~tls_log() {}
 
   // Initialize/uninitialize this tls-log object
-  void initialize(const char *log_dir, uint32_t log_id, uint32_t node, uint64_t logbuf_mb, uint64_t max_segment_mb);
+  void initialize(const char *log_dir, uint32_t log_id, uint32_t node,
+                  uint64_t logbuf_mb, uint64_t max_segment_mb);
   void uninitialize();
 
   inline uint32_t get_id() { return id; }

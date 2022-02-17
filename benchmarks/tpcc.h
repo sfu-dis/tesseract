@@ -1,44 +1,42 @@
 #pragma once
 
+#include "../macros.h"
 #include "record/encoder.h"
 #include "record/inline_str.h"
-#include "../macros.h"
 
 // These correspond to the their index in the workload desc vector
 #define TPCC_CLID_NEW_ORDER 0
-#define TPCC_CLID_PAYMENT   1
-#define TPCC_CLID_DELIVERY  2
+#define TPCC_CLID_PAYMENT 1
+#define TPCC_CLID_DELIVERY 2
 
 #define CUSTOMER_KEY_FIELDS(x, y) \
   x(int32_t, c_w_id) y(int32_t, c_d_id) y(int32_t, c_id)
-#define CUSTOMER_VALUE_FIELDS(x, y)                                            \
-  x(int32_t, c_id) y(float, c_discount) y(inline_str_fixed<2>, c_credit)       \
-      y(inline_str_8<16>, c_last) y(inline_str_8<16>, c_first) y(              \
-          float, c_credit_lim) y(float, c_balance) y(float, c_ytd_payment)     \
-          y(int32_t, c_payment_cnt) y(int32_t, c_delivery_cnt)                 \
-              y(inline_str_8<20>, c_street_1) y(inline_str_8<20>, c_street_2)  \
-                  y(inline_str_8<20>, c_city) y(inline_str_fixed<2>, c_state)  \
-                      y(inline_str_fixed<9>, c_zip)                            \
-                          y(inline_str_fixed<16>, c_phone)                     \
-                              y(uint32_t, c_since)                             \
-                                  y(inline_str_fixed<2>, c_middle)             \
-                                      y(inline_str_16<500>, c_data)            \
-                                          y(uint64_t, v)
+#define CUSTOMER_VALUE_FIELDS(x, y)                                           \
+  x(int32_t, c_id) y(float, c_discount) y(inline_str_fixed<2>, c_credit)      \
+      y(inline_str_8<16>, c_last) y(inline_str_8<16>, c_first) y(             \
+          float, c_credit_lim) y(float, c_balance) y(float, c_ytd_payment)    \
+          y(int32_t, c_payment_cnt) y(int32_t, c_delivery_cnt)                \
+              y(inline_str_8<20>, c_street_1) y(inline_str_8<20>, c_street_2) \
+                  y(inline_str_8<20>, c_city) y(inline_str_fixed<2>, c_state) \
+                      y(inline_str_fixed<9>, c_zip) y(                        \
+                          inline_str_fixed<16>, c_phone) y(uint32_t, c_since) \
+                          y(inline_str_fixed<2>, c_middle)                    \
+                              y(inline_str_16<500>, c_data) y(uint64_t, v)
 DO_STRUCT(customer, CUSTOMER_KEY_FIELDS, CUSTOMER_VALUE_FIELDS)
 
-#define CUSTOMER_PRIVATE_VALUE_FIELDS(x, y)                                    \
-  x(int32_t, c_id) y(float, c_discount) y(inline_str_fixed<2>, c_credit)       \
-      y(float, c_credit_lim) y(float, c_balance) y(float, c_ytd_payment)       \
-          y(int32_t, c_payment_cnt) y(int32_t, c_delivery_cnt)                 \
+#define CUSTOMER_PRIVATE_VALUE_FIELDS(x, y)                              \
+  x(int32_t, c_id) y(float, c_discount) y(inline_str_fixed<2>, c_credit) \
+      y(float, c_credit_lim) y(float, c_balance) y(float, c_ytd_payment) \
+          y(int32_t, c_payment_cnt) y(int32_t, c_delivery_cnt)           \
               y(inline_str_16<500>, c_data) y(uint64_t, v)
 DO_STRUCT(customer_private, CUSTOMER_KEY_FIELDS, CUSTOMER_PRIVATE_VALUE_FIELDS)
 
-#define CUSTOMER_PUBLIC_VALUE_FIELDS(x, y)                                     \
-  x(int32_t, c_id) y(inline_str_8<16>, c_last) y(inline_str_8<16>, c_first)    \
-      y(inline_str_8<20>, c_street_1) y(inline_str_8<20>, c_street_2)          \
-          y(inline_str_8<20>, c_city) y(inline_str_fixed<2>, c_state)          \
-              y(inline_str_fixed<9>, c_zip) y(inline_str_fixed<16>, c_phone)   \
-                  y(uint32_t, c_since) y(inline_str_fixed<2>, c_middle)        \
+#define CUSTOMER_PUBLIC_VALUE_FIELDS(x, y)                                   \
+  x(int32_t, c_id) y(inline_str_8<16>, c_last) y(inline_str_8<16>, c_first)  \
+      y(inline_str_8<20>, c_street_1) y(inline_str_8<20>, c_street_2)        \
+          y(inline_str_8<20>, c_city) y(inline_str_fixed<2>, c_state)        \
+              y(inline_str_fixed<9>, c_zip) y(inline_str_fixed<16>, c_phone) \
+                  y(uint32_t, c_since) y(inline_str_fixed<2>, c_middle)      \
                       y(uint64_t, v)
 DO_STRUCT(customer_public, CUSTOMER_KEY_FIELDS, CUSTOMER_PUBLIC_VALUE_FIELDS)
 
@@ -84,10 +82,11 @@ DO_STRUCT(new_order, NEW_ORDER_KEY_FIELDS, NEW_ORDER_VALUE_FIELDS)
       y(bool, o_all_local) y(uint32_t, o_entry_d)
 DO_STRUCT(oorder, OORDER_KEY_FIELDS, OORDER_VALUE_FIELDS)
 
-#define OORDER_VALUE_PRECOMPUTE_AGGREGATE_FIELDS(x, y)                                 \
+#define OORDER_VALUE_PRECOMPUTE_AGGREGATE_FIELDS(x, y)            \
   x(int32_t, o_c_id) y(int32_t, o_carrier_id) y(int8_t, o_ol_cnt) \
       y(bool, o_all_local) y(uint32_t, o_entry_d) y(float, o_total_amount)
-DO_STRUCT(oorder_precompute_aggregate, OORDER_KEY_FIELDS, OORDER_VALUE_PRECOMPUTE_AGGREGATE_FIELDS)
+DO_STRUCT(oorder_precompute_aggregate, OORDER_KEY_FIELDS,
+          OORDER_VALUE_PRECOMPUTE_AGGREGATE_FIELDS)
 
 #define OORDER_C_ID_IDX_KEY_FIELDS(x, y) \
   x(int32_t, o_w_id) y(int32_t, o_d_id) y(int32_t, o_c_id) y(int32_t, o_o_id)
@@ -103,14 +102,14 @@ DO_STRUCT(oorder_c_id_idx, OORDER_C_ID_IDX_KEY_FIELDS,
       y(int32_t, ol_supply_w_id) y(int8_t, ol_quantity) y(uint64_t, v)
 DO_STRUCT(order_line, ORDER_LINE_KEY_FIELDS, ORDER_LINE_VALUE_FIELDS)
 
-#define ORDER_LINE_VALUE_1_FIELDS(x, y)                                        \
-  x(int32_t, ol_i_id) y(uint32_t, ol_delivery_d) y(float, ol_amount)           \
-      y(int32_t, ol_supply_w_id) y(int8_t, ol_quantity) y(uint64_t, v)         \
+#define ORDER_LINE_VALUE_1_FIELDS(x, y)                                \
+  x(int32_t, ol_i_id) y(uint32_t, ol_delivery_d) y(float, ol_amount)   \
+      y(int32_t, ol_supply_w_id) y(int8_t, ol_quantity) y(uint64_t, v) \
           y(float, ol_tax)
 DO_STRUCT(order_line_1, ORDER_LINE_KEY_FIELDS, ORDER_LINE_VALUE_1_FIELDS)
 
-#define ORDER_LINE_VALUE_STOCK_FIELDS(x, y)                                    \
-  x(int32_t, ol_i_id) y(uint32_t, ol_delivery_d) y(float, ol_amount)           \
+#define ORDER_LINE_VALUE_STOCK_FIELDS(x, y)                          \
+  x(int32_t, ol_i_id) y(uint32_t, ol_delivery_d) y(float, ol_amount) \
       y(int32_t, ol_supply_w_id) y(int8_t, ol_quantity) y(uint32_t, s_oid)
 DO_STRUCT(order_line_stock, ORDER_LINE_KEY_FIELDS,
           ORDER_LINE_VALUE_STOCK_FIELDS)

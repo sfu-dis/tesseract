@@ -1,4 +1,5 @@
 #include "sm-object.h"
+
 #include "../engine.h"
 #include "../tuple.h"
 #include "sm-alloc.h"
@@ -60,7 +61,7 @@ PROMISE(void) Object::Pin() {
 
   // Already pre-allocated space when creating the object
   dbtuple *tuple = (dbtuple *)GetPayload();
-  new (tuple) dbtuple(0, 0); // set the correct size later
+  new (tuple) dbtuple(0, 0);  // set the correct size later
 
   size_t data_sz = decode_size_aligned(pdest_.size_code());
   if (where == fat_ptr::ASI_LOG) {

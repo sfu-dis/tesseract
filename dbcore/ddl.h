@@ -84,18 +84,25 @@ struct ddl_executor_paras {
                      uint64_t secondary_index_key_create_idx,
                      bool handle_insert, bool handle_update,
                      uint64_t scan_reformat_idx)
-      : new_v(new_v), old_v(old_v), type(type), reformat_idx(reformat_idx),
-        constraint_idx(constraint_idx), new_td(new_td), old_td(old_td),
-        index(index), state(state),
+      : new_v(new_v),
+        old_v(old_v),
+        type(type),
+        reformat_idx(reformat_idx),
+        constraint_idx(constraint_idx),
+        new_td(new_td),
+        old_td(old_td),
+        index(index),
+        state(state),
         secondary_index_key_create_idx(secondary_index_key_create_idx),
-        handle_insert(handle_insert), handle_update(handle_update),
+        handle_insert(handle_insert),
+        handle_update(handle_update),
         scan_reformat_idx(scan_reformat_idx) {}
 };
 
 class ddl_executor {
   friend class transaction;
 
-private:
+ private:
   // List of DDL executor parameters
   std::vector<struct ddl_executor_paras *> ddl_executor_paras_list;
 
@@ -105,7 +112,7 @@ private:
   // Scan workers
   std::vector<ermia::thread::Thread *> scan_workers;
 
-public:
+ public:
   // Constructor and destructor
   ddl_executor() {}
   ~ddl_executor() {}
@@ -122,8 +129,8 @@ public:
         scan_reformat_idx));
   }
 
-  inline void
-  set_cdc_workers(std::vector<ermia::thread::Thread *> _cdc_workers) {
+  inline void set_cdc_workers(
+      std::vector<ermia::thread::Thread *> _cdc_workers) {
     cdc_workers = _cdc_workers;
   }
 
@@ -157,6 +164,6 @@ extern std::vector<Reformat> reformats;
 extern std::vector<Constraint> constraints;
 extern std::vector<uint32_t> ddl_worker_logical_threads;
 
-} // namespace ddl
+}  // namespace ddl
 
-} // namespace ermia
+}  // namespace ermia

@@ -1,5 +1,6 @@
 #pragma once
 #include <map>
+
 #include "dbcore/sm-common.h"
 
 namespace ermia {
@@ -10,12 +11,12 @@ struct Schema_record;
 class OrderedIndex {
   friend class transaction;
 
-protected:
+ protected:
   TableDescriptor *table_descriptor;
   bool is_primary;
   FID self_fid;
 
-public:
+ public:
   OrderedIndex(std::string table_name, bool is_primary);
   OrderedIndex(std::string table_name, bool is_primary, FID self_fid);
   virtual ~OrderedIndex() {}
@@ -28,13 +29,14 @@ public:
   virtual void *GetTable() = 0;
 
   class ScanCallback {
-  public:
+   public:
     virtual ~ScanCallback() {}
     virtual bool Invoke(const char *keyp, size_t keylen,
                         const varstr &value) = 0;
   };
 
-  virtual PROMISE(rc_t) WriteSchemaTable(transaction *t, rc_t &rc, const varstr &key, varstr &value) = 0;
+  virtual PROMISE(rc_t) WriteSchemaTable(transaction *t, rc_t &rc,
+                                         const varstr &key, varstr &value) = 0;
 
   virtual PROMISE(void)
       ReadSchemaTable(transaction *t, rc_t &rc, const varstr &key,
@@ -51,9 +53,9 @@ public:
       GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
              ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
 
-  // Update a database record with a key of length keylen, with mapping of length
-  // valuelen.  The underlying DB does not manage the memory pointed to by key or
-  // value (a copy is made).
+  // Update a database record with a key of length keylen, with mapping of
+  // length valuelen.  The underlying DB does not manage the memory pointed to
+  // by key or value (a copy is made).
   //
   // If the does not already exist and config::upsert is set to true, insert.
   virtual PROMISE(rc_t)
@@ -66,7 +68,8 @@ public:
                    OID *out_oid = nullptr, Schema_record *schema = nullptr) = 0;
 
   // Map a key to an existing OID. Could be used for primary or secondary index.
-  virtual PROMISE(bool) InsertOID(transaction *t, const varstr &key, OID oid) = 0;
+  virtual PROMISE(bool)
+      InsertOID(transaction *t, const varstr &key, OID oid) = 0;
 
   // Search [start_key, *end_key) if end_key is not null, otherwise
   // search [start_key, +infty)
@@ -95,7 +98,8 @@ public:
    *
    * Returns false if the record already exists or there is potential phantom.
    */
-  virtual PROMISE(bool) InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
+  virtual PROMISE(bool)
+      InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
 };
 
 }  // namespace ermia

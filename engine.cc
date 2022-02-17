@@ -1,4 +1,5 @@
 #include "engine.h"
+
 #include "dbcore/rcu.h"
 #include "dbcore/sm-thread.h"
 #include "txn.h"
@@ -53,8 +54,7 @@ void ConcurrentMasstreeIndex::ReadSchemaTable(transaction *t, rc_t &rc,
 retry:
   GetRecord(t, rc, key, value, out_oid);
 #ifndef NDEBUG
-  if (rc._val != RC_TRUE)
-    DLOG(INFO) << "Read schema table failed";
+  if (rc._val != RC_TRUE) DLOG(INFO) << "Read schema table failed";
 #endif
   if (rc._val != RC_TRUE) {
     goto retry;
@@ -101,7 +101,7 @@ Engine::~Engine() { ermia::dlog::uninitialize(); }
 TableDescriptor *Engine::CreateTable(const char *name) {
   auto *td = Catalog::NewTable(name);
 
-  if (true) { //! sm_log::need_recovery) {
+  if (true) {  //! sm_log::need_recovery) {
     // Note: this will insert to the log and therefore affect min_flush_lsn,
     // so must be done in an sm-thread which must be created by the user
     // application (not here in ERMIA library).
@@ -771,7 +771,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     // ^^^^^ note: see masstree_scan.hh, whose scan() calls
     // visit_value(), which calls this function to determine
     // if it should stop reading.
-    return false; // don't continue the read if the tx should abort
+    return false;  // don't continue the read if the tx should abort
   }
   return true;
 }
@@ -826,5 +826,4 @@ OrderedIndex::OrderedIndex(std::string table_name, bool is_primary,
   table_descriptor = Catalog::GetTable(table_name);
 }
 
-} // namespace ermia
-
+}  // namespace ermia

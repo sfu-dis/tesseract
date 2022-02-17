@@ -1,8 +1,9 @@
 // -*- mode:c++ -*-
 #pragma once
 
-#include <cstdint>
 #include <x86intrin.h>
+
+#include <cstdint>
 
 /* A family of fast, high-quality integer hashes due to Bob Jenkins
    [1]. He identifies 35 compact functions that achieve "full
@@ -50,7 +51,8 @@ struct burt_hash4 {
   __v4si operator()(int32_t xi) const {
     __v4si x = {xi};
 #ifdef __clang__
-    x = (__v4si)__builtin_shufflevector((__v16qi)x, (__v16qi)x, 0, 1, 2, 3, 3, 2, 0, 1, 2, 3, 1, 0, 1, 0, 3, 2);
+    x = (__v4si)__builtin_shufflevector((__v16qi)x, (__v16qi)x, 0, 1, 2, 3, 3,
+                                        2, 0, 1, 2, 3, 1, 0, 1, 0, 3, 2);
 #else
     __v16qi k = {0, 1, 2, 3, 3, 2, 0, 1, 2, 3, 1, 0, 1, 0, 3, 2};
     x = (__v4si)__builtin_shuffle((__v16qi)x, k);

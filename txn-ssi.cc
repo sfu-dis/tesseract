@@ -1,10 +1,10 @@
 #ifdef SSI
 
-#include "macros.h"
-#include "txn.h"
 #include "dbcore/rcu.h"
 #include "dbcore/serial.h"
 #include "engine.h"
+#include "macros.h"
+#include "txn.h"
 
 namespace ermia {
 
@@ -169,7 +169,8 @@ rc_t transaction::parallel_ssi_commit() {
       // in that case. So the reader should make sure when it goes away
       // from the bitmap, xstamp is ready to be read by the updater.
 
-      TXN::readers_bitmap_iterator readers_iter(&overwritten_tuple->readers_bitmap);
+      TXN::readers_bitmap_iterator readers_iter(
+          &overwritten_tuple->readers_bitmap);
       while (true) {
         int32_t xid_idx = readers_iter.next(coro_batch_idx, true);
         if (xid_idx == -1) break;

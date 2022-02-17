@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#include <sparsehash/dense_hash_map>
 #include <vector>
 
 #include "dbcore/ddl.h"
@@ -17,8 +18,6 @@
 #include "masstree/masstree_btree.h"
 #include "str_arena.h"
 #include "tuple.h"
-
-#include <sparsehash/dense_hash_map>
 using google::dense_hash_map;
 
 namespace ermia {
@@ -59,7 +58,10 @@ struct write_record_t {
                  dlog::log_record::logrec_type type)
       : entry(entry), fid(fid), oid(oid), size(size), type(type) {}
   write_record_t()
-      : entry(nullptr), fid(0), oid(0), size(0),
+      : entry(nullptr),
+        fid(0),
+        oid(0),
+        size(0),
         type(dlog::log_record::logrec_type::INVALID) {}
   inline Object *get_object() { return (Object *)entry->offset(); }
 };
@@ -113,14 +115,16 @@ struct write_set_t {
     return entries[idx];
 #endif
   }
-  inline void init_large_write_set() { entries_ = new write_record_t[kMaxEntries_]; }
+  inline void init_large_write_set() {
+    entries_ = new write_record_t[kMaxEntries_];
+  }
 };
 
 class transaction {
   friend class ConcurrentMasstreeIndex;
   friend struct sm_oid_mgr;
 
-public:
+ public:
   typedef TXN::txn_state txn_state;
 
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
@@ -139,7 +143,8 @@ public:
 
     TXN_FLAG_READ_MOSTLY = 0x3,
 
-    // A context-switch transaction doesn't enter/exit thread during construct/destruct.
+    // A context-switch transaction doesn't enter/exit thread during
+    // construct/destruct.
     TXN_FLAG_CSWITCH = 0x8,
 
     TXN_FLAG_DML = 0x10,
@@ -152,11 +157,12 @@ public:
   inline bool is_dml() { return flags & TXN_FLAG_DML; }
   inline bool is_ddl() { return flags & TXN_FLAG_DDL; }
 
-protected:
+ protected:
   inline txn_state state() const { return xc->state; }
 
   // the absent set is a mapping from (masstree node -> version_number).
-  typedef dense_hash_map<const ConcurrentMasstree::node_opaque_t *, uint64_t > MasstreeAbsentSet;
+  typedef dense_hash_map<const ConcurrentMasstree::node_opaque_t *, uint64_t>
+      MasstreeAbsentSet;
   MasstreeAbsentSet masstree_absent_set;
 
  public:
@@ -194,7 +200,7 @@ protected:
 #endif
   bool DMLConsistencyHandler();
 #endif
-  
+
   bool MasstreeCheckPhantom();
   void Abort();
 
@@ -251,7 +257,7 @@ protected:
   // Table scan to simulate operations without index
   OID table_scan(TableDescriptor *td, const varstr *key, OID oid);
 
-public:
+ public:
   // Reads the contents of tuple into v within this transaction context
   rc_t DoTupleRead(dbtuple *tuple, varstr *out_v);
 
@@ -360,23 +366,23 @@ public:
     LOG_IF(FATAL, ret);
   }
 
-public:
+ public:
   static std::unordered_map<FID, pthread_rwlock_t *> lock_map;
   static std::mutex map_rw_latch;
 
-protected:
+ protected:
   std::unordered_map<FID, int> locked_tables;
 #endif
 
-protected:
+ protected:
   const uint64_t flags;
   XID xid;
   TXN::xid_context *xc;
   dlog::tls_log *log;
   uint64_t log_size;
   str_arena *sa;
-  uint32_t coro_batch_idx; // its index in the batch
-  std::unordered_map<TableDescriptor*, OID> schema_read_map;
+  uint32_t coro_batch_idx;  // its index in the batch
+  std::unordered_map<TableDescriptor *, OID> schema_read_map;
   std::unordered_map<FID, TableDescriptor *> new_td_map;
   TableDescriptor *old_td;
   std::unordered_map<FID, TableDescriptor *> old_td_map;
@@ -389,4 +395,4 @@ protected:
 #endif
 };
 
-} // namespace ermia
+}  // namespace ermia

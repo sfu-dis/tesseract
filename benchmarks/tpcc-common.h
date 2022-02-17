@@ -1,13 +1,14 @@
 #ifndef ADV_COROUTINE
 
-#include <sys/time.h>
-#include <string>
 #include <ctype.h>
+#include <sys/time.h>
 #include <unistd.h>
 
+#include <string>
+
+#include "../catalog_mgr.h"
 #include "bench.h"
 #include "tpcc.h"
-#include "../catalog_mgr.h"
 
 // configuration flags
 extern int g_disable_xpartition_txn;
@@ -27,7 +28,7 @@ extern double g_wh_spread;
 
 extern unsigned g_txn_workload_mix[8];
 
-extern util::aligned_padded_elem<std::atomic<uint64_t>> *g_district_ids ;
+extern util::aligned_padded_elem<std::atomic<uint64_t>> *g_district_ids;
 
 typedef std::vector<std::vector<std::pair<int32_t, int32_t>>> SuppStockMap;
 extern SuppStockMap supp_stock_map;
@@ -53,7 +54,7 @@ static ALWAYS_INLINE size_t NumWarehouses() {
 }
 
 static inline std::atomic<uint64_t> &NewOrderIdHolder(unsigned warehouse,
-                                                 unsigned district) {
+                                                      unsigned district) {
   ASSERT(warehouse >= 1 && warehouse <= NumWarehouses());
   ASSERT(district >= 1 && district <= NumDistrictsPerWarehouse());
   const unsigned idx =
@@ -78,8 +79,8 @@ struct checker {
   // these sanity checks are just a few simple checks to make sure
   // the data is not entirely corrupted
 
-  static ALWAYS_INLINE void SanityCheckCustomer(
-      const customer::key *k, const customer::value *v) {
+  static ALWAYS_INLINE void SanityCheckCustomer(const customer::key *k,
+                                                const customer::value *v) {
     ASSERT(v->c_credit == "BC" || v->c_credit == "GC");
     ASSERT(v->c_middle == "OE");
     ASSERT(k->c_w_id >= 1 && static_cast<size_t>(k->c_w_id) <= NumWarehouses());
@@ -89,15 +90,15 @@ struct checker {
            static_cast<size_t>(k->c_id) <= NumCustomersPerDistrict());
   }
 
-  static ALWAYS_INLINE void SanityCheckWarehouse(
-      const warehouse::key *k, const warehouse::value *v) {
+  static ALWAYS_INLINE void SanityCheckWarehouse(const warehouse::key *k,
+                                                 const warehouse::value *v) {
     ASSERT(k->w_id >= 1 && static_cast<size_t>(k->w_id) <= NumWarehouses());
     ASSERT(v->w_state.size() == 2);
     ASSERT(v->w_zip == "123456789");
   }
 
-  static ALWAYS_INLINE void SanityCheckDistrict(
-      const district::key *k, const district::value *v) {
+  static ALWAYS_INLINE void SanityCheckDistrict(const district::key *k,
+                                                const district::value *v) {
     ASSERT(k->d_w_id >= 1 && static_cast<size_t>(k->d_w_id) <= NumWarehouses());
     ASSERT(k->d_id >= 1 &&
            static_cast<size_t>(k->d_id) <= NumDistrictsPerWarehouse());
@@ -107,7 +108,7 @@ struct checker {
   }
 
   static ALWAYS_INLINE void SanityCheckItem(const item::key *k,
-                                                   const item::value *v) {
+                                            const item::value *v) {
     ASSERT(k->i_id >= 1 && static_cast<size_t>(k->i_id) <= NumItems());
     ASSERT(v->i_price >= 1.0 && v->i_price <= 100.0);
   }
@@ -125,7 +126,7 @@ struct checker {
   }
 
   static ALWAYS_INLINE void SanityCheckOOrder(const oorder::key *k,
-                                                     const oorder::value *v) {
+                                              const oorder::value *v) {
     ASSERT(k->o_w_id >= 1 && static_cast<size_t>(k->o_w_id) <= NumWarehouses());
     ASSERT(k->o_d_id >= 1 &&
            static_cast<size_t>(k->o_d_id) <= NumDistrictsPerWarehouse());
@@ -136,8 +137,8 @@ struct checker {
     ASSERT(v->o_ol_cnt >= 5 && v->o_ol_cnt <= 15);
   }
 
-  static ALWAYS_INLINE void SanityCheckOrderLine(
-      const order_line::key *k, const order_line::value *v) {
+  static ALWAYS_INLINE void SanityCheckOrderLine(const order_line::key *k,
+                                                 const order_line::value *v) {
     ASSERT(k->ol_w_id >= 1 &&
            static_cast<size_t>(k->ol_w_id) <= NumWarehouses());
     ASSERT(k->ol_d_id >= 1 &&
@@ -151,7 +152,8 @@ struct checker {
 class tpcc_table_scanner : public ermia::OrderedIndex::ScanCallback {
  public:
   tpcc_table_scanner(ermia::str_arena *arena) : _arena(arena) {}
-  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+  virtual bool Invoke(const char *keyp, size_t keylen,
+                      const ermia::varstr &value) {
     ermia::varstr *const k = _arena->next(keylen);
     ermia::varstr *v = _arena->next(0);  // header only
     v->p = value.p;
@@ -171,7 +173,9 @@ class tpcc_worker_mixin : private _dummy {
 #define DEFN_TBL_INIT_X(name) , tbl_##name##_vec(partitions.at(#name))
 
  public:
-  tpcc_worker_mixin(const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
+  tpcc_worker_mixin(
+      const std::map<std::string, std::vector<ermia::OrderedIndex *>>
+          &partitions)
       : _dummy()  // so hacky...
         TPCC_TABLE_LIST(DEFN_TBL_INIT_X) {
     ALWAYS_ASSERT(NumWarehouses() >= 1);
@@ -210,8 +214,7 @@ class tpcc_worker_mixin : private _dummy {
 
   // utils for generating random #s and strings
 
-  static ALWAYS_INLINE int CheckBetweenInclusive(int v, int lower,
-                                                        int upper) {
+  static ALWAYS_INLINE int CheckBetweenInclusive(int v, int lower, int upper) {
     MARK_REFERENCED(lower);
     MARK_REFERENCED(upper);
     ASSERT(v >= lower);
@@ -220,13 +223,13 @@ class tpcc_worker_mixin : private _dummy {
   }
 
   static ALWAYS_INLINE int RandomNumber(util::fast_random &r, int min,
-                                               int max) {
+                                        int max) {
     return CheckBetweenInclusive(
         (int)(r.next_uniform() * (max - min + 1) + min), min, max);
   }
 
   static ALWAYS_INLINE int NonUniformRandom(util::fast_random &r, int A, int C,
-                                                   int min, int max) {
+                                            int min, int max) {
     return (((RandomNumber(r, 0, A) | RandomNumber(r, min, max)) + C) %
             (max - min + 1)) +
            min;
@@ -274,8 +277,8 @@ class tpcc_worker_mixin : private _dummy {
     return ret;
   }
 
-  static ALWAYS_INLINE std::string
-  GetNonUniformCustomerLastNameLoad(util::fast_random &r) {
+  static ALWAYS_INLINE std::string GetNonUniformCustomerLastNameLoad(
+      util::fast_random &r) {
     return GetCustomerLastName(NonUniformRandom(r, 255, 157, 0, 999));
   }
 
@@ -289,8 +292,8 @@ class tpcc_worker_mixin : private _dummy {
     return GetNonUniformCustomerLastNameRun((uint8_t *)buf, r);
   }
 
-  static ALWAYS_INLINE std::string
-  GetNonUniformCustomerLastNameRun(util::fast_random &r) {
+  static ALWAYS_INLINE std::string GetNonUniformCustomerLastNameRun(
+      util::fast_random &r) {
     return GetCustomerLastName(NonUniformRandom(r, 255, 223, 0, 999));
   }
 
@@ -338,19 +341,19 @@ class tpcc_worker_mixin : private _dummy {
       ASSERT(g_wh_spread >= 0 and g_wh_spread <= 1);
       // wh_spread = 0: always use home wh
       // wh_spread = 1: always use random wh
-      if (g_wh_spread == 0 || r.next_uniform() >= g_wh_spread)
-        return home_wh;
+      if (g_wh_spread == 0 || r.next_uniform() >= g_wh_spread) return home_wh;
       return r.next() % NumWarehouses() + 1;
     }
   }
-
 };
 
 class tpcc_nation_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_nation_loader(unsigned long seed, ermia::Engine *db,
-                     const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                     const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
+  tpcc_nation_loader(
+      unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+      const std::map<std::string, std::vector<ermia::OrderedIndex *>>
+          &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
 
  protected:
@@ -369,20 +372,22 @@ class tpcc_nation_loader : public bench_loader, public tpcc_worker_mixin {
       v.n_regionkey = nations[i].rId;
       v.n_comment.assign(n_comment);
       TryVerifyStrict(tbl_nation(1)->InsertRecord(txn, Encode(str(Size(k)), k),
-                                              Encode(str(Size(v)), v)));
+                                                  Encode(str(Size(v)), v)));
     }
     TryVerifyStrict(db->Commit(txn));
     LOG(INFO) << "Finished loading nation";
-    LOG(INFO) << "  * total/average nation record length: "
-         << total_sz << "/" << (double(total_sz) / double(62)) << " bytes";
+    LOG(INFO) << "  * total/average nation record length: " << total_sz << "/"
+              << (double(total_sz) / double(62)) << " bytes";
   }
 };
 
 class tpcc_region_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_region_loader(unsigned long seed, ermia::Engine *db,
-                     const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                     const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
+  tpcc_region_loader(
+      unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+      const std::map<std::string, std::vector<ermia::OrderedIndex *>>
+          &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
 
  protected:
@@ -398,21 +403,23 @@ class tpcc_region_loader : public bench_loader, public tpcc_worker_mixin {
       const std::string r_comment = RandomStr(r, RandomNumber(r, 10, 20));
       v.r_comment.assign(r_comment);
       TryVerifyStrict(tbl_region(1)->InsertRecord(txn, Encode(str(Size(k)), k),
-                                              Encode(str(Size(v)), v)));
+                                                  Encode(str(Size(v)), v)));
       total_sz += Size(v);
     }
     TryVerifyStrict(db->Commit(txn));
     LOG(INFO) << "Finished loading region";
-    LOG(INFO) << "  * total/average region record length: "
-         << total_sz << "/" << (double(total_sz) / double(5)) << " bytes";
+    LOG(INFO) << "  * total/average region record length: " << total_sz << "/"
+              << (double(total_sz) / double(5)) << " bytes";
   }
 };
 
 class tpcc_supplier_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_supplier_loader(unsigned long seed, ermia::Engine *db,
-                       const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                       const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
+  tpcc_supplier_loader(
+      unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+      const std::map<std::string, std::vector<ermia::OrderedIndex *>>
+          &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
 
  protected:
@@ -424,7 +431,8 @@ class tpcc_supplier_loader : public bench_loader, public tpcc_worker_mixin {
       const supplier::key k(i);
       supplier::value v;
 
-      v.su_name = std::string("Supplier#") + std::string("000000000") + std::to_string(i);
+      v.su_name = std::string("Supplier#") + std::string("000000000") +
+                  std::to_string(i);
       v.su_address = RandomStr(r, RandomNumber(r, 10, 40));
 
       auto rand = 0;
@@ -432,29 +440,31 @@ class tpcc_supplier_loader : public bench_loader, public tpcc_worker_mixin {
              (rand > 'Z' && rand < 'a'))
         rand = RandomNumber(r, '0', 'z');
       v.su_nationkey = rand;
-      //		  v.su_phone = std::string("911");			//
-      //XXX. nobody wants this field
+      //		  v.su_phone = std::string("911"); //
+      // XXX. nobody wants this field
       //		  v.su_acctbal = 0;
       //		  v.su_comment = RandomStr(r, RandomNumber(r,10,39));
       //// XXX. Q16 uses this. fix this if needed.
 
-      TryVerifyStrict(tbl_supplier(1)->InsertRecord(txn, Encode(str(Size(k)), k),
-                                                Encode(str(Size(v)), v)));
+      TryVerifyStrict(tbl_supplier(1)->InsertRecord(
+          txn, Encode(str(Size(k)), k), Encode(str(Size(v)), v)));
 
       TryVerifyStrict(db->Commit(txn));
       total_sz += Size(v);
     }
     LOG(INFO) << "Finished loading supplier";
-    LOG(INFO) << "  * total/average supplier record length: "
-         << total_sz << "/" << (double(total_sz) / double(10000)) << " bytes";
+    LOG(INFO) << "  * total/average supplier record length: " << total_sz << "/"
+              << (double(total_sz) / double(10000)) << " bytes";
   }
 };
 
 class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_warehouse_loader(unsigned long seed, ermia::Engine *db,
-                        const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                        const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
+  tpcc_warehouse_loader(
+      unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+      const std::map<std::string, std::vector<ermia::OrderedIndex *>>
+          &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
 
  protected:
@@ -490,8 +500,8 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       const size_t sz = Size(v);
       warehouse_total_sz += sz;
       n_warehouses++;
-      TryVerifyStrict(tbl_warehouse(i)->InsertRecord(txn, Encode(str(Size(k)), k),
-                                                 Encode(str(sz), v)));
+      TryVerifyStrict(tbl_warehouse(i)->InsertRecord(
+          txn, Encode(str(Size(k)), k), Encode(str(sz), v)));
 
       warehouses.push_back(v);
       TryVerifyStrict(db->Commit(txn));
@@ -504,7 +514,8 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       ermia::varstr warehouse_v;
 
       rc_t rc = rc_t{RC_INVALID};
-      tbl_warehouse(i)->GetRecord(txn, rc, Encode(str(Size(k)), k), warehouse_v);
+      tbl_warehouse(i)->GetRecord(txn, rc, Encode(str(Size(k)), k),
+                                  warehouse_v);
       TryVerifyStrict(rc);
 
       const warehouse::value *v = Decode(warehouse_v, warehouse_temp);
@@ -524,15 +535,19 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
     }
     LOG(INFO) << "Finished loading warehouse";
     LOG(INFO) << "  * total/average warehouse record length: "
-         << warehouse_total_sz << "/" << (double(warehouse_total_sz) / double(n_warehouses)) << " bytes";
+              << warehouse_total_sz << "/"
+              << (double(warehouse_total_sz) / double(n_warehouses))
+              << " bytes";
   }
 };
 
 class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_item_loader(unsigned long seed, ermia::Engine *db,
-                   const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                   const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
+  tpcc_item_loader(
+      unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+      const std::map<std::string, std::vector<ermia::OrderedIndex *>>
+          &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
 
  protected:
@@ -555,8 +570,9 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
         v.i_data.assign(i_data);
       } else {
         const int startOriginal = RandomNumber(r, 2, (len - 8));
-        const std::string i_data = RandomStr(r, startOriginal + 1) + "ORIGINAL" +
-                              RandomStr(r, len - startOriginal - 7);
+        const std::string i_data = RandomStr(r, startOriginal + 1) +
+                                   "ORIGINAL" +
+                                   RandomStr(r, len - startOriginal - 7);
         v.i_data.assign(i_data);
       }
       v.i_im_id = RandomNumber(r, 1, 10000);
@@ -573,18 +589,20 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
     }
     if (ermia::config::verbose) {
       LOG(INFO) << "Finished loading item";
-      LOG(INFO) << "  * total/average item record length: "
-           << total_sz << "/" << (double(total_sz) / double(NumItems())) << " bytes";
+      LOG(INFO) << "  * total/average item record length: " << total_sz << "/"
+                << (double(total_sz) / double(NumItems())) << " bytes";
     }
   }
 };
 
 class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_stock_loader(unsigned long seed, ermia::Engine *db,
-                    const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                    const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
-                    ssize_t warehouse_id)
+  tpcc_stock_loader(
+      unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+      const std::map<std::string, std::vector<ermia::OrderedIndex *>>
+          &partitions,
+      ssize_t warehouse_id)
       : bench_loader(seed, db, open_tables),
         tpcc_worker_mixin(partitions),
         warehouse_id(warehouse_id) {
@@ -610,7 +628,8 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
         ermia::scoped_str_arena s_arena(*arena);
         for (uint j = i + 1; j <= iend; j++) {
           arena->reset();
-          ermia::transaction *const txn = db->NewTransaction(0, *arena, txn_buf());
+          ermia::transaction *const txn =
+              db->NewTransaction(0, *arena, txn_buf());
           const stock::key k(w, j);
           const stock_data::key k_data(w, j);
 
@@ -627,8 +646,9 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
             v_data.s_data.assign(s_data);
           } else {
             const int startOriginal = RandomNumber(r, 2, (len - 8));
-            const std::string s_data = RandomStr(r, startOriginal + 1) + "ORIGINAL" +
-                                  RandomStr(r, len - startOriginal - 7);
+            const std::string s_data = RandomStr(r, startOriginal + 1) +
+                                       "ORIGINAL" +
+                                       RandomStr(r, len - startOriginal - 7);
             v_data.s_data.assign(s_data);
           }
           v_data.s_dist_01.assign(RandomStr(r, 24));
@@ -648,11 +668,11 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
           const size_t sz = Size(v);
           stock_total_sz += sz;
           n_stocks++;
-          TryVerifyStrict(tbl_stock(w)->InsertRecord(txn, Encode(str(Size(k)), k),
-                                                 Encode(str(sz), v)));
-          TryVerifyStrict(
-              tbl_stock_data(w)->InsertRecord(txn, Encode(str(Size(k_data)), k_data),
-                                        Encode(str(Size(v_data)), v_data)));
+          TryVerifyStrict(tbl_stock(w)->InsertRecord(
+              txn, Encode(str(Size(k)), k), Encode(str(sz), v)));
+          TryVerifyStrict(tbl_stock_data(w)->InsertRecord(
+              txn, Encode(str(Size(k_data)), k_data),
+              Encode(str(Size(v_data)), v_data)));
           TryVerifyStrict(db->Commit(txn));
         }
 
@@ -662,12 +682,14 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
     }
     if (warehouse_id == -1) {
       LOG(INFO) << "Finished loading stock";
-      LOG(INFO) << "  * total/average stock record length: "
-           << stock_total_sz << "/" << (double(stock_total_sz) / double(n_stocks)) << " bytes";
+      LOG(INFO) << "  * total/average stock record length: " << stock_total_sz
+                << "/" << (double(stock_total_sz) / double(n_stocks))
+                << " bytes";
     } else {
-      LOG(INFO) <<  "Finished loading stock (w=" << warehouse_id << ")";
-      LOG(INFO) << "  * total/average stock (w=" << warehouse_id << ") record length: "
-           << stock_total_sz << "/" << (double(stock_total_sz) / double(n_stocks)) << " bytes";
+      LOG(INFO) << "Finished loading stock (w=" << warehouse_id << ")";
+      LOG(INFO) << "  * total/average stock (w=" << warehouse_id
+                << ") record length: " << stock_total_sz << "/"
+                << (double(stock_total_sz) / double(n_stocks)) << " bytes";
     }
   }
 
@@ -677,9 +699,11 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
 
 class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_district_loader(unsigned long seed, ermia::Engine *db,
-                       const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                       const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
+  tpcc_district_loader(
+      unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+      const std::map<std::string, std::vector<ermia::OrderedIndex *>>
+          &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
 
  protected:
@@ -712,8 +736,8 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
         const size_t sz = Size(v);
         district_total_sz += sz;
         n_districts++;
-        TryVerifyStrict(tbl_district(w)->InsertRecord(txn, Encode(str(Size(k)), k),
-                                                  Encode(str(sz), v)));
+        TryVerifyStrict(tbl_district(w)->InsertRecord(
+            txn, Encode(str(Size(k)), k), Encode(str(sz), v)));
 
         TryVerifyStrict(db->Commit(txn));
       }
@@ -721,17 +745,21 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
     if (ermia::config::verbose) {
       LOG(INFO) << "Finished loading district";
       LOG(INFO) << "   * total/average district record length: "
-           << district_total_sz << "/" << (double(district_total_sz) / double(n_districts)) << " bytes";
+                << district_total_sz << "/"
+                << (double(district_total_sz) / double(n_districts))
+                << " bytes";
     }
   }
 };
 
 class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_customer_loader(unsigned long seed, ermia::Engine *db,
-                       const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                       const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
-                       ssize_t warehouse_id)
+  tpcc_customer_loader(
+      unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+      const std::map<std::string, std::vector<ermia::OrderedIndex *>>
+          &partitions,
+      ssize_t warehouse_id)
       : bench_loader(seed, db, open_tables),
         tpcc_worker_mixin(partitions),
         warehouse_id(warehouse_id) {
@@ -807,7 +835,8 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 #endif
             const size_t sz = Size(v);
             total_sz += sz;
-            ermia::OID c_oid = 0;  // Get the OID and put in customer_name_idx later
+            ermia::OID c_oid =
+                0;  // Get the OID and put in customer_name_idx later
             TryVerifyStrict(tbl_customer(w)->InsertRecord(
                 txn, Encode(str(Size(k)), k), Encode(str(sz), v), &c_oid));
             TryVerifyStrict(db->Commit(txn));
@@ -840,9 +869,9 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 
             arena->reset();
             txn = db->NewTransaction(0, *arena, txn_buf());
-            TryVerifyStrict(
-                tbl_history(w)->InsertRecord(txn, Encode(str(Size(k_hist)), k_hist),
-                                       Encode(str(Size(v_hist)), v_hist)));
+            TryVerifyStrict(tbl_history(w)->InsertRecord(
+                txn, Encode(str(Size(k_hist)), k_hist),
+                Encode(str(Size(v_hist)), v_hist)));
             TryVerifyStrict(db->Commit(txn));
           }
           batch++;
@@ -851,16 +880,20 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
     }
     if (warehouse_id == -1) {
       LOG(INFO) << "Finished loading customer";
-      LOG(INFO) << "   * total/average customer record length: "
-           << total_sz << "/" << (double(total_sz) /
-               double(NumWarehouses() * NumDistrictsPerWarehouse() *
-                      NumCustomersPerDistrict())) << " bytes ";
+      LOG(INFO) << "   * total/average customer record length: " << total_sz
+                << "/"
+                << (double(total_sz) /
+                    double(NumWarehouses() * NumDistrictsPerWarehouse() *
+                           NumCustomersPerDistrict()))
+                << " bytes ";
     } else {
       LOG(INFO) << "Finished loading customer (w=" << warehouse_id << ")";
-      LOG(INFO) << "   * total/average customer (w=" << warehouse_id << ") record length: "
-           << total_sz << "/" << (double(total_sz) /
-               double(NumWarehouses() * NumDistrictsPerWarehouse() *
-                      NumCustomersPerDistrict())) << " bytes ";
+      LOG(INFO) << "   * total/average customer (w=" << warehouse_id
+                << ") record length: " << total_sz << "/"
+                << (double(total_sz) /
+                    double(NumWarehouses() * NumDistrictsPerWarehouse() *
+                           NumCustomersPerDistrict()))
+                << " bytes ";
     }
   }
 
@@ -870,10 +903,12 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 
 class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_order_loader(unsigned long seed, ermia::Engine *db,
-                    const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                    const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
-                    ssize_t warehouse_id)
+  tpcc_order_loader(
+      unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+      const std::map<std::string, std::vector<ermia::OrderedIndex *>>
+          &partitions,
+      ssize_t warehouse_id)
       : bench_loader(seed, db, open_tables),
         tpcc_worker_mixin(partitions),
         warehouse_id(warehouse_id) {
@@ -929,10 +964,11 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
           const size_t sz = Size(v_oo);
           oorder_total_sz += sz;
           n_oorders++;
-          ermia::OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
+          ermia::OID v_oo_oid =
+              0;  // Get the OID and put it in oorder_c_id_idx later
           TryVerifyStrict(
               tbl_oorder(w)->InsertRecord(txn, Encode(str(Size(k_oo)), k_oo),
-                                    Encode(str(sz), v_oo), &v_oo_oid));
+                                          Encode(str(sz), v_oo), &v_oo_oid));
           TryVerifyStrict(db->Commit(txn));
           arena->reset();
           txn = db->NewTransaction(0, *arena, txn_buf());
@@ -978,7 +1014,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
             v_ol.ol_quantity = 5;
             // v_ol.ol_dist_info comes from stock_data(ol_supply_w_id, ol_o_id)
             // v_ol.ol_dist_info = RandomStr(r, 24);
-	    v_ol.v = 0;
+            v_ol.v = 0;
 
 #ifndef NDEBUG
             checker::SanityCheckOrderLine(&k_ol, &v_ol);
@@ -1001,20 +1037,26 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
       if (warehouse_id == -1) {
         LOG(INFO) << "finished loading order";
         LOG(INFO) << "  * average order_line record length: "
-             << (double(order_line_total_sz) / double(n_order_lines))
-             << " bytes";
+                  << (double(order_line_total_sz) / double(n_order_lines))
+                  << " bytes";
         LOG(INFO) << "  * average oorder record length: "
-             << (double(oorder_total_sz) / double(n_oorders)) << " bytes";
+                  << (double(oorder_total_sz) / double(n_oorders)) << " bytes";
         LOG(INFO) << "   * average new_order record length: "
-             << (double(new_order_total_sz) / double(n_new_orders)) << " bytes";
+                  << (double(new_order_total_sz) / double(n_new_orders))
+                  << " bytes";
       } else {
         LOG(INFO) << " Finished loading order (w=" << warehouse_id << ")";
-        LOG(INFO) << "  * total/average order_line (w=" << warehouse_id << ") record length: "
-             << order_line_total_sz << "/" << (double(order_line_total_sz) / double(n_order_lines)) << " bytes";
+        LOG(INFO) << "  * total/average order_line (w=" << warehouse_id
+                  << ") record length: " << order_line_total_sz << "/"
+                  << (double(order_line_total_sz) / double(n_order_lines))
+                  << " bytes";
         LOG(INFO) << "  * total/average oorder record length: "
-             << oorder_total_sz << "/" << (double(oorder_total_sz) / double(n_oorders)) << " bytes";
+                  << oorder_total_sz << "/"
+                  << (double(oorder_total_sz) / double(n_oorders)) << " bytes";
         LOG(INFO) << "   * total/average new_order record length: "
-             << new_order_total_sz << "/" << (double(new_order_total_sz) / double(n_new_orders)) << " bytes";
+                  << new_order_total_sz << "/"
+                  << (double(new_order_total_sz) / double(n_new_orders))
+                  << " bytes";
       }
     }
   }
@@ -1029,9 +1071,9 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
 //
 // this isn't done for values, because all values are read-only in a
 // multi-version
-// system. ermia::varstrs for values only point to the real data in the database, but
-// still we need to allocate a ermia::varstr header for each value. Internally it's
-// just a ermia::varstr in the stack.
+// system. ermia::varstrs for values only point to the real data in the
+// database, but still we need to allocate a ermia::varstr header for each
+// value. Internally it's just a ermia::varstr in the stack.
 template <size_t N>
 class static_limit_callback : public ermia::OrderedIndex::ScanCallback {
  public:
@@ -1042,7 +1084,8 @@ class static_limit_callback : public ermia::OrderedIndex::ScanCallback {
     values.reserve(N);
   }
 
-  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+  virtual bool Invoke(const char *keyp, size_t keylen,
+                      const ermia::varstr &value) {
     ASSERT(n < N);
     ermia::varstr *pv = arena->next(0);  // header only
     pv->p = value.p;
@@ -1069,12 +1112,12 @@ class static_limit_callback : public ermia::OrderedIndex::ScanCallback {
   bool ignore_key;
 };
 
-
 class credit_check_order_line_scan_callback
     : public ermia::OrderedIndex::ScanCallback {
  public:
   credit_check_order_line_scan_callback(uint64_t v) : sum(0), schema_v(v) {}
-  inline virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+  inline virtual bool Invoke(const char *keyp, size_t keylen,
+                             const ermia::varstr &value) {
     MARK_REFERENCED(keyp);
     MARK_REFERENCED(keylen);
     if (schema_v == 0) {
@@ -1098,10 +1141,12 @@ class credit_check_order_line_scan_callback
   uint64_t schema_v;
 };
 
-class credit_check_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
+class credit_check_order_scan_callback
+    : public ermia::OrderedIndex::ScanCallback {
  public:
   credit_check_order_scan_callback(ermia::str_arena *arena) : _arena(arena) {}
-  inline virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+  inline virtual bool Invoke(const char *keyp, size_t keylen,
+                             const ermia::varstr &value) {
     MARK_REFERENCED(value);
     ermia::varstr *const k = _arena->next(keylen);
     ASSERT(k);
@@ -1115,19 +1160,19 @@ class credit_check_order_scan_callback : public ermia::OrderedIndex::ScanCallbac
 
 class order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
  public:
-   order_line_nop_callback(uint64_t v) : n(0), schema_v(v) {}
-   virtual bool Invoke(const char *keyp, size_t keylen,
-                       const ermia::varstr &value) {
-     MARK_REFERENCED(keylen);
-     MARK_REFERENCED(keyp);
-     if (schema_v == 0) {
-       ASSERT(keylen == sizeof(order_line::key));
-       order_line::value v_ol_temp;
-       const order_line::value *v_ol = Decode(value, v_ol_temp);
+  order_line_nop_callback(uint64_t v) : n(0), schema_v(v) {}
+  virtual bool Invoke(const char *keyp, size_t keylen,
+                      const ermia::varstr &value) {
+    MARK_REFERENCED(keylen);
+    MARK_REFERENCED(keyp);
+    if (schema_v == 0) {
+      ASSERT(keylen == sizeof(order_line::key));
+      order_line::value v_ol_temp;
+      const order_line::value *v_ol = Decode(value, v_ol_temp);
 #ifndef NDEBUG
-       order_line::key k_ol_temp;
-       const order_line::key *k_ol = Decode(keyp, k_ol_temp);
-       checker::SanityCheckOrderLine(k_ol, v_ol);
+      order_line::key k_ol_temp;
+      const order_line::key *k_ol = Decode(keyp, k_ol_temp);
+      checker::SanityCheckOrderLine(k_ol, v_ol);
 #endif
     } else {
       ASSERT(keylen == sizeof(order_line_1::key));
@@ -1153,7 +1198,8 @@ class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
     ALWAYS_ASSERT(limit == -1 || limit > 0);
   }
 
-  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+  virtual bool Invoke(const char *keyp, size_t keylen,
+                      const ermia::varstr &value) {
     MARK_REFERENCED(value);
     ASSERT(limit == -1 || n < limit);
     k->copy_from(keyp, keylen);
@@ -1170,48 +1216,48 @@ class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
   ermia::varstr *k;
 };
 
-
 class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
  public:
-   order_line_scan_callback(uint64_t v) : n(0), schema_v(v) {}
-   virtual bool Invoke(const char *keyp, size_t keylen,
-                       const ermia::varstr &value) {
-     MARK_REFERENCED(keyp);
-     MARK_REFERENCED(keylen);
-     if (schema_v == 0) {
-       ASSERT(keylen == sizeof(order_line::key));
-       order_line::value v_ol_temp;
-       const order_line::value *v_ol = Decode(value, v_ol_temp);
+  order_line_scan_callback(uint64_t v) : n(0), schema_v(v) {}
+  virtual bool Invoke(const char *keyp, size_t keylen,
+                      const ermia::varstr &value) {
+    MARK_REFERENCED(keyp);
+    MARK_REFERENCED(keylen);
+    if (schema_v == 0) {
+      ASSERT(keylen == sizeof(order_line::key));
+      order_line::value v_ol_temp;
+      const order_line::value *v_ol = Decode(value, v_ol_temp);
 #ifndef NDEBUG
-       order_line::key k_ol_temp;
-       const order_line::key *k_ol = Decode(keyp, k_ol_temp);
-       checker::SanityCheckOrderLine(k_ol, v_ol);
+      order_line::key k_ol_temp;
+      const order_line::key *k_ol = Decode(keyp, k_ol_temp);
+      checker::SanityCheckOrderLine(k_ol, v_ol);
 #endif
-       s_i_ids[v_ol->ol_i_id] = 1;
-     } else {
-       ASSERT(keylen == sizeof(order_line_1::key));
-       if (ermia::config::ddl_example == 0) {
-         order_line_1::value v_ol_temp;
-         const order_line_1::value *v_ol = Decode(value, v_ol_temp);
-         s_i_ids[v_ol->ol_i_id] = 1;
-       } else if (ermia::config::ddl_example == 4) {
-         order_line_stock::value v_ol_temp;
-         const order_line_stock::value *v_ol = Decode(value, v_ol_temp);
-         s_i_ids[v_ol->ol_i_id] = 1;
-       }
-     }
-     n++;
-     return true;
-   }
-   size_t n;
-   uint64_t schema_v;
-   std::unordered_map<uint, bool> s_i_ids;
+      s_i_ids[v_ol->ol_i_id] = 1;
+    } else {
+      ASSERT(keylen == sizeof(order_line_1::key));
+      if (ermia::config::ddl_example == 0) {
+        order_line_1::value v_ol_temp;
+        const order_line_1::value *v_ol = Decode(value, v_ol_temp);
+        s_i_ids[v_ol->ol_i_id] = 1;
+      } else if (ermia::config::ddl_example == 4) {
+        order_line_stock::value v_ol_temp;
+        const order_line_stock::value *v_ol = Decode(value, v_ol_temp);
+        s_i_ids[v_ol->ol_i_id] = 1;
+      }
+    }
+    n++;
+    return true;
+  }
+  size_t n;
+  uint64_t schema_v;
+  std::unordered_map<uint, bool> s_i_ids;
 };
 
 class new_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
  public:
   new_order_scan_callback() : k_no(0) {}
-  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+  virtual bool Invoke(const char *keyp, size_t keylen,
+                      const ermia::varstr &value) {
     MARK_REFERENCED(keylen);
     MARK_REFERENCED(value);
     ASSERT(keylen == sizeof(new_order::key));
@@ -1233,43 +1279,42 @@ class new_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
 
 class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
  public:
-   tpcc_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
-               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-               const std::map<std::string, std::vector<ermia::OrderedIndex *>>
-                   &partitions,
-               spin_barrier *barrier_a, spin_barrier *barrier_b,
-               uint home_warehouse_id)
-       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a,
-                      barrier_b),
-         tpcc_worker_mixin(partitions), home_warehouse_id(home_warehouse_id),
-         schema_index(
-             (ermia::ConcurrentMasstreeIndex *)open_tables.at("SCHEMA"))
+  tpcc_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
+              const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+              const std::map<std::string, std::vector<ermia::OrderedIndex *>>
+                  &partitions,
+              spin_barrier *barrier_a, spin_barrier *barrier_b,
+              uint home_warehouse_id)
+      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a,
+                     barrier_b),
+        tpcc_worker_mixin(partitions),
+        home_warehouse_id(home_warehouse_id),
+        schema_index((ermia::ConcurrentMasstreeIndex *)open_tables.at("SCHEMA"))
 #if !defined(COPYDDL)
-         ,
-         order_line_table_index(
-             (ermia::ConcurrentMasstreeIndex *)open_tables.at("order_line_0")),
-         oorder_table_index(
-             (ermia::ConcurrentMasstreeIndex *)open_tables.at("oorder_0")),
-         oorder_table_secondary_index((ermia::ConcurrentMasstreeIndex *)
-                                          open_tables.at("oorder_c_id_idx_0")),
-         customer_table_index(
-             (ermia::ConcurrentMasstreeIndex *)open_tables.at("customer_0")),
-         customer_table_secondary_index(
-             (ermia::ConcurrentMasstreeIndex *)open_tables.at(
-                 "customer_name_idx_0"))
+        ,
+        order_line_table_index(
+            (ermia::ConcurrentMasstreeIndex *)open_tables.at("order_line_0")),
+        oorder_table_index(
+            (ermia::ConcurrentMasstreeIndex *)open_tables.at("oorder_0")),
+        oorder_table_secondary_index((ermia::ConcurrentMasstreeIndex *)
+                                         open_tables.at("oorder_c_id_idx_0")),
+        customer_table_index(
+            (ermia::ConcurrentMasstreeIndex *)open_tables.at("customer_0")),
+        customer_table_secondary_index(
+            (ermia::ConcurrentMasstreeIndex *)open_tables.at(
+                "customer_name_idx_0"))
 #endif
 #ifdef BLOCKDDL
-         ,
-         schema_fid(
-             open_tables.at("SCHEMA")->GetTableDescriptor()->GetTupleFid()),
-         order_line_fid(open_tables.at("order_line_0")
-                            ->GetTableDescriptor()
-                            ->GetTupleFid())
+        ,
+        schema_fid(
+            open_tables.at("SCHEMA")->GetTableDescriptor()->GetTupleFid()),
+        order_line_fid(
+            open_tables.at("order_line_0")->GetTableDescriptor()->GetTupleFid())
 #endif
-   {
+  {
     ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
     memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
-   }
+  }
 
   // XXX(stephentu): tune this
   static const size_t NMaxCustomerIdxScanElems = 512;
@@ -1330,7 +1375,7 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   virtual workload_desc_vec get_workload() const override;
   virtual ddl_workload_desc_vec get_ddl_workload() const override;
 
-protected:
+ protected:
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
 
  private:
@@ -1352,60 +1397,78 @@ protected:
 
 class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
  public:
-  tpcc_cs_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
-                 const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                 const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
-                 spin_barrier *barrier_a, spin_barrier *barrier_b,
-                 uint home_warehouse_id);
+  tpcc_cs_worker(
+      unsigned int worker_id, unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+      const std::map<std::string, std::vector<ermia::OrderedIndex *>>
+          &partitions,
+      spin_barrier *barrier_a, spin_barrier *barrier_b, uint home_warehouse_id);
   // XXX(stephentu): tune this
   static const size_t NMaxCustomerIdxScanElems = 512;
 
-  ermia::coro::generator<rc_t> txn_new_order(uint32_t idx, ermia::epoch_num begin_epoch);
+  ermia::coro::generator<rc_t> txn_new_order(uint32_t idx,
+                                             ermia::epoch_num begin_epoch);
 
-  static ermia::coro::generator<rc_t> TxnNewOrder(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+  static ermia::coro::generator<rc_t> TxnNewOrder(
+      bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
     return static_cast<tpcc_cs_worker *>(w)->txn_new_order(idx, begin_epoch);
   }
 
-  ermia::coro::generator<rc_t> txn_delivery(uint32_t idx, ermia::epoch_num begin_epoch);
+  ermia::coro::generator<rc_t> txn_delivery(uint32_t idx,
+                                            ermia::epoch_num begin_epoch);
 
-  static ermia::coro::generator<rc_t> TxnDelivery(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+  static ermia::coro::generator<rc_t> TxnDelivery(
+      bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
     return static_cast<tpcc_cs_worker *>(w)->txn_delivery(idx, begin_epoch);
   }
 
-  ermia::coro::generator<rc_t> txn_credit_check(uint32_t idx, ermia::epoch_num begin_epoch);
+  ermia::coro::generator<rc_t> txn_credit_check(uint32_t idx,
+                                                ermia::epoch_num begin_epoch);
 
-  static ermia::coro::generator<rc_t> TxnCreditCheck(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+  static ermia::coro::generator<rc_t> TxnCreditCheck(
+      bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
     return static_cast<tpcc_cs_worker *>(w)->txn_credit_check(idx, begin_epoch);
   }
 
-  ermia::coro::generator<rc_t> txn_payment(uint32_t idx, ermia::epoch_num begin_epoch);
+  ermia::coro::generator<rc_t> txn_payment(uint32_t idx,
+                                           ermia::epoch_num begin_epoch);
 
-  static ermia::coro::generator<rc_t> TxnPayment(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+  static ermia::coro::generator<rc_t> TxnPayment(bench_worker *w, uint32_t idx,
+                                                 ermia::epoch_num begin_epoch) {
     return static_cast<tpcc_cs_worker *>(w)->txn_payment(idx, begin_epoch);
   }
 
-  ermia::coro::generator<rc_t> txn_order_status(uint32_t idx, ermia::epoch_num begin_epoch);
+  ermia::coro::generator<rc_t> txn_order_status(uint32_t idx,
+                                                ermia::epoch_num begin_epoch);
 
-  static ermia::coro::generator<rc_t> TxnOrderStatus(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+  static ermia::coro::generator<rc_t> TxnOrderStatus(
+      bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
     return static_cast<tpcc_cs_worker *>(w)->txn_order_status(idx, begin_epoch);
   }
 
-  ermia::coro::generator<rc_t> txn_stock_level(uint32_t idx, ermia::epoch_num begin_epoch);
+  ermia::coro::generator<rc_t> txn_stock_level(uint32_t idx,
+                                               ermia::epoch_num begin_epoch);
 
-  static ermia::coro::generator<rc_t> TxnStockLevel(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+  static ermia::coro::generator<rc_t> TxnStockLevel(
+      bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
     return static_cast<tpcc_cs_worker *>(w)->txn_stock_level(idx, begin_epoch);
   }
 
-  ermia::coro::generator<rc_t> txn_query2(uint32_t idx, ermia::epoch_num begin_epoch);
+  ermia::coro::generator<rc_t> txn_query2(uint32_t idx,
+                                          ermia::epoch_num begin_epoch);
 
-  static ermia::coro::generator<rc_t> TxnQuery2(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+  static ermia::coro::generator<rc_t> TxnQuery2(bench_worker *w, uint32_t idx,
+                                                ermia::epoch_num begin_epoch) {
     return static_cast<tpcc_cs_worker *>(w)->txn_query2(idx, begin_epoch);
   }
 
-  ermia::coro::generator<rc_t> txn_microbench_random(uint32_t idx, ermia::epoch_num begin_epoch);
+  ermia::coro::generator<rc_t> txn_microbench_random(
+      uint32_t idx, ermia::epoch_num begin_epoch);
 
-  static ermia::coro::generator<rc_t> TxnMicroBenchRandom(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_microbench_random(idx, begin_epoch);
+  static ermia::coro::generator<rc_t> TxnMicroBenchRandom(
+      bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_microbench_random(idx,
+                                                                   begin_epoch);
   }
 
   virtual workload_desc_vec get_workload() const override;
@@ -1413,11 +1476,13 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
   virtual void MyWork(char *) override;
 
  protected:
-  ALWAYS_INLINE ermia::varstr &str(ermia::str_arena &a, uint64_t size) { return *a.next(size); }
+  ALWAYS_INLINE ermia::varstr &str(ermia::str_arena &a, uint64_t size) {
+    return *a.next(size);
+  }
 
  private:
   const uint home_warehouse_id;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
 };
 
-#endif // ADV_COROUTINE
+#endif  // ADV_COROUTINE

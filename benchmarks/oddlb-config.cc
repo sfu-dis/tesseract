@@ -1,7 +1,8 @@
+#include <getopt.h>
+
 #include "../engine.h"
 #include "bench.h"
 #include "oddlb.h"
-#include <getopt.h>
 
 uint oddl_reps_per_tx = 1;
 // uint g_initial_table_size = 30000000;
@@ -16,7 +17,7 @@ void oddlb_create_db(ermia::Engine *db) {
     db->CreateMasstreePrimaryIndex("USERTABLE", std::string("USERTABLE"));
 #ifdef BLOCKDDL
     db->BuildLockMap(ermia::Catalog::GetTable("USERTABLE")->GetTupleFid());
-#endif  
+#endif
   };
 
   thread->StartTask(create_table);
@@ -51,7 +52,7 @@ void oddlb_usertable_loader::load() {
 
     struct ermia::Schema1 record1;
     record1.v = 0;
-    record1.a = start_key + i; // a is key
+    record1.a = start_key + i;  // a is key
     record1.b = start_key + i;
 
     char str1[sizeof(record1.a)], str2[sizeof(record1)];
@@ -116,29 +117,27 @@ void oddlb_parse_options(int argc, char **argv) {
 
     int option_index = 0;
     int c = getopt_long(argc, argv, "r:s:", long_options, &option_index);
-    if (c == -1)
-      break;
+    if (c == -1) break;
     switch (c) {
-    case 0:
-      if (long_options[option_index].flag != 0)
+      case 0:
+        if (long_options[option_index].flag != 0) break;
+        abort();
         break;
-      abort();
-      break;
 
-    case 'r':
-      oddl_reps_per_tx = strtoul(optarg, NULL, 10);
-      break;
+      case 'r':
+        oddl_reps_per_tx = strtoul(optarg, NULL, 10);
+        break;
 
-    case 's':
-      oddl_initial_table_size = strtoul(optarg, NULL, 10);
-      break;
+      case 's':
+        oddl_initial_table_size = strtoul(optarg, NULL, 10);
+        break;
 
-    case '?':
-      /* getopt_long already printed an error message. */
-      exit(1);
+      case '?':
+        /* getopt_long already printed an error message. */
+        exit(1);
 
-    default:
-      abort();
+      default:
+        abort();
     }
   }
 

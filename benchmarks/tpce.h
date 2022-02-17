@@ -1,32 +1,32 @@
 #pragma once
 
-#include "record/encoder.h"
-#include "record/inline_str.h"
 #include "../macros.h"
+#include "MEESUT.h"
+#include "egen/CETxnInputGenerator.h"
+#include "egen/DM.h"
 #include "egen/EGenLoader_stdafx.h"
 #include "egen/EGenStandardTypes.h"
 #include "egen/EGenTables_stdafx.h"
-#include "egen/Table_Defs.h"
-#include "egen/shore_tpce_egen.h"
-#include "egen/CETxnInputGenerator.h"
-#include "egen/DM.h"
 #include "egen/MEE.h"
+#include "egen/Table_Defs.h"
 #include "egen/TxnHarnessBrokerVolume.h"
-#include "egen/TxnHarnessMarketFeed.h"
-#include "egen/TxnHarnessStructs.h"
-#include "egen/TxnHarnessTradeResult.h"
 #include "egen/TxnHarnessCustomerPosition.h"
-#include "egen/TxnHarnessMarketWatch.h"
-#include "egen/TxnHarnessTradeCleanup.h"
-#include "egen/TxnHarnessTradeStatus.h"
 #include "egen/TxnHarnessDBInterface.h"
-#include "egen/TxnHarnessSecurityDetail.h"
-#include "egen/TxnHarnessTradeLookup.h"
-#include "egen/TxnHarnessTradeUpdate.h"
 #include "egen/TxnHarnessDataMaintenance.h"
+#include "egen/TxnHarnessMarketFeed.h"
+#include "egen/TxnHarnessMarketWatch.h"
+#include "egen/TxnHarnessSecurityDetail.h"
 #include "egen/TxnHarnessSendToMarketInterface.h"
+#include "egen/TxnHarnessStructs.h"
+#include "egen/TxnHarnessTradeCleanup.h"
+#include "egen/TxnHarnessTradeLookup.h"
 #include "egen/TxnHarnessTradeOrder.h"
-#include "MEESUT.h"
+#include "egen/TxnHarnessTradeResult.h"
+#include "egen/TxnHarnessTradeStatus.h"
+#include "egen/TxnHarnessTradeUpdate.h"
+#include "egen/shore_tpce_egen.h"
+#include "record/encoder.h"
+#include "record/inline_str.h"
 
 #define MIN_VAL(x) 0
 #define MAX_VAL(x) numeric_limits<decltype(x)>::max()
@@ -124,7 +124,7 @@ DO_STRUCT(watch_item, WATCH_ITEM_KEY_FIELDS, WATCH_ITEM_VALUE_FIELDS)
 #define WATCH_LIST_VALUE_FIELDS(x, y) x(bool, dummy)
 DO_STRUCT(watch_list, WATCH_LIST_KEY_FIELDS, WATCH_LIST_VALUE_FIELDS)
 /*
-*/
+ */
 
 /*
    Broker Tables

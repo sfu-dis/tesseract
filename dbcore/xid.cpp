@@ -1,10 +1,13 @@
 #include "xid.h"
-#include "epoch.h"
-#include "serial.h"
-#include "../txn.h"
+
+#include <unistd.h>
+
 #include <atomic>
 #include <mutex>
-#include <unistd.h>
+
+#include "../txn.h"
+#include "epoch.h"
+#include "serial.h"
 
 namespace ermia {
 namespace TXN {

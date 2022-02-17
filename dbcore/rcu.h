@@ -1,9 +1,9 @@
 #pragma once
 
-#include "sm-defs.h"
-
-#include <cstddef>
 #include <cstdarg>
+#include <cstddef>
+
+#include "sm-defs.h"
 
 namespace ermia {
 namespace RCU {
@@ -314,4 +314,3 @@ inline void *operator new(size_t nbytes, ermia::RCU::rcu_new_sentinel const &) {
 inline void operator delete(void *ptr, ermia::RCU::rcu_new_sentinel const &) {
   ermia::RCU::rcu_free(ptr);
 }
-

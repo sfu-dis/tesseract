@@ -1,8 +1,9 @@
 /*
  * A YCSB implementation based off of Silo's and equivalent to FOEDUS's.
  */
-#include "bench.h"
 #include "ycsb.h"
+
+#include "bench.h"
 
 #ifndef ADV_COROUTINE
 
@@ -13,11 +14,12 @@ extern ReadTransactionType g_read_txn_type;
 
 class ycsb_sequential_worker : public ycsb_base_worker {
  public:
-  ycsb_sequential_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
-                         const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                         spin_barrier *barrier_a, spin_barrier *barrier_b)
-    : ycsb_base_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b) {
-  }
+  ycsb_sequential_worker(
+      unsigned int worker_id, unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+      spin_barrier *barrier_a, spin_barrier *barrier_b)
+      : ycsb_base_worker(worker_id, seed, db, open_tables, barrier_a,
+                         barrier_b) {}
 
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
@@ -27,29 +29,41 @@ class ycsb_sequential_worker : public ycsb_base_worker {
 
     if (ycsb_workload.read_percent()) {
       if (g_read_txn_type == ReadTransactionType::AMACMultiGet) {
-        w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadAMACMultiGet));
+        w.push_back(workload_desc("Read",
+                                  double(ycsb_workload.read_percent()) / 100.0,
+                                  TxnReadAMACMultiGet));
       } else if (g_read_txn_type == ReadTransactionType::SimpleCoroMultiGet) {
-        w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadSimpleCoroMultiGet));
+        w.push_back(workload_desc("Read",
+                                  double(ycsb_workload.read_percent()) / 100.0,
+                                  TxnReadSimpleCoroMultiGet));
       } else if (g_read_txn_type == ReadTransactionType::Sequential) {
-        w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, TxnRead));
+        w.push_back(workload_desc(
+            "Read", double(ycsb_workload.read_percent()) / 100.0, TxnRead));
       } else {
-        LOG(FATAL) << "Wrong read txn type. Supported: sequential, multiget-simple-coro, multiget-adv-coro";
+        LOG(FATAL) << "Wrong read txn type. Supported: sequential, "
+                      "multiget-simple-coro, multiget-adv-coro";
       }
     }
 
     if (ycsb_workload.rmw_percent()) {
       LOG_IF(FATAL, ermia::config::index_probe_only) << "Not supported";
-      LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::Sequential) << "RMW txn type must be sequential";
-      w.push_back(workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, TxnRMW));
+      LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::Sequential)
+          << "RMW txn type must be sequential";
+      w.push_back(workload_desc(
+          "RMW", double(ycsb_workload.rmw_percent()) / 100.0, TxnRMW));
     }
 
     if (ycsb_workload.scan_percent()) {
-      LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::Sequential) << "Scan txn type must be sequential";
+      LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::Sequential)
+          << "Scan txn type must be sequential";
       if (ermia::config::scan_with_it) {
-        w.push_back(workload_desc("ScanWithIterator", double(ycsb_workload.scan_percent()) / 100.0, TxnScanWithIterator));
+        w.push_back(workload_desc("ScanWithIterator",
+                                  double(ycsb_workload.scan_percent()) / 100.0,
+                                  TxnScanWithIterator));
       } else {
         LOG_IF(FATAL, ermia::config::index_probe_only) << "Not supported";
-        w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0, TxnScan));
+        w.push_back(workload_desc(
+            "Scan", double(ycsb_workload.scan_percent()) / 100.0, TxnScan));
       }
     }
 
@@ -61,26 +75,42 @@ class ycsb_sequential_worker : public ycsb_base_worker {
     return ddl_w;
   }
 
-  static rc_t TxnRead(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_read(); }
-  static rc_t TxnReadAMACMultiGet(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_read_amac_multiget(); }
-  static rc_t TxnReadSimpleCoroMultiGet(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_read_simple_coro_multiget(); }
-  static rc_t TxnRMW(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_rmw(); }
-  static rc_t TxnScan(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_scan(); }
-  static rc_t TxnScanWithIterator(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_scan_with_iterator(); }
+  static rc_t TxnRead(bench_worker *w) {
+    return static_cast<ycsb_sequential_worker *>(w)->txn_read();
+  }
+  static rc_t TxnReadAMACMultiGet(bench_worker *w) {
+    return static_cast<ycsb_sequential_worker *>(w)->txn_read_amac_multiget();
+  }
+  static rc_t TxnReadSimpleCoroMultiGet(bench_worker *w) {
+    return static_cast<ycsb_sequential_worker *>(w)
+        ->txn_read_simple_coro_multiget();
+  }
+  static rc_t TxnRMW(bench_worker *w) {
+    return static_cast<ycsb_sequential_worker *>(w)->txn_rmw();
+  }
+  static rc_t TxnScan(bench_worker *w) {
+    return static_cast<ycsb_sequential_worker *>(w)->txn_scan();
+  }
+  static rc_t TxnScanWithIterator(bench_worker *w) {
+    return static_cast<ycsb_sequential_worker *>(w)->txn_scan_with_iterator();
+  }
 
   // Read transaction using traditional sequential execution
   rc_t txn_read() {
     ermia::transaction *txn = nullptr;
     if (ermia::config::index_probe_only) {
-      // Reset the arena as txn will be nullptr and GenerateKey will get space from it
+      // Reset the arena as txn will be nullptr and GenerateKey will get space
+      // from it
       arena->reset();
     } else {
-      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena,
+                               txn_buf());
     }
 
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = GenerateKey(txn);
-      ermia::varstr &v = str((ermia::config::index_probe_only) ? 0 : sizeof(ycsb_kv::value));
+      ermia::varstr &v =
+          str((ermia::config::index_probe_only) ? 0 : sizeof(ycsb_kv::value));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       table_index->GetRecord(txn, rc, k, v);  // Read
@@ -96,7 +126,8 @@ class ycsb_sequential_worker : public ycsb_base_worker {
 #endif
 #endif
       if (!ermia::config::always_load && !ermia::config::index_probe_only) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
+        memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)v.data(),
+               sizeof(ycsb_kv::value));
       }
     }
     if (!ermia::config::index_probe_only) {
@@ -112,7 +143,8 @@ class ycsb_sequential_worker : public ycsb_base_worker {
       arena->reset();
     } else {
       values.clear();
-      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena,
+                               txn_buf());
       for (uint i = 0; i < g_reps_per_tx; ++i) {
         values.push_back(&str(sizeof(ycsb_kv::value)));
       }
@@ -132,8 +164,9 @@ class ycsb_sequential_worker : public ycsb_base_worker {
     if (!ermia::config::index_probe_only) {
       ermia::varstr &v = str(sizeof(ycsb_kv::value));
       for (uint i = 0; i < g_reps_per_tx; ++i) {
-        ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(ycsb_kv::value));
+        ALWAYS_ASSERT(*(char *)values[i]->data() == 'a');
+        memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(),
+               sizeof(ycsb_kv::value));
       }
 
       TryCatch(db->Commit(txn));
@@ -148,7 +181,8 @@ class ycsb_sequential_worker : public ycsb_base_worker {
       arena->reset();
     } else {
       values.clear();
-      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena,
+                               txn_buf());
       for (uint i = 0; i < g_reps_per_tx; ++i) {
         values.push_back(&str(sizeof(ycsb_kv::value)));
       }
@@ -165,9 +199,10 @@ class ycsb_sequential_worker : public ycsb_base_worker {
 
     if (!ermia::config::index_probe_only) {
       ermia::varstr &v = str(sizeof(ycsb_kv::value));
-      for (uint i = 0; i< g_reps_per_tx; ++i) {
-        ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(ycsb_kv::value));
+      for (uint i = 0; i < g_reps_per_tx; ++i) {
+        ALWAYS_ASSERT(*(char *)values[i]->data() == 'a');
+        memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(),
+               sizeof(ycsb_kv::value));
       }
 
       TryCatch(db->Commit(txn));
@@ -191,7 +226,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
       // Under SI this must succeed
       LOG_IF(FATAL, rc._val != RC_TRUE);
       ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(*(char*)v.data() == 'a');
+      ASSERT(*(char *)v.data() == 'a');
 #endif
 
       ASSERT(v.size() == sizeof(ycsb_kv::value));
@@ -203,7 +238,8 @@ class ycsb_sequential_worker : public ycsb_base_worker {
       // Re-initialize the value structure to use my own allocated memory -
       // DoTupleRead will change v.p to the object's data area to avoid memory
       // copy (in the read op we just did).
-      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
+      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr),
+                             sizeof(ycsb_kv::value));
       new (v.data()) ycsb_kv::value("a");
       TryCatch(table_index->UpdateRecord(txn, k, v));  // Modify-write
     }
@@ -221,7 +257,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
 #else
       // Under SI this must succeed
       ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(*(char*)v.data() == 'a');
+      ASSERT(*(char *)v.data() == 'a');
 #endif
 
       ASSERT(v.size() == sizeof(ycsb_kv::value));
@@ -235,7 +271,8 @@ class ycsb_sequential_worker : public ycsb_base_worker {
   }
 
   rc_t txn_scan() {
-    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+    ermia::transaction *txn = db->NewTransaction(
+        ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       rc_t rc = rc_t{RC_INVALID};
       ScanRange range = GenerateScanRange(txn);
@@ -254,17 +291,18 @@ class ycsb_sequential_worker : public ycsb_base_worker {
   }
 
   rc_t txn_scan_with_iterator() {
-    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+    ermia::transaction *txn = db->NewTransaction(
+        ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       rc_t rc = rc_t{RC_INVALID};
       ScanRange range = GenerateScanRange(txn);
       ycsb_scan_callback callback;
       ermia::varstr valptr;
-      ermia::dbtuple* tuple = nullptr;
+      ermia::dbtuple *tuple = nullptr;
       auto iter = ermia::ConcurrentMasstree::ScanIterator<
           /*IsRerverse=*/false>::factory(&table_index->GetMasstree(),
-                                         txn->GetXIDContext(),
-                                         range.start_key, &range.end_key);
+                                         txn->GetXIDContext(), range.start_key,
+                                         &range.end_key);
       bool more = iter.init_or_next</*IsNext=*/false>();
       while (more) {
         if (!ermia::config::index_probe_only) {
@@ -277,9 +315,9 @@ class ycsb_sequential_worker : public ycsb_base_worker {
             }
           }
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-        TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
+          TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
-        ALWAYS_ASSERT(rc._val == RC_TRUE);
+          ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
         }
         more = iter.init_or_next</*IsNext=*/true>();
