@@ -104,10 +104,10 @@ class Object {
   fat_ptr GenerateCsnPtr(uint64_t csn);
   PROMISE(void) Pin();  // Make sure the payload is in memory
 
-  static inline void PrefetchHeader(Object *p) {
+  static inline void PrefetchHeader(Object* p) {
     uint32_t i = 0;
     do {
-      ::prefetch((const char *)(p + i));
+      ::prefetch((const char*)(p + i));
       i += CACHE_LINE_SIZE;
     } while (i < sizeof(Object));
   }
