@@ -1,9 +1,9 @@
 #pragma once
 
-#include "../benchmarks/record/encoder.h"
-#include "engine_internal.h"
 #include "txn.h"
 #include "varstr.h"
+#include "engine_internal.h"
+#include "../benchmarks/record/encoder.h"
 
 #if __clang__
 #include <experimental/coroutine>
