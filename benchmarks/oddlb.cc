@@ -65,18 +65,21 @@ class oddlb_sequential_worker : public oddlb_base_worker {
   }
 
   rc_t txn_ddl() {
-#ifdef COPYDDL
+#if SIDDL
+  retry:
+#endif
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
-    ermia::varstr v1;
+    ermia::varstr schema_value;
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaRecord(txn, rc, *table_key, v1, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, *table_key, schema_value, &oid);
     TryVerifyRelaxed(rc);
 
+#ifdef COPYDDL
     struct ermia::Schema_record schema;
-    memcpy(&schema, (char *)v1.data(), sizeof(schema));
+    memcpy(&schema, (char *)schema_value.data(), sizeof(schema));
 
     uint64_t old_schema_version = schema.v;
     ermia::ConcurrentMasstreeIndex *old_table_index =
@@ -158,19 +161,9 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #endif
     }
 
-    TryCatch(db->Commit(txn));
 #elif defined(BLOCKDDL)
-    ermia::transaction *txn =
-        db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
-
-    ermia::varstr v;
-    rc_t rc = rc_t{RC_INVALID};
-    ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaRecord(txn, rc, *table_key, v, &oid);
-    TryVerifyRelaxed(rc);
-
     struct ermia::Schema_base schema;
-    memcpy(&schema, (char *)v.data(), sizeof(schema));
+    memcpy(&schema, (char *)schema_value.data(), sizeof(schema));
 
     uint64_t schema_version = schema.v + 1;
     DLOG(INFO) << "change to new schema: " << schema_version;
@@ -192,23 +185,9 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     txn->add_new_td_map(schema.td);
 
     TryCatch(ddl_exe->scan(txn, arena));
-
-    TryCatch(db->Commit(txn));
 #elif SIDDL
-    DLOG(INFO) << "SI DDL begins";
-    int count = 0;
-  retry:
-    ermia::transaction *txn =
-        db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
-
-    ermia::varstr v1;
-    rc_t rc = rc_t{RC_INVALID};
-    ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaRecord(txn, rc, *table_key, v1, &oid);
-    TryVerifyRelaxed(rc);
-
     struct ermia::Schema_base schema;
-    memcpy(&schema, (char *)v1.data(), sizeof(schema));
+    memcpy(&schema, (char *)schema_value.data(), sizeof(schema));
 
     uint64_t schema_version = schema.v + 1;
     DLOG(INFO) << "change to new schema: " << schema_version;
@@ -233,15 +212,12 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     rc = ddl_exe->scan(txn, arena);
     if (rc._val != RC_TRUE) {
       std::cerr << "SI DDL aborts" << std::endl;
-      count++;
       db->Abort(txn);
       goto retry;
     }
     TryCatch(rc);
-
-    TryCatch(db->Commit(txn));
-    DLOG(INFO) << count << " attempts";
 #endif
+    TryCatch(db->Commit(txn));
     DLOG(INFO) << "DDL commit OK";
     return {RC_TRUE};
   }
