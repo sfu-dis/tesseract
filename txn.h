@@ -105,7 +105,7 @@ struct write_set_t {
   }
   inline uint32_t size() { return num_entries; }
   inline void clear() { num_entries = 0; }
-  inline write_record_t get(bool is_ddl, uint32_t idx) {
+  inline write_record_t &get(bool is_ddl, uint32_t idx) {
 #if defined(SIDDL)
     if (is_ddl)
       return entries_[idx];

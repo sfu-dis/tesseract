@@ -159,7 +159,7 @@ void transaction::Abort() {
 #endif
 
   for (uint32_t i = 0; i < write_set.size(); ++i) {
-    write_record_t w = write_set.get(is_ddl(), i);
+    write_record_t &w = write_set.get(is_ddl(), i);
     dbtuple *tuple = (dbtuple *)w.get_object()->GetPayload();
     ASSERT(tuple);
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
@@ -279,7 +279,7 @@ rc_t transaction::si_commit() {
     DLOG(INFO) << "DDL txn end: " << xc->end;
     // If txn is DDL, commit schema record(s) first before CDC
     for (uint32_t i = 0; i < write_set.size(); ++i) {
-      write_record_t w = write_set.get(is_ddl(), i);
+      write_record_t &w = write_set.get(is_ddl(), i);
       Object *object = w.get_object();
       dbtuple *tuple = (dbtuple *)object->GetPayload();
 
@@ -527,7 +527,7 @@ rc_t transaction::si_commit() {
   // records, etc.
   uint32_t current_log_size = 0;
   for (uint32_t i = 0; i < write_set.size(); ++i) {
-    write_record_t w = write_set.get(is_ddl(), i);
+    auto &w = write_set.get(is_ddl(), i);
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
 
