@@ -186,9 +186,6 @@ class tpcc_bench_runner : public bench_runner {
           db->CreateMasstreePrimaryIndex(table_name, std::string(index_name));
         }
       }
-#ifdef BLOCKDDL
-      db->BuildLockMap(ermia::Catalog::GetTable(table_name)->GetTupleFid());
-#endif
     };
 
     ermia::thread::Thread *thread = ermia::thread::GetThread(true);

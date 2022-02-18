@@ -45,6 +45,11 @@ rc_t ConcurrentMasstreeIndex::WriteSchemaTable(transaction *t, rc_t &rc,
   }
 #endif
 
+#ifdef BLOCKDDL
+  t->lock_table(table_descriptor->GetTupleFid(),
+                transaction::lock_type::EXCLUSIVE);
+#endif
+
   return rc;
 }
 
@@ -83,6 +88,11 @@ retry:
     }
   }
 #endif
+
+#ifdef BLOCKDDL
+  t->lock_table(table_descriptor->GetTupleFid(),
+                transaction::lock_type::SHARED);
+#endif
 }
 
 // Engine initialization, including creating the OID, log, and checkpoint
@@ -115,6 +125,10 @@ TableDescriptor *Engine::CreateTable(const char *name) {
     // log->log_table(td->GetTupleFid(), td->GetKeyFid(), td->GetName());
     // log->commit(nullptr);
     // free(log_space);
+
+#ifdef BLOCKDDL
+    BuildLockMap(td->GetTupleFid());
+#endif
   }
   return td;
 }

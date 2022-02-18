@@ -97,7 +97,8 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
     rc = rc_t{RC_INVALID};
 
-    if (ermia::config::ddl_type == 1 || ermia::config::ddl_type == 3) {
+    if (schema.ddl_type == ermia::ddl::ddl_type::COPY_ONLY ||
+        schema.ddl_type == ermia::ddl::ddl_type::COPY_VERIFICATION) {
       std::stringstream ss;
       ss << schema_version;
 
@@ -130,12 +131,12 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       txn->add_new_td_map(schema.td);
       txn->add_old_td_map(old_td);
     } else {
-      if (ermia::config::ddl_type == 4) {
+      if (schema.ddl_type == ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
         schema_version = old_schema_version +
                          ermia::config::no_copy_verification_version_add;
         schema.v = schema_version;
       }
-      schema.state = ermia::config::ddl_type == 2
+      schema.state = schema.ddl_type == ermia::ddl::ddl_type::VERIFICATION_ONLY
                          ? ermia::ddl::schema_state_type::NOT_READY
                          : ermia::ddl::schema_state_type::READY;
       txn->set_old_td(old_td);
@@ -157,7 +158,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
                                     schema.state);
     txn->set_ddl_executor(ddl_exe);
 
-    if (ermia::config::ddl_type != 4) {
+    if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
 #if !defined(LAZYDDL)
       rc = rc_t{RC_INVALID};
       rc = ddl_exe->scan(txn, arena);
@@ -169,8 +170,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #elif defined(BLOCKDDL)
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
-    txn->register_locked_tables(schema_fid,
-                                ermia::transaction::lock_type::EXCLUSIVE);
 
     char str1[] = "USERTABLE", str2[sizeof(ermia::Schema_base)];
     ermia::varstr &k = str(sizeof(str1));
@@ -278,10 +277,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #else
     ermia::transaction *txn = db->NewTransaction(
         ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
-#endif
-#ifdef BLOCKDDL
-    txn->register_locked_tables(schema_fid,
-                                ermia::transaction::lock_type::SHARED);
 #endif
 
     char str1[] = "USERTABLE";
@@ -396,10 +391,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
-#ifdef BLOCKDDL
-    txn->register_locked_tables(schema_fid,
-                                ermia::transaction::lock_type::SHARED);
-#endif
 
 #ifdef SIDDL
   retry:

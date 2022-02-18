@@ -84,11 +84,9 @@ class Engine {
   }
 
 #ifdef BLOCKDDL
-  inline bool BuildLockMap(FID table_fid) {
+  inline void BuildLockMap(FID table_fid) {
     std::unique_lock<std::mutex> lock(transaction::map_rw_latch);
-    if (transaction::lock_map.find(table_fid) != transaction::lock_map.end()) {
-      return false;
-    } else {
+    if (transaction::lock_map.find(table_fid) == transaction::lock_map.end()) {
       pthread_rwlockattr_t attr;
       transaction::lock_map[table_fid] = new pthread_rwlock_t;
       pthread_rwlockattr_init(&attr);
@@ -97,7 +95,6 @@ class Engine {
       LOG_IF(FATAL, ret);
       ret = pthread_rwlock_init(transaction::lock_map[table_fid], &attr);
       LOG_IF(FATAL, ret);
-      return true;
     }
   }
 #endif
