@@ -25,8 +25,6 @@ std::vector<tls_log *> tlogs;
 
 std::atomic<uint64_t> current_csn(0);
 
-std::atomic<uint64_t> commit_csn(0);
-
 std::mutex tls_log_lock;
 
 thread_local struct io_uring tls_read_ring;

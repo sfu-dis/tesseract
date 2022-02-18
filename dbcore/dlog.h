@@ -26,8 +26,6 @@ namespace dlog {
 
 extern std::atomic<uint64_t> current_csn;
 
-extern std::atomic<uint64_t> commit_csn;
-
 void flush_all();
 
 void dequeue_committed_xcts();
