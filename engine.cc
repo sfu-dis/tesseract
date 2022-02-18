@@ -54,8 +54,8 @@ rc_t ConcurrentMasstreeIndex::WriteSchemaTable(transaction *t, rc_t &rc,
 }
 
 void ConcurrentMasstreeIndex::ReadSchemaRecord(transaction *t, rc_t &rc,
-                                              const varstr &key, varstr &value,
-                                              OID *out_oid) {
+                                               const varstr &key, varstr &value,
+                                               OID *out_oid) {
 retry:
   GetRecord(t, rc, key, value, out_oid);
 #ifndef NDEBUG
@@ -67,10 +67,9 @@ retry:
 
 #ifdef COPYDDL
   if (t->is_dml() || t->is_read_only()) {
-    struct Schema_record schema;
-    memcpy(&schema, (char *)value.data(), sizeof(schema));
-    if (schema.state == ddl::schema_state_type::NOT_READY) {
-      if (schema.ddl_type != ddl::ddl_type::COPY_ONLY ||
+    Schema_record *schema = (Schema_record *)value.data();
+    if (schema->state == ddl::schema_state_type::NOT_READY) {
+      if (schema->ddl_type != ddl::ddl_type::COPY_ONLY ||
           config::enable_cdc_schema_lock) {
         goto retry;
       }
@@ -78,13 +77,13 @@ retry:
         goto retry;
       } else {
         t->SetWaitForNewSchema(true);
-        t->set_old_td(schema.old_td);
-        t->add_new_td_map(schema.td);
-        t->add_old_td_map(schema.old_td);
+        t->set_old_td(schema->old_td);
+        t->add_new_td_map(schema->td);
+        t->add_old_td_map(schema->old_td);
       }
     }
     if (t->is_dml()) {
-      t->schema_read_map[schema.td] = *out_oid;
+      t->schema_read_map[schema->td] = *out_oid;
     }
   }
 #endif
