@@ -129,7 +129,7 @@ void tls_log::uninitialize() {
   io_uring_queue_exit(&ring);
 }
 
-void tls_log::reset_logbuf(uint64_t logbuf_mb) {
+void tls_log::resize_logbuf(uint64_t logbuf_mb) {
   CRITICAL_SECTION(cs, lock);
   numa_free(logbuf[0], logbuf_size);
   numa_free(logbuf[1], logbuf_size);

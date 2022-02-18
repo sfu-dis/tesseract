@@ -218,8 +218,8 @@ class tls_log {
   // CDC flush
   void cdc_flush() { enqueue_flush(); }
 
-  // Reset log buffer size
-  void reset_logbuf(uint64_t logbuf_m);
+  // Resize log buffer
+  void resize_logbuf(uint64_t logbuf_m);
 };
 
 extern std::vector<tls_log *> tlogs;

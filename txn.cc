@@ -441,7 +441,7 @@ rc_t transaction::si_commit() {
         auto ddl_log = [=](char *) {
           dlog::tls_log *log = GetLog();
           log->set_normal(false);
-          log->reset_logbuf(50);
+          log->resize_logbuf(50);
           dlog::log_block *lb = nullptr;
           dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
           uint64_t segnum = -1;
