@@ -610,7 +610,7 @@ std::vector<thread::Thread *> transaction::changed_data_capture() {
     dlog::tls_log *tlog = dlog::tlogs[i];
     if (tlog && tlog != log && volatile_read(pcommit::_tls_durable_csn[i])) {
       normal_workers[j++] = i;
-      tlog->cdc_flush();
+      tlog->enqueue_flush();
     } else if (tlog == log) {
       ddl_thread_id = i;
     }

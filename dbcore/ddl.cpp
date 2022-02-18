@@ -268,7 +268,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
     dlog::tls_log *tlog = dlog::tlogs[i];
     uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
     if (tlog && csn && tlog != GetLog() && i != ddl_thread_id) {
-      tlog->cdc_flush();
+      tlog->enqueue_flush();
       std::vector<dlog::segment> *segments = tlog->get_segments();
       bool stop_scan = false;
       uint64_t offset_in_seg = volatile_read(_tls_durable_lsn[i]);
