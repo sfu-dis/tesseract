@@ -157,8 +157,6 @@ class tls_log {
   inline uint32_t get_id() { return id; }
   inline segment *get_segment(uint32_t segnum) { return &segments[segnum]; }
 
-  inline int get_numa_node() { return numa_node; }
-
   inline bool is_dirty() { return dirty; }
 
   inline void set_dirty(bool _dirty) { dirty = _dirty; }
