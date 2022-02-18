@@ -131,9 +131,6 @@ class tls_log {
   // Get the currently open segment
   inline segment *current_segment() { return &segments[segments.size() - 1]; }
 
-  // Do flush when doing enqueue commits
-  void enqueue_flush();
-
   // Issue an async I/O to flush the current active log buffer
   void issue_flush(const char *buf, uint64_t size);
 
@@ -203,6 +200,9 @@ class tls_log {
     return tcommitter.get_queue_size();
   }
 
+  // Do flush when doing enqueue commits
+  void enqueue_flush();
+
   // Last flush
   void last_flush();
 
@@ -214,9 +214,6 @@ class tls_log {
   void issue_read(int fd, char *buf, uint64_t size, uint64_t offset);
 
   bool peek_read(char *buf, uint64_t size);
-
-  // CDC flush
-  void cdc_flush() { enqueue_flush(); }
 
   // Resize log buffer
   void resize_logbuf(uint64_t logbuf_m);
