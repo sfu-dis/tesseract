@@ -69,10 +69,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
-    char str1[] = "USERTABLE";
-    ermia::varstr &k1 = str(sizeof(str1));
-    k1.copy_from(str1, sizeof(str1));
-
     ermia::varstr v1;
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
@@ -99,15 +95,12 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
     if (schema.ddl_type == ermia::ddl::ddl_type::COPY_ONLY ||
         schema.ddl_type == ermia::ddl::ddl_type::COPY_VERIFICATION) {
-      std::stringstream ss;
-      ss << schema_version;
+      char table_name[20];
+      snprintf(table_name, 20, "USERTABLE_%lu", schema_version);
 
-      std::string str3 = std::string(str1);
-      str3 += ss.str();
+      db->CreateTable(table_name);
 
-      db->CreateTable(str3.c_str());
-
-      schema.td = ermia::Catalog::GetTable(str3.c_str());
+      schema.td = ermia::Catalog::GetTable(table_name);
       schema.state = ermia::ddl::schema_state_type::NOT_READY;
 #ifdef LAZYDDL
       schema.old_index = old_table_index;
@@ -116,14 +109,14 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
       auto *new_table_index =
-          new ermia::ConcurrentMasstreeIndex(str3.c_str(), true);
+          new ermia::ConcurrentMasstreeIndex(table_name, true);
       new_table_index->SetArrays(true);
       schema.td->SetPrimaryIndex(new_table_index);
       schema.index = new_table_index;
 #else
-      ermia::Catalog::GetTable(str3.c_str())
-          ->SetPrimaryIndex(old_table_index, std::string(str1));
-      schema.index = ermia::Catalog::GetTable(str3.c_str())->GetPrimaryIndex();
+      ermia::Catalog::GetTable(table_name)
+          ->SetPrimaryIndex(old_table_index, table_name);
+      schema.index = ermia::Catalog::GetTable(table_name)->GetPrimaryIndex();
       ALWAYS_ASSERT(old_table_index == schema.index);
 #endif
 
@@ -146,7 +139,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     v2.copy_from((char *)&schema, sizeof(ermia::Schema_record));
 
     rc = rc_t{RC_INVALID};
-    schema_index->WriteSchemaTable(txn, rc, k1, v2);
+    schema_index->WriteSchemaTable(txn, rc, *table_key, v2);
     TryCatch(rc);
 
     // New a ddl executor
