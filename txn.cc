@@ -387,15 +387,12 @@ rc_t transaction::si_commit() {
       dbtuple *tuple = (dbtuple *)object->GetPayload();
 
       varstr value(tuple->get_value_start(), tuple->size);
-      struct Schema_record schema;
-      memcpy(&schema, (char *)value.data(), sizeof(schema));
-      schema.state = ddl::schema_state_type::READY;
+      Schema_record *schema = (Schema_record *)value.data();
+      schema->state = ddl::schema_state_type::READY;
 
-      char schema_str[sizeof(Schema_record)];
-      memcpy(schema_str, &schema, sizeof(schema_str));
       string_allocator().reset();
-      varstr *new_value = string_allocator().next(sizeof(schema_str));
-      new_value->copy_from(schema_str, sizeof(schema_str));
+      varstr *new_value = string_allocator().next(sizeof(Schema_record));
+      new_value->copy_from((char *)schema, sizeof(Schema_record));
 
       ALWAYS_ASSERT(
           DDLSchemaUnblock(schema_td, w.oid, new_value, xc->end)._val ==
@@ -711,11 +708,10 @@ bool transaction::DMLConsistencyHandler() {
         tmp_xc->begin = begin;
         return true;
       }
-      struct Schema_record schema;
-      memcpy(&schema, (char *)tuple_v.data(), sizeof(schema));
-      if ((schema.ddl_type == ddl::ddl_type::COPY_ONLY ||
-           schema.ddl_type == ddl::ddl_type::COPY_VERIFICATION) &&
-          schema.td != v.first) {
+      Schema_record *schema = (Schema_record *)tuple_v.data();
+      if ((schema->ddl_type == ddl::ddl_type::COPY_ONLY ||
+           schema->ddl_type == ddl::ddl_type::COPY_VERIFICATION) &&
+          schema->td != v.first) {
         tmp_xc->begin = begin;
         return true;
       }
