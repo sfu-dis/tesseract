@@ -53,15 +53,14 @@ class oddlb_sequential_worker : public oddlb_base_worker {
           nullptr, value, arena, current_version, -1, -1);
     }
 
-    struct ermia::Schema6 record2_test;
-    memcpy(&record2_test, (char *)new_value->data(), sizeof(record2_test));
+    ermia::Schema6 *record2_test = (ermia::Schema6 *)new_value->data();
 
-    ALWAYS_ASSERT(record2_test.b == latest_version);
-    ALWAYS_ASSERT(record2_test.c == latest_version);
-    ALWAYS_ASSERT(record2_test.d == latest_version);
-    ALWAYS_ASSERT(record2_test.e == latest_version);
-    ALWAYS_ASSERT(record2_test.f == latest_version);
-    ALWAYS_ASSERT(record2_test.g == latest_version);
+    ALWAYS_ASSERT(record2_test->b == latest_version);
+    ALWAYS_ASSERT(record2_test->c == latest_version);
+    ALWAYS_ASSERT(record2_test->d == latest_version);
+    ALWAYS_ASSERT(record2_test->e == latest_version);
+    ALWAYS_ASSERT(record2_test->f == latest_version);
+    ALWAYS_ASSERT(record2_test->g == latest_version);
   }
 
   rc_t txn_ddl() {
@@ -131,6 +130,8 @@ class oddlb_sequential_worker : public oddlb_base_worker {
             old_schema->v + ermia::config::no_copy_verification_version_add;
         schema.v = schema_version;
       }
+      schema.td = old_schema->td;
+      schema.index = old_schema->index;
       schema.state = schema.ddl_type == ermia::ddl::ddl_type::VERIFICATION_ONLY
                          ? ermia::ddl::schema_state_type::NOT_READY
                          : ermia::ddl::schema_state_type::READY;
