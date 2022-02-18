@@ -67,7 +67,7 @@ class tls_committer {
   // Initialize a tls_committer object
   void initialize(uint32_t id);
 
-  // Reset a tls_committer to get a real latency for workloads
+  // Reset a tls_committer so commit queue is empty now
   void reset(bool set_zero);
 
   // Get the lowest tls durable csn among all threads
