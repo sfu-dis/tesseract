@@ -147,6 +147,11 @@ class oddlb_base_worker : public bench_worker {
             open_tables.at("USERTABLE")->GetTableDescriptor()->GetTupleFid())
 #endif
   {
+    char str1[] = "USERTABLE";
+    table_key = (ermia::varstr *)ermia::MM::allocate(sizeof(ermia::varstr) +
+                                                     sizeof(str1));
+    new (table_key) ermia::varstr((char *)table_key + sizeof(ermia::varstr), 0);
+    table_key->copy_from(str1, sizeof(str1));
   }
 
  protected:
@@ -156,6 +161,7 @@ class oddlb_base_worker : public bench_worker {
   }
 
   ermia::ConcurrentMasstreeIndex *schema_index;
+  ermia::varstr *table_key;
 #if defined(SIDDL) || defined(BLOCKDDL)
   ermia::ConcurrentMasstreeIndex *table_index;
   ermia::FID schema_fid;

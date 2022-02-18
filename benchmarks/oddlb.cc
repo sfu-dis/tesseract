@@ -76,7 +76,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     ermia::varstr v1;
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, *table_key, v1, &oid);
     TryVerifyRelaxed(rc);
 
     struct ermia::Schema_record schema;
@@ -170,14 +170,10 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
-    char str1[] = "USERTABLE";
-    ermia::varstr &k = str(sizeof(str1));
-    k.copy_from(str1, sizeof(str1));
     ermia::varstr v;
-
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaRecord(txn, rc, k, v, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, *table_key, v, &oid);
     TryVerifyRelaxed(rc);
 
     struct ermia::Schema_base schema;
@@ -189,7 +185,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     ermia::varstr &v1 = str(sizeof(ermia::Schema_base));
     v1.copy_from((char *)&schema, sizeof(ermia::Schema_base));
 
-    TryCatch(schema_index->WriteSchemaTable(txn, rc, k, v1));
+    TryCatch(schema_index->WriteSchemaTable(txn, rc, *table_key, v1));
 
     // New a ddl executor
     ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
@@ -212,14 +208,10 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
-    char str1[] = "USERTABLE";
-    ermia::varstr &k = str(sizeof(str1));
-    k.copy_from(str1, sizeof(str1));
-
     ermia::varstr v1;
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaRecord(txn, rc, k, v1, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, *table_key, v1, &oid);
     TryVerifyRelaxed(rc);
 
     struct ermia::Schema_base schema;
@@ -234,7 +226,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     txn->set_old_td(schema.td);
 
     rc = rc_t{RC_INVALID};
-    rc = schema_index->WriteSchemaTable(txn, rc, k, v);
+    rc = schema_index->WriteSchemaTable(txn, rc, *table_key, v);
     TryCatch(rc);
 
     // New a ddl executor
@@ -276,14 +268,10 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
 #endif
 
-    char str1[] = "USERTABLE";
-    ermia::varstr &k1 = str(sizeof(str1));
-    k1.copy_from(str1, sizeof(str1));
     ermia::varstr v1;
-
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, *table_key, v1, &oid);
     TryCatch(rc);
 
 #ifdef COPYDDL
@@ -385,14 +373,10 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #ifdef SIDDL
   retry:
 #endif
-    char str0[] = "USERTABLE";
-    ermia::varstr &k = str(sizeof(str0));
-    k.copy_from(str0, sizeof(str0));
     ermia::varstr v;
-
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaRecord(txn, rc, k, v, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, *table_key, v, &oid);
     TryCatch(rc);
 
 #ifdef COPYDDL
