@@ -53,7 +53,7 @@ rc_t ConcurrentMasstreeIndex::WriteSchemaTable(transaction *t, rc_t &rc,
   return rc;
 }
 
-void ConcurrentMasstreeIndex::ReadSchemaTable(transaction *t, rc_t &rc,
+void ConcurrentMasstreeIndex::ReadSchemaRecord(transaction *t, rc_t &rc,
                                               const varstr &key, varstr &value,
                                               OID *out_oid) {
 retry:

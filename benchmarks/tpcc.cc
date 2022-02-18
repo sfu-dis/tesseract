@@ -65,17 +65,17 @@ rc_t tpcc_worker::txn_new_order() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k2, v2, &oid);
   TryVerifyRelaxed(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaTable(txn, rc, k3, v3, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k3, v3, &oid);
   TryVerifyRelaxed(rc);
 
   struct ermia::Schema_record order_line_schema;
@@ -367,12 +367,12 @@ rc_t tpcc_worker::txn_payment() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k2, v2, &oid);
   TryVerifyRelaxed(rc);
 
   struct ermia::Schema_record schema;
@@ -617,17 +617,17 @@ rc_t tpcc_worker::txn_delivery() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k2, v2, &oid);
   TryVerifyRelaxed(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaTable(txn, rc, k3, v3, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k3, v3, &oid);
   TryVerifyRelaxed(rc);
 
   struct ermia::Schema_record order_line_schema;
@@ -881,17 +881,17 @@ rc_t tpcc_worker::txn_order_status() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k2, v2, &oid);
   TryVerifyRelaxed(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaTable(txn, rc, k3, v3, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k3, v3, &oid);
   TryVerifyRelaxed(rc);
 
   struct ermia::Schema_record order_line_schema;
@@ -1124,7 +1124,7 @@ rc_t tpcc_worker::txn_stock_level() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
 
   struct ermia::Schema_record order_line_schema;
@@ -1251,17 +1251,17 @@ rc_t tpcc_worker::txn_credit_check() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k2, v2, &oid);
   TryVerifyRelaxed(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaTable(txn, rc, k3, v3, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k3, v3, &oid);
   TryVerifyRelaxed(rc);
 
   struct ermia::Schema_record order_line_schema;
@@ -1425,7 +1425,7 @@ rc_t tpcc_worker::txn_query2() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
 
   struct ermia::Schema_record schema;
@@ -1674,7 +1674,7 @@ rc_t tpcc_worker::txn_ddl() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+  schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
   TryVerifyRelaxed(rc);
 
   struct ermia::Schema_base schema;
@@ -1716,7 +1716,7 @@ rc_t tpcc_worker::txn_ddl() {
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
 
-    schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
     TryVerifyRelaxed(rc);
 
     struct ermia::Schema_record order_line_schema;
@@ -1807,7 +1807,7 @@ rc_t tpcc_worker::txn_ddl() {
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
 
-    schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
     TryVerifyRelaxed(rc);
 
     struct ermia::Schema_record customer_schema;
@@ -2045,12 +2045,12 @@ rc_t tpcc_worker::txn_ddl() {
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
 
-    schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
     TryVerifyRelaxed(rc);
 
     rc = rc_t{RC_INVALID};
     oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaTable(txn, rc, k2, v2, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, k2, v2, &oid);
     TryVerifyRelaxed(rc);
 
     struct ermia::Schema_record oorder_schema;
@@ -2277,7 +2277,7 @@ rc_t tpcc_worker::txn_ddl() {
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
 
-    schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
     TryVerifyRelaxed(rc);
 
     struct ermia::Schema_record order_line_schema;
@@ -2350,7 +2350,7 @@ rc_t tpcc_worker::txn_ddl() {
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
 
-    schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
     TryVerifyRelaxed(rc);
 
     struct ermia::Schema_record order_line_schema;

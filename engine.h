@@ -248,7 +248,7 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
                    varstr &value) override;
 
   PROMISE(void)
-  ReadSchemaTable(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+  ReadSchemaRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
                   OID *out_oid = nullptr) override;
 
   PROMISE(void)

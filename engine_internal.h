@@ -39,7 +39,7 @@ class OrderedIndex {
                                          const varstr &key, varstr &value) = 0;
 
   virtual PROMISE(void)
-      ReadSchemaTable(transaction *t, rc_t &rc, const varstr &key,
+      ReadSchemaRecord(transaction *t, rc_t &rc, const varstr &key,
                       varstr &value, OID *out_oid = nullptr) = 0;
 
   // Get a record with a key of length keylen. The underlying DB does not manage

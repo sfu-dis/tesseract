@@ -76,7 +76,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     ermia::varstr v1;
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
     TryVerifyRelaxed(rc);
 
     struct ermia::Schema_record schema;
@@ -178,7 +178,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaTable(txn, rc, k, v, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, k, v, &oid);
     TryVerifyRelaxed(rc);
 
     struct ermia::Schema_base schema;
@@ -221,7 +221,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     ermia::varstr v1;
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaTable(txn, rc, k, v1, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, k, v1, &oid);
     TryVerifyRelaxed(rc);
 
     struct ermia::Schema_base schema;
@@ -286,7 +286,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaTable(txn, rc, k1, v1, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
     TryCatch(rc);
 
 #ifdef COPYDDL
@@ -402,7 +402,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaTable(txn, rc, k, v, &oid);
+    schema_index->ReadSchemaRecord(txn, rc, k, v, &oid);
     TryCatch(rc);
 
 #ifdef COPYDDL
