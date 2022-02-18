@@ -85,11 +85,6 @@ inline static uint32_t log_update_key(log_block *block, FID fid, OID oid,
                              size);
 }
 
-inline static uint32_t log_oid_key(log_block *block, FID fid, OID oid,
-                                   const char *image, const uint32_t size) {
-  return populate_log_record(log_record::OID_KEY, block, fid, oid, image, size);
-}
-
 }  // namespace dlog
 
 }  // namespace ermia
