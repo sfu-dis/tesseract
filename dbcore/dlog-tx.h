@@ -17,7 +17,6 @@ struct log_record {
     INSERT_KEY,
     UPDATE,
     UPDATE_KEY,
-    OID_KEY,
   };
 
   logrec_type type;
@@ -38,8 +37,7 @@ static uint32_t populate_log_record(log_record::logrec_type type,
   LOG_IF(FATAL, type != log_record::logrec_type::INSERT &&
                     type != log_record::logrec_type::UPDATE &&
                     type != log_record::logrec_type::INSERT_KEY &&
-                    type != log_record::logrec_type::UPDATE_KEY &&
-                    type != log_record::logrec_type::OID_KEY)
+                    type != log_record::logrec_type::UPDATE_KEY)
       << "Wrong log record type";
   LOG_IF(FATAL, block->payload_size + size > block->capacity)
       << "No enough space in log block";
