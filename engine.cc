@@ -45,17 +45,22 @@ rc_t ConcurrentMasstreeIndex::WriteSchemaTable(transaction *t, rc_t &rc,
   }
 #endif
 
-#ifdef BLOCKDDL
-  t->lock_table(table_descriptor->GetTupleFid(),
-                transaction::lock_type::EXCLUSIVE);
-#endif
-
   return rc;
 }
 
 void ConcurrentMasstreeIndex::ReadSchemaRecord(transaction *t, rc_t &rc,
                                                const varstr &key, varstr &value,
                                                OID *out_oid) {
+#ifdef BLOCKDDL
+  if (t->is_ddl()) {
+    t->lock_table(table_descriptor->GetTupleFid(),
+                  transaction::lock_type::EXCLUSIVE);
+  } else {
+    t->lock_table(table_descriptor->GetTupleFid(),
+                  transaction::lock_type::SHARED);
+  }
+#endif
+
 retry:
   GetRecord(t, rc, key, value, out_oid);
 #ifndef NDEBUG
@@ -86,11 +91,6 @@ retry:
       t->schema_read_map[schema->td] = *out_oid;
     }
   }
-#endif
-
-#ifdef BLOCKDDL
-  t->lock_table(table_descriptor->GetTupleFid(),
-                transaction::lock_type::SHARED);
 #endif
 }
 
