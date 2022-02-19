@@ -150,6 +150,11 @@ class ddl_executor {
   // Scan and do operations (copy, verification)
   rc_t scan(transaction *t, str_arena *arena);
 
+  // Scan impl
+  rc_t _scan(transaction *t, str_arena *arena, OID oid, FID old_fid,
+             TXN::xid_context *xc, oid_array *old_tuple_array,
+             oid_array *key_array, dlog::log_block *lb);
+
   // CDC
   rc_t changed_data_capture_impl(transaction *t, uint32_t thread_id,
                                  uint32_t ddl_thread_id, uint32_t begin_log,

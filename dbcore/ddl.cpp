@@ -67,162 +67,16 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
       dlog::log_block *lb = nullptr;
       str_arena *arena = new str_arena(config::arena_size_mb);
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
-        dbtuple *tuple =
-            AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
-        varstr tuple_value;
-        fat_ptr *entry =
-            config::enable_ddl_keys ? key_array->get(oid) : nullptr;
-        varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
-        if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
-          for (std::vector<struct ddl_executor_paras *>::const_iterator it =
-                   ddl_executor_paras_list.begin();
-               it != ddl_executor_paras_list.end(); ++it) {
-            if ((*it)->old_td != old_td) continue;
-            if ((*it)->type == VERIFICATION_ONLY ||
-                (*it)->type == COPY_VERIFICATION) {
-              if (!constraints[(*it)->constraint_idx](tuple_value,
-                                                      (*it)->new_v)) {
-                DLOG(INFO) << "DDL failed";
-                return rc_t{RC_ABORT_INTERNAL};
-              }
-            }
-            if ((*it)->type == COPY_ONLY || (*it)->type == COPY_VERIFICATION) {
-              arena->reset();
-              uint64_t reformat_idx = (*it)->scan_reformat_idx == -1
-                                          ? (*it)->reformat_idx
-                                          : (*it)->scan_reformat_idx;
-              varstr *new_tuple_value = reformats[reformat_idx](
-                  key, tuple_value, arena, (*it)->new_v, fid, oid);
-              if (!new_tuple_value) continue;
-#ifdef COPYDDL
-#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
-              fat_ptr *out_entry = nullptr;
-              OID o = t->DDLInsert((*it)->new_td, new_tuple_value, &out_entry,
-                                   (*it)->new_v);
-              if (!o) {
-                continue;
-              }
-              if (!AWAIT(*it)->index->InsertOID(t, *key, o)) {
-                Object *obj = (Object *)out_entry->offset();
-                fat_ptr entry = *out_entry;
-                obj->SetCSN(NULL_PTR);
-                ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
-                MM::deallocate(entry);
-              } else {
-                if ((*it)->new_td->GetSecIndexes().size()) {
-                  ConcurrentMasstreeIndex *secondary_index =
-                      (ConcurrentMasstreeIndex
-                           *)((*it)->new_td->GetSecIndexes().front());
-                  varstr *new_secondary_index_key =
-                      reformats[(*it)->secondary_index_key_create_idx](
-                          key, tuple_value, arena, (*it)->new_v, fid, oid);
-                  if (!AWAIT secondary_index->InsertOID(
-                          t, *new_secondary_index_key, o)) {
-                    continue;
-                  }
-                }
-              }
-#elif OPTLAZYDDL
-              t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end, lb,
-                              (*it)->new_v);
-#else
-              t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value,
-                              !xc->end ? xc->begin : xc->end, lb, (*it)->new_v);
-#endif
-#elif BLOCKDDL
-              t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value, lb,
-                               (*it)->new_v);
-#elif SIDDL
-              rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value,
-                                 (*it)->new_v);
-              if (r._val != RC_TRUE) {
-                return rc_t{RC_ABORT_INTERNAL};
-              }
-#endif
-            }
-          }
-        }
+        _scan(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
       }
-      return rc_t{RC_TRUE};
     };
     thread->StartTask(parallel_scan);
   }
 
+  dlog::log_block *lb = nullptr;
   OID end = scan_threads == 1 ? himark : num_per_scan_thread;
   for (OID oid = 0; oid <= end; oid++) {
-    dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
-    varstr tuple_value;
-    fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
-    varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
-    if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
-      for (std::vector<struct ddl_executor_paras *>::const_iterator it =
-               ddl_executor_paras_list.begin();
-           it != ddl_executor_paras_list.end(); ++it) {
-        if ((*it)->old_td != old_td) continue;
-        if ((*it)->type == VERIFICATION_ONLY ||
-            (*it)->type == COPY_VERIFICATION) {
-          if (!constraints[(*it)->constraint_idx](tuple_value, (*it)->new_v)) {
-            DLOG(INFO) << "DDL failed";
-            return rc_t{RC_ABORT_INTERNAL};
-          }
-        }
-        if ((*it)->type == COPY_ONLY || (*it)->type == COPY_VERIFICATION) {
-          arena->reset();
-          uint64_t reformat_idx = (*it)->scan_reformat_idx == -1
-                                      ? (*it)->reformat_idx
-                                      : (*it)->scan_reformat_idx;
-          varstr *new_tuple_value = reformats[reformat_idx](
-              key, tuple_value, arena, (*it)->new_v, fid, oid);
-          if (!new_tuple_value) continue;
-#ifdef COPYDDL
-#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
-          fat_ptr *out_entry = nullptr;
-          OID o = t->DDLInsert((*it)->new_td, new_tuple_value, &out_entry,
-                               (*it)->new_v);
-          if (!o) {
-            continue;
-          }
-          if (!AWAIT(*it)->index->InsertOID(t, *key, o)) {
-            Object *obj = (Object *)out_entry->offset();
-            fat_ptr entry = *out_entry;
-            obj->SetCSN(NULL_PTR);
-            ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
-            MM::deallocate(entry);
-          } else {
-            if ((*it)->new_td->GetSecIndexes().size()) {
-              ConcurrentMasstreeIndex *secondary_index =
-                  (ConcurrentMasstreeIndex
-                       *)((*it)->new_td->GetSecIndexes().front());
-              varstr *new_secondary_index_key =
-                  reformats[(*it)->secondary_index_key_create_idx](
-                      key, tuple_value, arena, (*it)->new_v, fid, oid);
-              if (!AWAIT secondary_index->InsertOID(t, *new_secondary_index_key,
-                                                    o)) {
-                continue;
-              }
-            }
-          }
-#elif OPTLAZYDDL
-          t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end, nullptr,
-                          (*it)->new_v);
-#else
-          t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value,
-                          !xc->end ? xc->begin : xc->end, nullptr,
-                          (*it)->new_v);
-#endif
-#elif BLOCKDDL
-          t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value, nullptr,
-                           (*it)->new_v);
-#elif SIDDL
-          rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value,
-                             (*it)->new_v);
-          if (r._val != RC_TRUE) {
-            return rc_t{RC_ABORT_INTERNAL};
-          }
-#endif
-        }
-      }
-    }
+    _scan(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
   }
 
   if (!config::enable_late_scan_join) {
@@ -414,37 +268,81 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
   return rc_t{RC_TRUE};
 }
 
-rc_t ddl_executor::build_map(transaction *t, str_arena *arena,
-                             TableDescriptor *td) {
-  rc_t r;
-  TXN::xid_context *xc = t->GetXIDContext();
-
-  uint64_t count = 0;
-  FID fid = td->GetTupleFid();
-  auto *alloc = oidmgr->get_allocator(fid);
-  uint32_t himark = alloc->head.hiwater_mark;
-  auto *tuple_array = td->GetTupleArray();
-  auto *key_array = td->GetKeyArray();
-
-  for (OID oid = 0; oid <= himark; oid++) {
-    fat_ptr *entry = key_array->get(oid);
-    dbtuple *tuple = AWAIT oidmgr->oid_get_version(tuple_array, oid, xc);
-    varstr tuple_value;
-    varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
-    if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
-      for (std::vector<struct ddl_executor_paras *>::const_iterator it =
-               ddl_executor_paras_list.begin();
-           it != ddl_executor_paras_list.end(); ++it) {
-        if ((*it)->old_td == td) {
-          reformats[(*it)->reformat_idx](key, tuple_value, arena, (*it)->new_v,
-                                         fid, oid);
+rc_t ddl_executor::_scan(transaction *t, str_arena *arena, OID oid, FID old_fid,
+                         TXN::xid_context *xc, oid_array *old_tuple_array,
+                         oid_array *key_array, dlog::log_block *lb) {
+  dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
+  varstr tuple_value;
+  fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
+  varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
+  if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
+    for (std::vector<struct ddl_executor_paras *>::const_iterator it =
+             ddl_executor_paras_list.begin();
+         it != ddl_executor_paras_list.end(); ++it) {
+      if ((*it)->old_td->GetTupleFid() != old_fid) continue;
+      if ((*it)->type == VERIFICATION_ONLY ||
+          (*it)->type == COPY_VERIFICATION) {
+        if (!constraints[(*it)->constraint_idx](tuple_value, (*it)->new_v)) {
+          DLOG(INFO) << "DDL failed";
+          return rc_t{RC_ABORT_INTERNAL};
         }
+      }
+      if ((*it)->type == COPY_ONLY || (*it)->type == COPY_VERIFICATION) {
+        arena->reset();
+        uint64_t reformat_idx = (*it)->scan_reformat_idx == -1
+                                    ? (*it)->reformat_idx
+                                    : (*it)->scan_reformat_idx;
+        varstr *new_tuple_value = reformats[reformat_idx](
+            key, tuple_value, arena, (*it)->new_v, old_fid, oid);
+        if (!new_tuple_value) continue;
+#ifdef COPYDDL
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+        fat_ptr *out_entry = nullptr;
+        OID o = t->DDLInsert((*it)->new_td, new_tuple_value, &out_entry,
+                             (*it)->new_v);
+        if (!o) {
+          continue;
+        }
+        if (!AWAIT(*it)->index->InsertOID(t, *key, o)) {
+          Object *obj = (Object *)out_entry->offset();
+          fat_ptr entry = *out_entry;
+          obj->SetCSN(NULL_PTR);
+          ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
+          MM::deallocate(entry);
+        } else {
+          if ((*it)->new_td->GetSecIndexes().size()) {
+            ConcurrentMasstreeIndex *secondary_index =
+                (ConcurrentMasstreeIndex
+                     *)((*it)->new_td->GetSecIndexes().front());
+            varstr *new_secondary_index_key =
+                reformats[(*it)->secondary_index_key_create_idx](
+                    key, tuple_value, arena, (*it)->new_v, old_fid, oid);
+            if (!AWAIT secondary_index->InsertOID(t, *new_secondary_index_key,
+                                                  o)) {
+              continue;
+            }
+          }
+        }
+#elif OPTLAZYDDL
+        t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end, lb,
+                        (*it)->new_v);
+#else
+        t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value,
+                        !xc->end ? xc->begin : xc->end, lb, (*it)->new_v);
+#endif
+#elif BLOCKDDL
+        t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value, lb, (*it)->new_v);
+#elif SIDDL
+        rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value,
+                           (*it)->new_v);
+        if (r._val != RC_TRUE) {
+          return rc_t{RC_ABORT_INTERNAL};
+        }
+#endif
       }
     }
   }
-
   return rc_t{RC_TRUE};
-  ;
 }
 
 }  // namespace ddl
