@@ -5,7 +5,6 @@
 #include "oddlb.h"
 
 uint oddl_reps_per_tx = 1;
-// uint g_initial_table_size = 30000000;
 uint oddl_initial_table_size = 10000000;
 
 void oddlb_create_db(ermia::Engine *db) {
@@ -27,25 +26,10 @@ void oddlb_usertable_loader::load() {
   uint32_t nloaders = std::thread::hardware_concurrency() /
                       (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
   int64_t to_insert = oddl_initial_table_size / nloaders;
-  // int64_t to_insert = oddl_initial_table_size /
-  // ermia::config::worker_threads;
   uint64_t start_key = loader_id * to_insert;
-
-  /*if (loader_id == ermia::config::worker_threads - 1) {
-    to_insert = oddl_initial_table_size - loader_id * to_insert;
-  }*/
 
   for (uint64_t i = 0; i < to_insert; ++i) {
     ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-    /*
-    ermia::varstr &k = str(sizeof(uint64_t));
-    BuildKey(start_key + i, k);
-
-    ermia::varstr &v = str(sizeof(ycsb_kv::value));
-    new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr),
-    sizeof(ycsb_kv::value));
-    *(char*)v.p = 'a';
-    */
 
     struct ermia::Schema1 record1;
     record1.v = 0;
@@ -71,11 +55,6 @@ void oddlb_usertable_loader::load() {
     ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = 0;
-    /*
-    ermia::varstr &k = str(sizeof(uint64_t));
-    BuildKey(start_key + i, k);
-    ermia::varstr &v = str(0);
-    */
 
     char str1[sizeof(uint64_t)];
     uint64_t a = start_key + i;
