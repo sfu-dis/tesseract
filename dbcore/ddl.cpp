@@ -346,7 +346,6 @@ rc_t ddl_executor::_scan(transaction *t, str_arena *arena, OID oid, FID old_fid,
                            (*it)->new_v);
         if (r._val != RC_TRUE) {
           ddl_failed = true;
-          cdc_running = false;
           return rc_t{RC_ABORT_INTERNAL};
         }
 #endif
