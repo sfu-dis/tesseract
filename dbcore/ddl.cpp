@@ -10,7 +10,6 @@ namespace ddl {
 
 std::vector<Reformat> reformats;
 std::vector<Constraint> constraints;
-std::vector<uint32_t> ddl_worker_logical_threads;
 
 ddl_type ddl_type_map(uint32_t type) {
   switch (type) {
@@ -58,16 +57,22 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   for (uint32_t i = 1; i < scan_threads; i++) {
     uint32_t begin = i * num_per_scan_thread;
     uint32_t end = (i + 1) * num_per_scan_thread;
-    if (i == scan_threads - 1) end = himark;
+    if (i == scan_threads - 1) {
+      end = himark;
+    }
     thread::Thread *thread =
         thread::GetThread(config::scan_physical_workers_only);
     ALWAYS_ASSERT(thread);
     scan_workers.push_back(thread);
     auto parallel_scan = [=](char *) {
+      rc_t r;
       dlog::log_block *lb = nullptr;
       str_arena *arena = new str_arena(config::arena_size_mb);
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
-        _scan(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
+        r = _scan(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
+        if (r._val != RC_TRUE || ddl_failed) {
+          break;
+        }
       }
     };
     thread->StartTask(parallel_scan);
@@ -76,29 +81,32 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   dlog::log_block *lb = nullptr;
   OID end = scan_threads == 1 ? himark : num_per_scan_thread;
   for (OID oid = 0; oid <= end; oid++) {
-    _scan(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
+    r = _scan(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
+    if (r._val != RC_TRUE || ddl_failed) {
+      break;
+    }
   }
 
-  if (!config::enable_late_scan_join) {
+  if (!config::enable_late_scan_join || ddl_failed) {
     join_scan_workers();
   }
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
   t->join_changed_data_capture_threads(cdc_workers);
-  uint64_t current_csn = dlog::current_csn.load(std::memory_order_relaxed);
   if (ddl_failed) {
     DLOG(INFO) << "DDL failed";
     for (std::vector<struct ddl_executor_paras *>::const_iterator it =
              ddl_executor_paras_list.begin();
          it != ddl_executor_paras_list.end(); ++it) {
-      (*it)->new_td->GetTupleArray()->destroy((*it)->new_td->GetTupleArray());
-      return rc_t{RC_ABORT_INTERNAL};
+      if ((*it)->new_td != (*it)->old_td) {
+        (*it)->new_td->GetTupleArray()->destroy((*it)->new_td->GetTupleArray());
+      }
     }
+    return rc_t{RC_ABORT_INTERNAL};
   }
   DLOG(INFO) << "First CDC ends, now go to grab a t4";
   if (config::enable_cdc_verification_test) {
     cdc_test = true;
-    usleep(100);
   }
   ddl_td_set = false;
 #endif
@@ -147,7 +155,6 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
             last_csn = header->csn;
             volatile_write(_cdc_last_csn[i], last_csn);
             uint64_t offset_in_block = 0;
-            varstr *insert_key, *update_key, *insert_key_idx;
             while (offset_in_block < header->payload_size && !ddl_failed) {
               dlog::log_record *logrec =
                   (dlog::log_record *)(data_buf + offset_increment + block_sz +
@@ -284,6 +291,8 @@ rc_t ddl_executor::_scan(transaction *t, str_arena *arena, OID oid, FID old_fid,
           (*it)->type == COPY_VERIFICATION) {
         if (!constraints[(*it)->constraint_idx](tuple_value, (*it)->new_v)) {
           DLOG(INFO) << "DDL failed";
+          ddl_failed = true;
+          cdc_running = false;
           return rc_t{RC_ABORT_INTERNAL};
         }
       }
@@ -336,6 +345,8 @@ rc_t ddl_executor::_scan(transaction *t, str_arena *arena, OID oid, FID old_fid,
         rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value,
                            (*it)->new_v);
         if (r._val != RC_TRUE) {
+          ddl_failed = true;
+          cdc_running = false;
           return rc_t{RC_ABORT_INTERNAL};
         }
 #endif
