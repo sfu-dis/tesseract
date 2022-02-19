@@ -52,7 +52,7 @@ void ConcurrentMasstreeIndex::ReadSchemaRecord(transaction *t, rc_t &rc,
                                                const varstr &key, varstr &value,
                                                OID *out_oid) {
 #ifdef BLOCKDDL
-  if (t->is_ddl()) {
+  if (unlikely(t->is_ddl())) {
     t->lock_table(table_descriptor->GetTupleFid(),
                   transaction::lock_type::EXCLUSIVE);
   } else {
