@@ -120,11 +120,9 @@ class kpermuter {
     // increment size, leave lower slots unchanged
     x_ = ((x_ + 1) & (((value_type)16 << (i << 2)) - 1))
          // insert slot
-         |
-         ((value_type)value << ((i << 2) + 4))
+         | ((value_type)value << ((i << 2) + 4))
          // shift up unchanged higher entries & empty slots
-         |
-         ((x_ << 4) & ~(((value_type)256 << (i << 2)) - 1));
+         | ((x_ << 4) & ~(((value_type)256 << (i << 2)) - 1));
     return value;
   }
   /** @brief Insert an unallocated element from position @a si at position @a
@@ -140,14 +138,11 @@ class kpermuter {
     // increment size, leave lower slots unchanged
     x_ = ((x_ + 1) & (((value_type)16 << (di << 2)) - 1))
          // insert slot
-         |
-         ((value_type)value << ((di << 2) + 4))
+         | ((value_type)value << ((di << 2) + 4))
          // shift up unchanged higher entries & empty slots
-         |
-         ((x_ << 4) & mask & ~(((value_type)256 << (di << 2)) - 1))
+         | ((x_ << 4) & mask & ~(((value_type)256 << (di << 2)) - 1))
          // leave uppermost slots alone
-         |
-         (x_ & ~mask);
+         | (x_ & ~mask);
   }
   /** @brief Remove the element at position @a i.
       @pre 0 <= @a i < @a size()
@@ -177,11 +172,9 @@ class kpermuter {
       // decrement size, leave lower slots unchanged
       x_ = ((x_ - 1) & ~rot_mask)
            // shift higher entries down
-           |
-           (((x_ & rot_mask) >> 4) & rot_mask)
+           | (((x_ & rot_mask) >> 4) & rot_mask)
            // shift value up
-           |
-           (((x_ & rot_mask) << rot_amount) & rot_mask);
+           | (((x_ & rot_mask) << rot_amount) & rot_mask);
     }
   }
   /** @brief Remove the element at position @a i to the back.
@@ -208,11 +201,9 @@ class kpermuter {
     // decrement size, leave lower slots unchanged
     x_ = ((x - 1) & ~mask)
          // shift higher entries down
-         |
-         ((x >> 4) & mask)
+         | ((x >> 4) & mask)
          // shift removed element up
-         |
-         ((x & mask) << ((width - i - 1) << 2));
+         | ((x & mask) << ((width - i - 1) << 2));
   }
   /** @brief Rotate the permuter's elements between @a i and size().
       @pre 0 <= @a i <= @a j <= size()
@@ -266,7 +257,7 @@ class kpermuter {
 
 template <int width>
 lcdf::String kpermuter<width>::unparse() const {
-  char buf[max_width + 3], * s = buf;
+  char buf[max_width + 3], *s = buf;
   value_type p(x_);
   value_type seen(0);
   int n = p & 15;

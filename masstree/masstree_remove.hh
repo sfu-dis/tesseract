@@ -15,9 +15,9 @@
  */
 #ifndef MASSTREE_REMOVE_HH
 #define MASSTREE_REMOVE_HH
-#include "masstree_get.hh"
 #include "btree_leaflink.hh"
 #include "circular_int.hh"
+#include "masstree_get.hh"
 namespace Masstree {
 
 template <typename P>

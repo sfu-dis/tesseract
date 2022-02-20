@@ -158,9 +158,10 @@ struct key_bound<max_size, bound_method_linear> {
 };
 template <int max_size>
 struct key_bound<max_size, bound_method_fast> {
-  typedef typename key_bound<max_size,
-                             (max_size > 16 ? bound_method_binary
-                                            : bound_method_linear)>::type type;
+  typedef
+      typename key_bound<max_size, (max_size > 16 ? bound_method_binary
+                                                  : bound_method_linear)>::type
+          type;
 };
 
 #endif

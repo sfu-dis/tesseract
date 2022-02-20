@@ -15,9 +15,10 @@
  */
 #ifndef LCDF_STRACCUM_HH
 #define LCDF_STRACCUM_HH
-#include <string.h>
 #include <assert.h>
 #include <stdarg.h>
+#include <string.h>
+
 #include "string.hh"
 #if __GNUC__ > 4
 #define LCDF_SNPRINTF_ATTR __attribute__((__format__(__printf__, 3, 4)))

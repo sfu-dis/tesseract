@@ -15,9 +15,9 @@
  */
 #ifndef MASSTREE_COMPILER_HH
 #define MASSTREE_COMPILER_HH 1
-#include <stdint.h>
-#include <inttypes.h>
 #include <arpa/inet.h>
+#include <inttypes.h>
+#include <stdint.h>
 #if HAVE_TYPE_TRAITS
 #include <type_traits>
 #endif
@@ -28,7 +28,10 @@
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
 #if !HAVE_CXX_STATIC_ASSERT
-#define static_assert(x, msg) switch (x) case 0 : case !!(x):
+#define static_assert(x, msg) \
+  switch (x)                  \
+  case 0:                     \
+  case !!(x):
 #endif
 
 #if !HAVE_CXX_CONSTEXPR
@@ -41,8 +44,7 @@
 #define PREFER_X86 1
 #define ALLOW___SYNC_BUILTINS 1
 
-#if !defined(HAVE_INDIFFERENT_ALIGMENT) && \
-    (__x86_64__ || __arch_um__)
+#if !defined(HAVE_INDIFFERENT_ALIGMENT) && (__x86_64__ || __arch_um__)
 #define HAVE_INDIFFERENT_ALIGNMENT 1
 #endif
 
@@ -507,7 +509,9 @@ inline void prefetch(const void* ptr) {
 #ifdef NOPREFETCH
   (void)ptr;
 #else
-  typedef struct { char x[CACHE_LINE_SIZE]; } cacheline_t;
+  typedef struct {
+    char x[CACHE_LINE_SIZE];
+  } cacheline_t;
   asm volatile("prefetcht0 %0" : : "m"(*(const cacheline_t*)ptr));
 #endif
 }
@@ -516,7 +520,9 @@ inline void prefetchnta(const void* ptr) {
 #ifdef NOPREFETCH
   (void)ptr;
 #else
-  typedef struct { char x[CACHE_LINE_SIZE]; } cacheline_t;
+  typedef struct {
+    char x[CACHE_LINE_SIZE];
+  } cacheline_t;
   asm volatile("prefetchnta %0" : : "m"(*(const cacheline_t*)ptr));
 #endif
 }

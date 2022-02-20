@@ -15,8 +15,9 @@
  */
 #ifndef CLICK_HASHCODE_HH
 #define CLICK_HASHCODE_HH
-#include <stddef.h>
 #include <inttypes.h>
+#include <stddef.h>
+
 #include <functional>
 
 // Notes about the hashcode template: On GCC 4.3.0, "template <>" is required
@@ -92,7 +93,8 @@ inline hashcode_t hashcode(unsigned long long const &x) {
   return (x >> 32) ^ x;
 }
 
-#if (defined(HAVE_INT64_TYPES) && HAVE_INT64_TYPES)&& !HAVE_INT64_IS_LONG && !HAVE_INT64_IS_LONG_LONG
+#if (defined(HAVE_INT64_TYPES) && HAVE_INT64_TYPES) && !HAVE_INT64_IS_LONG && \
+    !HAVE_INT64_IS_LONG_LONG
 template <>
 inline hashcode_t hashcode(int64_t const &x) {
   return (x >> 32) ^ x;

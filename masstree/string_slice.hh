@@ -15,10 +15,12 @@
  */
 #ifndef STRING_SLICE_HH
 #define STRING_SLICE_HH 1
-#include "str.hh"
-#include <algorithm>
 #include <assert.h>
 #include <string.h>
+
+#include <algorithm>
+
+#include "str.hh"
 class threadinfo;
 
 /** @brief Provide access to T-typed slices of a string. */
@@ -155,4 +157,3 @@ template <typename T>
 constexpr int string_slice<T>::size;
 
 #endif
-

@@ -15,8 +15,8 @@
  */
 #ifndef MASSTREE_SPLIT_HH
 #define MASSTREE_SPLIT_HH 1
-#include "masstree_tcursor.hh"
 #include "btree_leaflink.hh"
+#include "masstree_tcursor.hh"
 namespace Masstree {
 
 /** @brief Return ikey at position @a i, assuming insert of @a ka at @a ka_i. */

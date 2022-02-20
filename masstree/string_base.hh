@@ -15,13 +15,15 @@
  */
 #ifndef STRING_BASE_HH
 #define STRING_BASE_HH
+#include <assert.h>
+#include <ctype.h>
+#include <limits.h>
+#include <string.h>
+
+#include <iostream>
+
 #include "compiler.hh"
 #include "hashcode.hh"
-#include <assert.h>
-#include <string.h>
-#include <limits.h>
-#include <ctype.h>
-#include <iostream>
 namespace lcdf {
 class StringAccum;
 #define LCDF_CONSTANT_CSTR(cstr) \

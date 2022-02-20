@@ -15,13 +15,14 @@
  */
 #ifndef MASSTREE_GET_HH
 #define MASSTREE_GET_HH 1
-#include "masstree_tcursor.hh"
-#include "masstree_key.hh"
 #include "../dbcore/sm-coroutine.h"
+#include "masstree_key.hh"
+#include "masstree_tcursor.hh"
 namespace Masstree {
 
 template <typename P>
-PROMISE(bool) unlocked_tcursor<P>::find_unlocked(threadinfo& ti) {
+PROMISE(bool)
+unlocked_tcursor<P>::find_unlocked(threadinfo& ti) {
   int match;
   key_indexed_position kx;
   node_base<P>* root = const_cast<node_base<P>*>(root_);
@@ -57,9 +58,8 @@ forward:
 }
 
 template <typename P>
-inline PROMISE(bool) basic_table<P>::get(
-                                Str key, value_type& value,
-                                threadinfo& ti) const {
+inline PROMISE(bool) basic_table<P>::get(Str key, value_type& value,
+                                         threadinfo& ti) const {
   unlocked_tcursor<P> lp(*this, key);
   bool found = AWAIT lp.find_unlocked(ti);
   if (found) value = lp.value();
@@ -67,7 +67,8 @@ inline PROMISE(bool) basic_table<P>::get(
 }
 
 template <typename P>
-PROMISE(bool) tcursor<P>::find_locked(threadinfo& ti) {
+PROMISE(bool)
+tcursor<P>::find_locked(threadinfo& ti) {
   node_base<P>* root = const_cast<node_base<P>*>(root_);
   nodeversion_type v;
   permuter_type perm;

@@ -265,43 +265,66 @@
 /* Define MT_WORDS_BIGENDIAN to 1 if your processor stores words with the most
    significant byte first (like Motorola and SPARC, unlike Intel). */
 #if defined AC_APPLE_UNIVERSAL_BUILD
-# if defined __BIG_ENDIAN__
-#  define MT_WORDS_BIGENDIAN 1
-# endif
+#if defined __BIG_ENDIAN__
+#define MT_WORDS_BIGENDIAN 1
+#endif
 #else
-# ifndef MT_WORDS_BIGENDIAN
+#ifndef MT_WORDS_BIGENDIAN
 /* #  undef MT_WORDS_BIGENDIAN */
-# endif
+#endif
 #endif
 
 /* Define if MT_WORDS_BIGENDIAN has been set. */
 #define MT_WORDS_BIGENDIAN_SET 1
 
 /** @brief Assert macro that always runs. */
-extern void fail_always_assert(const char* file, int line, const char* assertion, const char* message = 0) __attribute__((noreturn));
-#define always_assert(x, ...) do { if (!(x)) fail_always_assert(__FILE__, __LINE__, #x, ## __VA_ARGS__); } while (0)
+extern void fail_always_assert(const char* file, int line,
+                               const char* assertion, const char* message = 0)
+    __attribute__((noreturn));
+#define always_assert(x, ...)                                            \
+  do {                                                                   \
+    if (!(x)) fail_always_assert(__FILE__, __LINE__, #x, ##__VA_ARGS__); \
+  } while (0)
 #define mandatory_assert always_assert
 
 /** @brief Assert macro for invariants.
 
     masstree_invariant(x) is executed if --enable-invariants or
     --enable-assertions. */
-extern void fail_masstree_invariant(const char* file, int line, const char* assertion, const char* message = 0) __attribute__((noreturn));
+extern void fail_masstree_invariant(const char* file, int line,
+                                    const char* assertion,
+                                    const char* message = 0)
+    __attribute__((noreturn));
 #if (!defined(ENABLE_INVARIANTS) && ENABLE_ASSERTIONS) || ENABLE_INVARIANTS
-#define masstree_invariant(x, ...) do { if (!(x)) fail_masstree_invariant(__FILE__, __LINE__, #x, ## __VA_ARGS__); } while (0)
+#define masstree_invariant(x, ...)                                            \
+  do {                                                                        \
+    if (!(x)) fail_masstree_invariant(__FILE__, __LINE__, #x, ##__VA_ARGS__); \
+  } while (0)
 #else
-#define masstree_invariant(x, ...) do { } while (0)
+#define masstree_invariant(x, ...) \
+  do {                             \
+  } while (0)
 #endif
 
 /** @brief Assert macro for preconditions.
 
     masstree_precondition(x) is executed if --enable-preconditions or
     --enable-assertions. */
-extern void fail_masstree_precondition(const char* file, int line, const char* assertion, const char* message = 0) __attribute__((noreturn));
-#if (!defined(ENABLE_PRECONDITIONS) && ENABLE_ASSERTIONS) || ENABLE_PRECONDITIONS
-#define masstree_precondition(x, ...) do { if (!(x)) fail_masstree_precondition(__FILE__, __LINE__, #x, ## __VA_ARGS__); } while (0)
+extern void fail_masstree_precondition(const char* file, int line,
+                                       const char* assertion,
+                                       const char* message = 0)
+    __attribute__((noreturn));
+#if (!defined(ENABLE_PRECONDITIONS) && ENABLE_ASSERTIONS) || \
+    ENABLE_PRECONDITIONS
+#define masstree_precondition(x, ...)                                    \
+  do {                                                                   \
+    if (!(x))                                                            \
+      fail_masstree_precondition(__FILE__, __LINE__, #x, ##__VA_ARGS__); \
+  } while (0)
 #else
-#define masstree_precondition(x, ...) do { } while (0)
+#define masstree_precondition(x, ...) \
+  do {                                \
+  } while (0)
 #endif
 
 #ifndef invariant
