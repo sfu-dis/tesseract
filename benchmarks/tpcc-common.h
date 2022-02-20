@@ -1314,6 +1314,26 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   {
     ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
     memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
+
+    char str1[] = "order_line", str2[] = "oorder", str3[] = "customer";
+
+    order_line_key = (ermia::varstr *)ermia::MM::allocate(
+        sizeof(ermia::varstr) + sizeof(str1));
+    new (order_line_key)
+        ermia::varstr((char *)order_line_key + sizeof(ermia::varstr), 0);
+    order_line_key->copy_from(str1, sizeof(str1));
+
+    oorder_key = (ermia::varstr *)ermia::MM::allocate(sizeof(ermia::varstr) +
+                                                      sizeof(str2));
+    new (oorder_key)
+        ermia::varstr((char *)oorder_key + sizeof(ermia::varstr), 0);
+    oorder_key->copy_from(str2, sizeof(str2));
+
+    customer_key = (ermia::varstr *)ermia::MM::allocate(sizeof(ermia::varstr) +
+                                                        sizeof(str3));
+    new (customer_key)
+        ermia::varstr((char *)customer_key + sizeof(ermia::varstr), 0);
+    customer_key->copy_from(str3, sizeof(str3));
   }
 
   // XXX(stephentu): tune this
@@ -1393,6 +1413,9 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   ermia::FID schema_fid;
   ermia::FID order_line_fid;
 #endif
+  ermia::varstr *order_line_key;
+  ermia::varstr *oorder_key;
+  ermia::varstr *customer_key;
 };
 
 class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
