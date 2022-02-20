@@ -50,13 +50,13 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
 #else
   uint32_t scan_threads = config::scan_threads;
 #endif
-  uint32_t num_per_scan_thread = himark / scan_threads;
+  uint32_t total_per_scan_thread = himark / scan_threads;
   DLOG(INFO) << "scan_threads: " << scan_threads
-             << ", num_per_scan_thread: " << num_per_scan_thread;
+             << ", total_per_scan_thread: " << total_per_scan_thread;
 
   for (uint32_t i = 1; i < scan_threads; i++) {
-    uint32_t begin = i * num_per_scan_thread;
-    uint32_t end = (i + 1) * num_per_scan_thread;
+    uint32_t begin = i * total_per_scan_thread;
+    uint32_t end = (i + 1) * total_per_scan_thread;
     if (i == scan_threads - 1) {
       end = himark;
     }
@@ -79,7 +79,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   }
 
   dlog::log_block *lb = nullptr;
-  OID end = scan_threads == 1 ? himark : num_per_scan_thread;
+  OID end = scan_threads == 1 ? himark : total_per_scan_thread;
   for (OID oid = 0; oid <= end; oid++) {
     r = _scan(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
     if (r._val != RC_TRUE || ddl_failed) {
