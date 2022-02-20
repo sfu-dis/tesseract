@@ -15,9 +15,10 @@
  */
 #ifndef LCDF_STRING_HH
 #define LCDF_STRING_HH
-#include "string_base.hh"
 #include <string>
 #include <utility>
+
+#include "string_base.hh"
 namespace lcdf {
 
 class String : public String_base<String> {

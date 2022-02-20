@@ -15,10 +15,11 @@
  */
 #ifndef TIMESTAMP_HH
 #define TIMESTAMP_HH
-#include "compiler.hh"
-#include <time.h>
-#include <sys/time.h>
 #include <math.h>
+#include <sys/time.h>
+#include <time.h>
+
+#include "compiler.hh"
 
 #if HAVE_INT64_T_IS_LONG_LONG
 #define PRIuKVTS "llu"

@@ -21,7 +21,8 @@
 namespace Masstree {
 
 template <typename P>
-PROMISE(bool) tcursor<P>::find_insert(threadinfo& ti) {
+PROMISE(bool)
+tcursor<P>::find_insert(threadinfo& ti) {
   AWAIT find_locked(ti);
   original_n_ = n_;
   original_v_ = n_->full_unlocked_version_value();

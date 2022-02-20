@@ -1,8 +1,9 @@
 #ifndef GSTORE_LOCAL_VECTOR_HH
 #define GSTORE_LOCAL_VECTOR_HH 1
-#include <memory>
-#include <iterator>
 #include <assert.h>
+
+#include <iterator>
+#include <memory>
 
 template <typename T, int N, typename A = std::allocator<T> >
 class local_vector {
@@ -88,8 +89,7 @@ inline local_vector<T, N, A>::local_vector(const A& allocator)
     : r_(allocator) {}
 
 template <typename T, int N, typename A>
-local_vector<T, N, A>::local_vector(const local_vector<T, N, A>& x)
-    : r_(A()) {
+local_vector<T, N, A>::local_vector(const local_vector<T, N, A>& x) : r_(A()) {
   for (const T* it = x.r_.first_; it != x.r_.last_; ++it) push_back(*it);
 }
 
@@ -137,7 +137,7 @@ void local_vector<T, N, A>::grow(size_type n) {
   size_t newcap = capacity() * 2;
   while (newcap < n) newcap *= 2;
   T* m = r_.allocate(newcap);
-  for (T* it = r_.first_, * mit = m; it != r_.last_; ++it, ++mit) {
+  for (T *it = r_.first_, *mit = m; it != r_.last_; ++it, ++mit) {
     r_.construct(mit, std::move(*it));
     r_.destroy(it);
   }

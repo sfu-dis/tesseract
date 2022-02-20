@@ -15,10 +15,11 @@
  */
 #ifndef STR_HH
 #define STR_HH
-#include "compiler.hh"
-#include "string_base.hh"
 #include <stdarg.h>
 #include <stdio.h>
+
+#include "compiler.hh"
+#include "string_base.hh"
 namespace lcdf {
 
 struct Str : public String_base<Str> {
@@ -30,8 +31,7 @@ struct Str : public String_base<Str> {
 
   Str() : s(0), len(0) {}
   template <typename T>
-  Str(const String_base<T> &x)
-      : s(x.data()), len(x.length()) {}
+  Str(const String_base<T> &x) : s(x.data()), len(x.length()) {}
   Str(const char *s_) : s(s_), len(strlen(s_)) {}
   Str(const char *s_, int len_) : s(s_), len(len_) {}
   Str(const unsigned char *s_, int len_)

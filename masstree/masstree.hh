@@ -15,21 +15,22 @@
  */
 #ifndef MASSTREE_HH
 #define MASSTREE_HH
-#include "ksearch.hh"
-#include "str.hh"
-
+#include "../dbcore/sm-coroutine.h"
 #include "../dbcore/sm-oid.h"
 #include "../dbcore/xid.h"
-#include "../dbcore/sm-coroutine.h"
 #include "../macros.h"
+#include "ksearch.hh"
+#include "str.hh"
 
 namespace Masstree {
 using lcdf::Str;
 using lcdf::String;
 
-template <typename T> class value_print;
+template <typename T>
+class value_print;
 
-template <int LW = 15, int IW = LW> struct nodeparams {
+template <int LW = 15, int IW = LW>
+struct nodeparams {
   static constexpr int leaf_width = LW;
   static constexpr int internode_width = IW;
   static constexpr bool concurrent = true;
@@ -40,23 +41,36 @@ template <int LW = 15, int IW = LW> struct nodeparams {
   typedef uint64_t ikey_type;
 };
 
-template <int LW, int IW> constexpr int nodeparams<LW, IW>::leaf_width;
-template <int LW, int IW> constexpr int nodeparams<LW, IW>::internode_width;
-template <int LW, int IW> constexpr int nodeparams<LW, IW>::debug_level;
+template <int LW, int IW>
+constexpr int nodeparams<LW, IW>::leaf_width;
+template <int LW, int IW>
+constexpr int nodeparams<LW, IW>::internode_width;
+template <int LW, int IW>
+constexpr int nodeparams<LW, IW>::debug_level;
 
-template <typename P> class node_base;
-template <typename P> class leaf;
-template <typename P> class internode;
-template <typename P> class leafvalue;
-template <typename P> class key;
-template <typename P> class basic_table;
-template <typename P> class unlocked_tcursor;
-template <typename P> class tcursor;
+template <typename P>
+class node_base;
+template <typename P>
+class leaf;
+template <typename P>
+class internode;
+template <typename P>
+class leafvalue;
+template <typename P>
+class key;
+template <typename P>
+class basic_table;
+template <typename P>
+class unlocked_tcursor;
+template <typename P>
+class tcursor;
 
-template <typename P> struct scan_info;
+template <typename P>
+struct scan_info;
 
-template <typename P> class basic_table {
-public:
+template <typename P>
+class basic_table {
+ public:
   typedef P param_type;
   typedef node_base<P> node_type;
   typedef leaf<P> leaf_type;
@@ -76,14 +90,18 @@ public:
   PROMISE(bool) get(Str key, value_type &value, threadinfo &ti) const;
 
   template <typename F>
-  PROMISE(int) scan(Str firstkey, bool matchfirst, F &scanner,
-           ermia::TXN::xid_context *xc, threadinfo &ti) const;
+  PROMISE(int)
+  scan(Str firstkey, bool matchfirst, F &scanner, ermia::TXN::xid_context *xc,
+       threadinfo &ti) const;
   template <typename F>
-  PROMISE(int) rscan(Str firstkey, bool matchfirst, F &scanner,
-            ermia::TXN::xid_context *xc, threadinfo &ti) const;
+  PROMISE(int)
+  rscan(Str firstkey, bool matchfirst, F &scanner, ermia::TXN::xid_context *xc,
+        threadinfo &ti) const;
 
-  template <typename F> inline int modify(Str key, F &f, threadinfo &ti);
-  template <typename F> inline int modify_insert(Str key, F &f, threadinfo &ti);
+  template <typename F>
+  inline int modify(Str key, F &f, threadinfo &ti);
+  template <typename F>
+  inline int modify_insert(Str key, F &f, threadinfo &ti);
 
   inline void print(FILE *f = 0, int indent = 0) const;
   inline void set_tuple_array(ermia::oid_array *oa) { tuple_array_ = oa; }
@@ -94,20 +112,20 @@ public:
   ermia::oid_array *tuple_array_;
   ermia::oid_array *pdest_array_;
 
-public:
+ public:
   template <typename H, typename F>
-  PROMISE(int) scan(H helper, Str firstkey, bool matchfirst, F &scanner,
-           ermia::TXN::xid_context *xc, threadinfo &ti) const;
+  PROMISE(int)
+  scan(H helper, Str firstkey, bool matchfirst, F &scanner,
+       ermia::TXN::xid_context *xc, threadinfo &ti) const;
 
   template <bool IsNext, typename H, typename F>
-  PROMISE(bool) scan_init_or_next_value(H helper, F &scanner,
-                                       ermia::TXN::xid_context *xc,
-                                       threadinfo &ti,
-                                       scan_info<P> *si) const;
+  PROMISE(bool)
+  scan_init_or_next_value(H helper, F &scanner, ermia::TXN::xid_context *xc,
+                          threadinfo &ti, scan_info<P> *si) const;
 
   friend class unlocked_tcursor<P>;
   friend class tcursor<P>;
 };
 
-} // namespace Masstree
+}  // namespace Masstree
 #endif
