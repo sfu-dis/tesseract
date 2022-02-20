@@ -7,6 +7,7 @@ namespace ermia {
 
 struct Schema_base {
   uint64_t v;
+  uint64_t csn;
   uint64_t reformat_idx;
   uint64_t constraint_idx;
   uint64_t secondary_index_key_create_idx;

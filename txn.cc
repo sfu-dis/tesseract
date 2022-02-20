@@ -354,32 +354,34 @@ rc_t transaction::si_commit() {
   }
 
 #ifdef COPYDDL
-  if (is_ddl() && config::ddl_type != 4) {
+  if (is_ddl()) {
+    if (config::ddl_type != 4) {
 #if !defined(LAZYDDL)
-    // Start the second round of CDC
-    DLOG(INFO) << "Second CDC begins";
-    cdc_second_phase = true;
-    ddl_end.store(0);
-    std::vector<thread::Thread *> cdc_workers = changed_data_capture();
-    while (ddl_end.load() != config::cdc_threads && !ddl_failed) {
-    }
-    join_changed_data_capture_threads(cdc_workers);
-    cdc_second_phase = false;
-    DLOG(INFO) << "Second CDC ends";
-    if (config::enable_late_scan_join) {
-      ddl_exe->join_scan_workers();
-    }
-    if (ddl_failed) {
-      DLOG(INFO) << "DDL failed";
-      for (auto &v : new_td_map) {
-        OrderedIndex *index = v.second->GetPrimaryIndex();
-        index->SetTableDescriptor(this->old_td);
-        index->SetArrays(true);
-        v.second->GetTupleArray()->destroy(v.second->GetTupleArray());
+      // Start the second round of CDC
+      DLOG(INFO) << "Second CDC begins";
+      cdc_second_phase = true;
+      ddl_end.store(0);
+      std::vector<thread::Thread *> cdc_workers = changed_data_capture();
+      while (ddl_end.load() != config::cdc_threads && !ddl_failed) {
       }
-      return rc_t{RC_ABORT_INTERNAL};
-    }
+      join_changed_data_capture_threads(cdc_workers);
+      cdc_second_phase = false;
+      DLOG(INFO) << "Second CDC ends";
+      if (config::enable_late_scan_join) {
+        ddl_exe->join_scan_workers();
+      }
+      if (ddl_failed) {
+        DLOG(INFO) << "DDL failed";
+        for (auto &v : new_td_map) {
+          OrderedIndex *index = v.second->GetPrimaryIndex();
+          index->SetTableDescriptor(this->old_td);
+          index->SetArrays(true);
+          v.second->GetTupleArray()->destroy(v.second->GetTupleArray());
+        }
+        return rc_t{RC_ABORT_INTERNAL};
+      }
 #endif
+    }
 
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       write_record_t w = write_set.get(is_ddl(), i);
@@ -389,6 +391,7 @@ rc_t transaction::si_commit() {
       varstr value(tuple->get_value_start(), tuple->size);
       Schema_record *schema = (Schema_record *)value.data();
       schema->state = ddl::schema_state_type::READY;
+      schema->csn = xc->end;
 
       string_allocator().reset();
       varstr *new_value = string_allocator().next(sizeof(Schema_record));

@@ -1454,7 +1454,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(
               goto get_version_start_over;
             }
             if (visible) {
-              if (!scanner.visit_value(ka, cur_obj->GetPinnedTuple(), 0)) {
+              if (!scanner.visit_value(ka, cur_obj->GetPinnedTuple(), 0, 0)) {
                 goto done;
               }
               break;

@@ -1,10 +1,10 @@
 #pragma once
 
-#include "txn.h"
-#include "varstr.h"
+#include "../benchmarks/record/encoder.h"
 #include "engine_internal.h"
 #include "schema.h"
-#include "../benchmarks/record/encoder.h"
+#include "txn.h"
+#include "varstr.h"
 
 #if __clang__
 #include <experimental/coroutine>
@@ -139,21 +139,11 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
       : public ConcurrentMasstree::low_level_search_range_callback {
     XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback,
                            Schema_record *schema,
-                           TableDescriptor *table_descriptor, bool insert_oid)
-        : t(t),
-          caller_callback(caller_callback),
-          schema(schema),
-          table_descriptor(table_descriptor),
-          insert_oid(insert_oid) {}
-
-    XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback,
-                           Schema_record *schema,
                            TableDescriptor *table_descriptor)
         : t(t),
           caller_callback(caller_callback),
           schema(schema),
-          table_descriptor(table_descriptor),
-          insert_oid(false) {}
+          table_descriptor(table_descriptor) {}
 
     virtual void on_resp_node(
         const typename ConcurrentMasstree::node_opaque_t *n, uint64_t version);
@@ -161,14 +151,13 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
                         const typename ConcurrentMasstree::string_type &k,
                         dbtuple *v,
                         const typename ConcurrentMasstree::node_opaque_t *n,
-                        uint64_t version, OID oid);
+                        uint64_t version, OID oid, uint64_t version_csn);
 
    private:
     transaction *const t;
     SearchRangeCallback *const caller_callback;
     Schema_record *schema;
     TableDescriptor *table_descriptor;
-    bool insert_oid;
   };
 
   struct PurgeTreeWalker : public ConcurrentMasstree::tree_walk_callback {
@@ -249,7 +238,7 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
 
   PROMISE(void)
   ReadSchemaRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-                  OID *out_oid = nullptr) override;
+                   OID *out_oid = nullptr) override;
 
   PROMISE(void)
   GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,

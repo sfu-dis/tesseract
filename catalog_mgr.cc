@@ -56,6 +56,7 @@ void schematable_loader::load() {
   struct ermia::Schema_base order_line_schema, oorder_schema, customer_schema;
 #endif
   order_line_schema.v = 0;
+  order_line_schema.csn = 0;
   order_line_schema.reformat_idx = ermia::ddl::reformats.size();
   order_line_schema.secondary_index_key_create_idx = -1;
   ermia::ddl::reformats.push_back(add_column);
@@ -68,6 +69,7 @@ void schematable_loader::load() {
   v1.copy_from((char *)&order_line_schema, sizeof(order_line_schema));
 
   oorder_schema.v = 0;
+  oorder_schema.csn = 0;
   oorder_schema.secondary_index_key_create_idx = -1;
   oorder_schema.index = ermia::Catalog::GetTable("oorder")->GetPrimaryIndex();
   oorder_schema.td = ermia::Catalog::GetTable("oorder");
@@ -76,6 +78,7 @@ void schematable_loader::load() {
   v2.copy_from((char *)&oorder_schema, sizeof(oorder_schema));
 
   customer_schema.v = 0;
+  customer_schema.csn = 0;
   customer_schema.reformat_idx = -1;
   customer_schema.constraint_idx = -1;
   customer_schema.secondary_index_key_create_idx = -1;
@@ -233,6 +236,7 @@ void microbenchmark_schematable_loader::load() {
   struct ermia::Schema_base usertable_schema;
 #endif
   usertable_schema.v = 0;
+  usertable_schema.csn = 0;
   if (ermia::config::ddl_type != 4) {
     usertable_schema.reformat_idx = ermia::ddl::reformats.size();
     ermia::ddl::reformats.push_back(add_column);

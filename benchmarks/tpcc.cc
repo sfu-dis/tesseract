@@ -1678,9 +1678,7 @@ rc_t tpcc_worker::txn_ddl() {
                << schema_version;
     order_line_schema.v = schema_version;
     order_line_schema.old_v = old_schema_version;
-    order_line_schema.state = ermia::config::ddl_type == 4
-                                  ? ermia::ddl::schema_state_type::READY
-                                  : ermia::ddl::schema_state_type::NOT_READY;
+    order_line_schema.state = ermia::ddl::schema_state_type::NOT_READY;
 
     if (ermia::config::ddl_type != 4) {
       order_line_schema.old_td = old_order_line_td;
@@ -2305,9 +2303,7 @@ rc_t tpcc_worker::txn_ddl() {
                << schema_version;
     order_line_schema.v = schema_version;
     order_line_schema.old_v = old_schema_version;
-    order_line_schema.state = ermia::config::ddl_type == 4
-                                  ? ermia::ddl::schema_state_type::READY
-                                  : ermia::ddl::schema_state_type::NOT_READY;
+    order_line_schema.state = ermia::ddl::schema_state_type::NOT_READY;
     if (ermia::config::ddl_type != 4) {
       order_line_schema.old_td = old_order_line_td;
 

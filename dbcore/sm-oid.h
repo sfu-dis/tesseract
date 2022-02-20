@@ -240,7 +240,8 @@ class sm_oid_mgr {
     return oid_get_version(get_array(f), o, visitor_xc);
   }
   PROMISE(dbtuple *)
-  oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc);
+  oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc,
+                  uint64_t *version_csn = nullptr);
   dbtuple *oid_get_s2pl(oid_array *oa, OID o, TXN::xid_context *visitor_xc,
                         bool for_write, rc_t &out_rc);
 

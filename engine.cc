@@ -274,10 +274,11 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
     }
 
     dbtuple *tuple = nullptr;
+    uint64_t version_csn = 0;
     if (found) {
       // Key-OID mapping exists, now try to get the actual tuple to be sure
       tuple = AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(),
-                                            oid, t->xc);
+                                            oid, t->xc, &version_csn);
 
       if (schema && table_descriptor != schema->td) {
         volatile_write(rc._val, RC_ABORT_INTERNAL);
@@ -350,7 +351,8 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
     if (found) {
       volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
       if (rc._val == RC_TRUE && schema &&
-          schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION) {
+          schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION &&
+          version_csn < schema->csn) {
         auto *key_array = table_descriptor->GetKeyArray();
         fat_ptr *entry =
             config::enable_ddl_keys ? key_array->get(oid) : nullptr;
@@ -670,7 +672,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     const ConcurrentMasstree *btr_ptr,
     const typename ConcurrentMasstree::string_type &k, dbtuple *v,
     const typename ConcurrentMasstree::node_opaque_t *n, uint64_t version,
-    OID oid) {
+    OID oid, uint64_t version_csn) {
   MARK_REFERENCED(btr_ptr);
   MARK_REFERENCED(n);
   MARK_REFERENCED(version);
@@ -707,13 +709,8 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
 #endif
     auto *key_array = table_descriptor->GetKeyArray();
     fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
-#ifdef LAZYDDL
-    if (insert_oid && schema) {
-      varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
-      schema->index->InsertOID(t, *key, oid);
-    }
-#endif
-    if (schema && schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION) {
+    if (schema && schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION &&
+        version_csn < schema->csn) {
       varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
       varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
           key, vv, &(t->string_allocator()), schema->v,
