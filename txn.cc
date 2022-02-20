@@ -733,15 +733,14 @@ bool transaction::MasstreeCheckPhantom() {
 }
 
 PROMISE(rc_t)
-transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
-                    uint64_t schema_version) {
+transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v) {
   oid_array *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
 
   // first *updater* wins
   fat_ptr new_obj_ptr = NULL_PTR;
-  fat_ptr prev_obj_ptr = oidmgr->UpdateTuple(tuple_array, oid, v, xc,
-                                             &new_obj_ptr, schema_version);
+  fat_ptr prev_obj_ptr =
+      oidmgr->UpdateTuple(tuple_array, oid, v, xc, &new_obj_ptr);
   Object *prev_obj = (Object *)prev_obj_ptr.offset();
 
   if (prev_obj) {  // succeeded
@@ -872,12 +871,12 @@ transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
   }
 }
 
-OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple,
-                        uint64_t schema_version) {
+OID transaction::Insert(TableDescriptor *td, varstr *value,
+                        dbtuple **out_tuple) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
 
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   auto *tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
@@ -905,11 +904,11 @@ OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple,
 }
 
 OID transaction::DDLInsert(TableDescriptor *td, varstr *value,
-                           fat_ptr **out_entry, uint64_t schema_version) {
+                           fat_ptr **out_entry) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
 
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   Object *new_object = (Object *)new_head.offset();
@@ -953,13 +952,12 @@ retry:
 
 PROMISE(rc_t)
 transaction::DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value,
-                          uint64_t tuple_csn, dlog::log_block *block,
-                          uint64_t schema_version) {
+                          uint64_t tuple_csn, dlog::log_block *block) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
 
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   Object *new_object = (Object *)new_head.offset();
@@ -1012,13 +1010,12 @@ retry:
 }
 
 void transaction::DDLScanInsert(TableDescriptor *td, OID oid, varstr *value,
-                                dlog::log_block *block,
-                                uint64_t schema_version) {
+                                dlog::log_block *block) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
 
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   auto *new_tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
@@ -1034,13 +1031,12 @@ void transaction::DDLScanInsert(TableDescriptor *td, OID oid, varstr *value,
 }
 
 void transaction::DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value,
-                                dlog::log_block *block,
-                                uint64_t schema_version) {
+                                dlog::log_block *block) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
 
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   auto *new_tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
@@ -1061,13 +1057,12 @@ void transaction::DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value,
 
 PROMISE(rc_t)
 transaction::DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value,
-                          uint64_t tuple_csn, dlog::log_block *lb,
-                          uint64_t schema_version) {
+                          uint64_t tuple_csn, dlog::log_block *lb) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
 
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   Object *new_object = (Object *)new_head.offset();
@@ -1123,12 +1118,12 @@ retry:
 
 PROMISE(rc_t)
 transaction::DDLSchemaUnblock(TableDescriptor *td, OID oid, varstr *value,
-                              uint64_t tuple_csn, uint64_t schema_version) {
+                              uint64_t tuple_csn) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
 
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch, schema_version);
+  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
   ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
   ASSERT(new_head.asi_type() == 0);
   Object *new_object = (Object *)new_head.offset();

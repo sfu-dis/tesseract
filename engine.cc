@@ -349,7 +349,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 
     if (found) {
       volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
-      if (rc._val == RC_TRUE && schema && schema->v != tuple->schema_version &&
+      if (rc._val == RC_TRUE && schema &&
           schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION) {
         auto *key_array = table_descriptor->GetKeyArray();
         fat_ptr *entry =
@@ -448,7 +448,7 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
 
   // Insert to the table first
   dbtuple *tuple = nullptr;
-  OID oid = t->Insert(table_descriptor, &value, &tuple, schema ? schema->v : 0);
+  OID oid = t->Insert(table_descriptor, &value, &tuple);
 
   // Done with table record, now set up index
   ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
@@ -564,7 +564,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
     rc_t rc = rc_t{RC_INVALID};
-    rc = AWAIT t->DDLCDCInsert(schema->td, oid, &value, 0, nullptr, schema->v);
+    rc = AWAIT t->DDLCDCInsert(schema->td, oid, &value, 0);
     if (table_descriptor != schema->td) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
@@ -574,8 +574,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
 
   if (rc._val == RC_TRUE) {
     rc_t rc = rc_t{RC_INVALID};
-    rc = AWAIT t->Update(table_descriptor, oid, &key, &value,
-                         schema ? schema->v : 0);
+    rc = AWAIT t->Update(table_descriptor, oid, &key, &value);
     if (schema && table_descriptor != schema->td) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
@@ -714,8 +713,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
       schema->index->InsertOID(t, *key, oid);
     }
 #endif
-    if (schema && schema->v != ((dbtuple *)v)->schema_version &&
-        schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION) {
+    if (schema && schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION) {
       varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
       varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
           key, vv, &(t->string_allocator()), schema->v,
@@ -762,8 +760,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
         varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
             key, vv, &(t->string_allocator()), schema->v,
             old_table_descriptor->GetTupleFid(), oid);
-        rc_t rc = AWAIT t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0,
-                                        nullptr, schema->v);
+        rc_t rc = AWAIT t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
         if (rc._val != RC_TRUE) {
           return false;
         }

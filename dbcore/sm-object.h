@@ -48,8 +48,7 @@ class Object {
   fat_ptr csn_;
 
  public:
-  static fat_ptr Create(const varstr *tuple_value, epoch_num epoch,
-                        uint64_t schema_version);
+  static fat_ptr Create(const varstr *tuple_value, epoch_num epoch);
 
   Object()
       : alloc_epoch_(0),

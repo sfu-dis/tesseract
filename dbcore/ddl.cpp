@@ -204,7 +204,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                       continue;
                     }
                     if (t->DDLCDCInsert((*it)->new_td, o, new_value,
-                                        logrec->csn, nullptr, (*it)->new_v)
+                                        logrec->csn)
                             ._val != RC_TRUE) {
                       insert_fail++;
                     }
@@ -240,7 +240,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                       continue;
                     }
                     if (t->DDLCDCUpdate((*it)->new_td, o, new_value,
-                                        logrec->csn, nullptr, (*it)->new_v)
+                                        logrec->csn)
                             ._val != RC_TRUE) {
                       update_fail++;
                     }
@@ -307,8 +307,7 @@ rc_t ddl_executor::_scan(transaction *t, str_arena *arena, OID oid, FID old_fid,
 #ifdef COPYDDL
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
         fat_ptr *out_entry = nullptr;
-        OID o = t->DDLInsert((*it)->new_td, new_tuple_value, &out_entry,
-                             (*it)->new_v);
+        OID o = t->DDLInsert((*it)->new_td, new_tuple_value, &out_entry);
         if (!o) {
           continue;
         }
@@ -333,17 +332,15 @@ rc_t ddl_executor::_scan(transaction *t, str_arena *arena, OID oid, FID old_fid,
           }
         }
 #elif OPTLAZYDDL
-        t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end, lb,
-                        (*it)->new_v);
+        t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end, lb);
 #else
         t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value,
-                        !xc->end ? xc->begin : xc->end, lb, (*it)->new_v);
+                        !xc->end ? xc->begin : xc->end, lb);
 #endif
 #elif BLOCKDDL
-        t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value, lb, (*it)->new_v);
+        t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value, lb);
 #elif SIDDL
-        rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value,
-                           (*it)->new_v);
+        rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value);
         if (r._val != RC_TRUE) {
           ddl_failed = true;
           return rc_t{RC_ABORT_INTERNAL};
