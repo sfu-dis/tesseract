@@ -1716,9 +1716,9 @@ rc_t tpcc_worker::txn_ddl() {
     char str4[sizeof(ermia::schema_record)];
     ALWAYS_ASSERT(sizeof(ermia::schema_record) == sizeof(order_line_schema));
     memcpy(str4, &order_line_schema, sizeof(str4));
-    ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
+    ermia::varstr &new_schema_value = SchemaEncode(str(sizeof(str4)), str4);
 
-    schema_index->WriteSchemaTable(txn, rc, *order_line_key, v3);
+    schema_index->WriteSchemaTable(txn, rc, *order_line_key, new_schema_value);
     TryCatch(rc);
 
     // New a ddl executor
@@ -1862,7 +1862,7 @@ rc_t tpcc_worker::txn_ddl() {
     char str4[sizeof(ermia::schema_record)];
     ALWAYS_ASSERT(sizeof(ermia::schema_record) == sizeof(customer_schema));
     memcpy(str4, &customer_schema, sizeof(str4));
-    ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
+    ermia::varstr &v3 = SchemaEncode(str(sizeof(str4)), str4);
 
     schema_index->WriteSchemaTable(txn, rc, *customer_key, v3);
     TryCatch(rc);
@@ -1945,7 +1945,7 @@ rc_t tpcc_worker::txn_ddl() {
     ALWAYS_ASSERT(sizeof(ermia::schema_record) ==
                   sizeof(public_customer_schema));
     memcpy(str6, &public_customer_schema, sizeof(str6));
-    ermia::varstr &v4 = Encode_(str(sizeof(str6)), str6);
+    ermia::varstr &v4 = SchemaEncode(str(sizeof(str6)), str6);
 
     TryVerifyStrict(schema_index->InsertRecord(txn, k2, v4));
 
@@ -1972,8 +1972,8 @@ rc_t tpcc_worker::txn_ddl() {
 #endif
   } else if (ermia::config::ddl_example == 2) {
     char str1[] = "oorder", str2[] = "order_line";
-    ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1),
-                  &k2 = Encode_(str(sizeof(str2)), str2);
+    ermia::varstr &k1 = SchemaEncode(str(sizeof(str1)), str1),
+                  &k2 = SchemaEncode(str(sizeof(str2)), str2);
     ermia::varstr v1, v2;
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
@@ -2174,7 +2174,7 @@ rc_t tpcc_worker::txn_ddl() {
     char str4[sizeof(ermia::schema_record)];
     ALWAYS_ASSERT(sizeof(ermia::schema_record) == sizeof(oorder_schema));
     memcpy(str4, &oorder_schema, sizeof(str4));
-    ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
+    ermia::varstr &v3 = SchemaEncode(str(sizeof(str4)), str4);
 
     txn->set_old_td(old_oorder_td);
     txn->add_new_td_map(oorder_schema.td);
@@ -2205,7 +2205,7 @@ rc_t tpcc_worker::txn_ddl() {
 #endif
   } else if (ermia::config::ddl_example == 3) {
     char str1[] = "order_line";
-    ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1);
+    ermia::varstr &k1 = SchemaEncode(str(sizeof(str1)), str1);
     ermia::varstr v1;
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
@@ -2254,7 +2254,7 @@ rc_t tpcc_worker::txn_ddl() {
     char str4[sizeof(ermia::schema_record)];
     ALWAYS_ASSERT(sizeof(ermia::schema_record) == sizeof(order_line_schema));
     memcpy(str4, &order_line_schema, sizeof(str4));
-    ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
+    ermia::varstr &v3 = SchemaEncode(str(sizeof(str4)), str4);
 
     txn->set_old_td(order_line_schema.td);
     txn->add_old_td_map(order_line_schema.td);
@@ -2278,7 +2278,7 @@ rc_t tpcc_worker::txn_ddl() {
 #endif
   } else if (ermia::config::ddl_example == 4) {
     char str1[] = "order_line";
-    ermia::varstr &k1 = Encode_(str(sizeof(str1)), str1);
+    ermia::varstr &k1 = SchemaEncode(str(sizeof(str1)), str1);
     ermia::varstr v1;
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
@@ -2378,7 +2378,7 @@ rc_t tpcc_worker::txn_ddl() {
     char str4[sizeof(ermia::schema_record)];
     ALWAYS_ASSERT(sizeof(ermia::schema_record) == sizeof(order_line_schema));
     memcpy(str4, &order_line_schema, sizeof(str4));
-    ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
+    ermia::varstr &v3 = SchemaEncode(str(sizeof(str4)), str4);
 
     schema_index->WriteSchemaTable(txn, rc, k1, v3);
     TryCatch(rc);

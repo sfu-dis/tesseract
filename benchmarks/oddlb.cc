@@ -56,10 +56,9 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     schema_index->ReadSchemaRecord(txn, rc, *table_key, schema_value, &oid);
     TryVerifyRelaxed(rc);
 
-#ifdef COPYDDL
     struct ermia::schema_record schema;
-    ermia::schema_record *old_schema =
-        (ermia::schema_record *)schema_value.data();
+#ifdef COPYDDL
+    ermia::schema_record *old_schema = SchemaDecode(schema_value, schema);
 
     uint64_t schema_version = old_schema->v + 1;
     DLOG(INFO) << "Change to a new schema, version: " << schema_version;
@@ -117,8 +116,9 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       txn->set_old_td(old_schema->td);
       txn->add_old_td_map(old_schema->td);
     }
-    ermia::varstr &v2 = str(sizeof(ermia::schema_record));
-    v2.copy_from((char *)&schema, sizeof(ermia::schema_record));
+
+    ermia::varstr &v2 =
+        SchemaEncode(str(sizeof(ermia::schema_record)), (char *)&schema);
 
     rc = rc_t{RC_INVALID};
     schema_index->WriteSchemaTable(txn, rc, *table_key, v2);
@@ -140,16 +140,15 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #endif
     }
 #elif defined(BLOCKDDL)
-    struct ermia::schema_record schema;
     memcpy(&schema, (char *)schema_value.data(), sizeof(schema));
 
     uint64_t schema_version = schema.v + 1;
     DLOG(INFO) << "change to new schema: " << schema_version;
     schema.v = schema_version;
-    ermia::varstr &v1 = str(sizeof(ermia::schema_record));
-    v1.copy_from((char *)&schema, sizeof(ermia::schema_record));
+    ermia::varstr &v =
+        SchemaEncode(str(sizeof(ermia::schema_record)), (char *)&schema);
 
-    TryCatch(schema_index->WriteSchemaTable(txn, rc, *table_key, v1));
+    TryCatch(schema_index->WriteSchemaTable(txn, rc, *table_key, v));
 
     // New a ddl executor
     ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
@@ -164,14 +163,13 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
     TryCatch(ddl_exe->scan(txn, arena));
 #elif SIDDL
-    struct ermia::schema_record schema;
     memcpy(&schema, (char *)schema_value.data(), sizeof(schema));
 
     uint64_t schema_version = schema.v + 1;
     DLOG(INFO) << "change to new schema: " << schema_version;
     schema.v = schema_version;
-    ermia::varstr &v = str(sizeof(ermia::schema_record));
-    v.copy_from((char *)&schema, sizeof(ermia::schema_record));
+    ermia::varstr &v =
+        SchemaEncode(str(sizeof(ermia::schema_record)), (char *)&schema);
 
     txn->set_old_td(schema.td);
 
@@ -212,6 +210,9 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
 #endif
 
+    struct ermia::schema_record schema_record_temp;
+    struct ermia::schema_base schema_base_temp;
+
     for (uint i = 0; i < oddl_reps_per_tx; ++i) {
       uint64_t a =
           r.next() % oddl_initial_table_size;  // 0 ~ oddl_initial_table_size-1
@@ -222,7 +223,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       schema_index->ReadSchemaRecord(txn, rc, *table_key, v1, &oid);
       TryCatch(rc);
 
-      ermia::schema_record *schema = (ermia::schema_record *)v1.data();
+      ermia::schema_record *schema = SchemaDecode(v1, schema_record_temp);
       uint64_t schema_version = schema->v;
 
       const oddlb_kv_1::key k2(a);
@@ -243,7 +244,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         TryCatch(rc_t{RC_ABORT_USER});
       }
 
-      ermia::schema_base *record_test = (ermia::schema_base *)v2.data();
+      ermia::schema_base *record_test = SchemaDecode(v2, schema_base_temp);
 
 #ifdef SIDDL
       if (record_test->v != schema_version) {
@@ -302,6 +303,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
 
+    struct ermia::schema_record schema_temp;
     for (uint i = 0; i < oddl_reps_per_tx; ++i) {
       uint64_t a =
           r.next() % oddl_initial_table_size;  // 0 ~ oddl_initial_table_size-1
@@ -315,7 +317,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       schema_index->ReadSchemaRecord(txn, rc, *table_key, v, &oid);
       TryCatch(rc);
 
-      ermia::schema_record *schema = (ermia::schema_record *)v.data();
+      ermia::schema_record *schema = SchemaDecode(v, schema_temp);
       uint64_t schema_version = schema->v;
 
 #ifdef COPYDDL
