@@ -264,11 +264,11 @@ class transaction {
                                OID oid, uint64_t size,
                                dlog::log_record::logrec_type type) {
 #ifndef NDEBUG
-    /*for (uint32_t i = 0; i < is_ddl() && write_set.size(); ++i) {
+    for (uint32_t i = 0; i < is_ddl() && write_set.size(); ++i) {
       auto &w = write_set.entries_[i];
       ASSERT(w.entry);
       ASSERT(w.entry != entry);
-    }*/
+    }
 #endif
 
     if (!is_ddl() || (is_ddl() && is_allowed)) {
@@ -317,11 +317,16 @@ class transaction {
   }
 
 #ifdef BLOCKDDL
-  enum lock_type { SHARED, EXCLUSIVE };
+  enum lock_type { INVALID, SHARED, EXCLUSIVE };
 
-  inline std::unordered_map<FID, lock_type> get_table_set() {
-    return table_set;
-  }
+  struct lock_info {
+    FID fid;
+    lock_type lt;
+    lock_info() : fid(0), lt(lock_type::INVALID) {}
+    lock_info(FID fid, lock_type lt) : fid(fid), lt(lt) {}
+  };
+
+  inline std::vector<lock_info *> get_table_set() { return table_set; }
 
   inline void lock_table(FID table_fid, lock_type lt) {
     if (lt == lock_type::SHARED) {
@@ -332,12 +337,12 @@ class transaction {
   }
 
   inline void ReadLock(FID table_fid) {
-    if (table_set.find(table_fid) != table_set.end()) {
+    if (find(table_fid)) {
       return;
     }
     int ret = pthread_rwlock_rdlock(lock_map[table_fid]);
     LOG_IF(FATAL, ret);
-    table_set[table_fid] = lock_type::SHARED;
+    table_set.push_back(new lock_info(table_fid, lock_type::SHARED));
   }
 
   inline void ReadUnlock(FID table_fid) {
@@ -346,16 +351,17 @@ class transaction {
   }
 
   inline void WriteLock(FID table_fid) {
-    if (table_set[table_fid] == lock_type::SHARED) {
+    lock_info *l_info = find(table_fid);
+    if (l_info && l_info->lt == lock_type::SHARED) {
       // Upgrade shared lock to exclusive lock
       ReadUnlock(table_fid);
     }
-    if (table_set[table_fid] == lock_type::EXCLUSIVE) {
+    if (l_info && l_info->lt == lock_type::EXCLUSIVE) {
       return;
     }
     int ret = pthread_rwlock_wrlock(lock_map[table_fid]);
     LOG_IF(FATAL, ret);
-    table_set[table_fid] = lock_type::EXCLUSIVE;
+    table_set.push_back(new lock_info(table_fid, lock_type::EXCLUSIVE));
   }
 
   inline void WriteUnlock(FID table_fid) {
@@ -363,12 +369,29 @@ class transaction {
     LOG_IF(FATAL, ret);
   }
 
+  inline lock_info *find(FID table_fid) {
+    for (std::vector<lock_info *>::const_iterator it = table_set.begin();
+         it != table_set.end(); ++it) {
+      if ((*it)->fid == table_fid) {
+        return *it;
+      }
+    }
+    return nullptr;
+  }
+
+  inline void UnlockAll() {
+    for (std::vector<lock_info *>::const_iterator it = table_set.begin();
+         it != table_set.end(); ++it) {
+      ReadUnlock((*it)->fid);
+    }
+  }
+
  public:
   static std::unordered_map<FID, pthread_rwlock_t *> lock_map;
   static std::mutex map_rw_latch;
 
  protected:
-  std::unordered_map<FID, lock_type> table_set;
+  std::vector<lock_info *> table_set;
 #endif
 
  protected:

@@ -181,9 +181,7 @@ void transaction::Abort() {
   }
 
 #ifdef BLOCKDDL
-  for (auto &table : table_set) {
-    ReadUnlock(table.first);
-  }
+  UnlockAll();
 #endif
 }
 
@@ -231,9 +229,7 @@ rc_t transaction::commit() {
   }
 
 #ifdef BLOCKDDL
-  for (auto &table : table_set) {
-    ReadUnlock(table.first);
-  }
+  UnlockAll();
 #endif
 
   return ret;
