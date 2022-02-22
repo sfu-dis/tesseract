@@ -72,7 +72,7 @@ retry:
 
 #ifdef COPYDDL
   if (t->is_dml() || t->is_read_only()) {
-    Schema_record *schema = (Schema_record *)value.data();
+    schema_record *schema = (schema_record *)value.data();
     if (schema->state == ddl::schema_state_type::NOT_READY) {
       if (schema->ddl_type != ddl::ddl_type::COPY_ONLY ||
           config::enable_cdc_schema_lock) {
@@ -169,7 +169,7 @@ void Engine::CreateIndex(const char *table_name, const std::string &index_name,
 PROMISE(rc_t)
 ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
                               const varstr *end_key, ScanCallback &callback,
-                              Schema_record *schema) {
+                              schema_record *schema) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 
@@ -199,7 +199,7 @@ PROMISE(rc_t)
 ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
                                      const varstr *end_key,
                                      ScanCallback &callback,
-                                     Schema_record *schema) {
+                                     schema_record *schema) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 
@@ -230,7 +230,7 @@ std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
 PROMISE(void)
 ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
                                    varstr &value, OID *out_oid,
-                                   Schema_record *schema) {
+                                   schema_record *schema) {
   OID oid = INVALID_OID;
   rc = {RC_INVALID};
   ConcurrentMasstree::versioned_node_t sinfo;
@@ -441,7 +441,7 @@ ConcurrentMasstreeIndex::InsertOID(transaction *t, const varstr &key, OID oid) {
 PROMISE(rc_t)
 ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
                                       varstr &value, OID *out_oid,
-                                      Schema_record *schema) {
+                                      schema_record *schema) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
@@ -502,7 +502,7 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
 
 PROMISE(rc_t)
 ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
-                                      varstr &value, Schema_record *schema) {
+                                      varstr &value, schema_record *schema) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
@@ -588,7 +588,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
 
 PROMISE(rc_t)
 ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
-                                      Schema_record *schema) {
+                                      schema_record *schema) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 

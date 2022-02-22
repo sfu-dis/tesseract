@@ -5,7 +5,7 @@
 
 namespace ermia {
 
-struct Schema_record;
+struct schema_record;
 
 // Base class for user-facing index implementations
 class OrderedIndex {
@@ -46,7 +46,7 @@ class OrderedIndex {
   // the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
   virtual PROMISE(void)
       GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-                OID *out_oid = nullptr, Schema_record *schema = nullptr) = 0;
+                OID *out_oid = nullptr, schema_record *schema = nullptr) = 0;
 
   // Return the OID that corresponds the given key
   virtual PROMISE(void)
@@ -60,12 +60,12 @@ class OrderedIndex {
   // If the does not already exist and config::upsert is set to true, insert.
   virtual PROMISE(rc_t)
       UpdateRecord(transaction *t, const varstr &key, varstr &value,
-                   Schema_record *schema = nullptr) = 0;
+                   schema_record *schema = nullptr) = 0;
 
   // Insert a record with a key of length keylen.
   virtual PROMISE(rc_t)
       InsertRecord(transaction *t, const varstr &key, varstr &value,
-                   OID *out_oid = nullptr, Schema_record *schema = nullptr) = 0;
+                   OID *out_oid = nullptr, schema_record *schema = nullptr) = 0;
 
   // Map a key to an existing OID. Could be used for primary or secondary index.
   virtual PROMISE(bool)
@@ -75,18 +75,18 @@ class OrderedIndex {
   // search [start_key, +infty)
   virtual PROMISE(rc_t)
       Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-           ScanCallback &callback, Schema_record *schema = nullptr) = 0;
+           ScanCallback &callback, schema_record *schema = nullptr) = 0;
   // Search (*end_key, start_key] if end_key is not null, otherwise
   // search (-infty, start_key] (starting at start_key and traversing
   // backwards)
   virtual PROMISE(rc_t)
       ReverseScan(transaction *t, const varstr &start_key,
                   const varstr *end_key, ScanCallback &callback,
-                  Schema_record *schema = nullptr) = 0;
+                  schema_record *schema = nullptr) = 0;
 
   // Default implementation calls put() with NULL (zero-length) value
   virtual PROMISE(rc_t) RemoveRecord(transaction *t, const varstr &key,
-                                     Schema_record *schema = nullptr) = 0;
+                                     schema_record *schema = nullptr) = 0;
 
   virtual size_t Size() = 0;
   virtual std::map<std::string, uint64_t> Clear() = 0;

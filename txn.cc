@@ -385,13 +385,13 @@ rc_t transaction::si_commit() {
       dbtuple *tuple = (dbtuple *)object->GetPayload();
 
       varstr value(tuple->get_value_start(), tuple->size);
-      Schema_record *schema = (Schema_record *)value.data();
+      schema_record *schema = (schema_record *)value.data();
       schema->state = ddl::schema_state_type::READY;
       schema->csn = xc->end;
 
       string_allocator().reset();
-      varstr *new_value = string_allocator().next(sizeof(Schema_record));
-      new_value->copy_from((char *)schema, sizeof(Schema_record));
+      varstr *new_value = string_allocator().next(sizeof(schema_record));
+      new_value->copy_from((char *)schema, sizeof(schema_record));
 
       ALWAYS_ASSERT(
           DDLSchemaUnblock(schema_td, w.oid, new_value, xc->end)._val ==
@@ -708,7 +708,7 @@ bool transaction::DMLConsistencyHandler() {
         tmp_xc->begin = begin;
         return true;
       }
-      Schema_record *schema = (Schema_record *)tuple_v.data();
+      schema_record *schema = (schema_record *)tuple_v.data();
       if ((schema->ddl_type == ddl::ddl_type::COPY_ONLY ||
            schema->ddl_type == ddl::ddl_type::COPY_VERIFICATION) &&
           schema->td != v.first) {

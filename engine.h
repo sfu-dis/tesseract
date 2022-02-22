@@ -138,7 +138,7 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
   struct XctSearchRangeCallback
       : public ConcurrentMasstree::low_level_search_range_callback {
     XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback,
-                           Schema_record *schema,
+                           schema_record *schema,
                            TableDescriptor *table_descriptor)
         : t(t),
           caller_callback(caller_callback),
@@ -156,7 +156,7 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
    private:
     transaction *const t;
     SearchRangeCallback *const caller_callback;
-    Schema_record *schema;
+    schema_record *schema;
     TableDescriptor *table_descriptor;
   };
 
@@ -242,25 +242,25 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
 
   PROMISE(void)
   GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-            OID *out_oid = nullptr, Schema_record *schema = nullptr) override;
+            OID *out_oid = nullptr, schema_record *schema = nullptr) override;
   PROMISE(rc_t)
   UpdateRecord(transaction *t, const varstr &key, varstr &value,
-               Schema_record *schema = nullptr) override;
+               schema_record *schema = nullptr) override;
   PROMISE(rc_t)
   InsertRecord(transaction *t, const varstr &key, varstr &value,
                OID *out_oid = nullptr,
-               Schema_record *schema = nullptr) override;
+               schema_record *schema = nullptr) override;
   PROMISE(rc_t)
   RemoveRecord(transaction *t, const varstr &key,
-               Schema_record *schema = nullptr) override;
+               schema_record *schema = nullptr) override;
   PROMISE(bool) InsertOID(transaction *t, const varstr &key, OID oid) override;
 
   PROMISE(rc_t)
   Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-       ScanCallback &callback, Schema_record *schema = nullptr) override;
+       ScanCallback &callback, schema_record *schema = nullptr) override;
   PROMISE(rc_t)
   ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
-              ScanCallback &callback, Schema_record *schema = nullptr) override;
+              ScanCallback &callback, schema_record *schema = nullptr) override;
 
   inline size_t Size() override { return masstree_.size(); }
   std::map<std::string, uint64_t> Clear() override;

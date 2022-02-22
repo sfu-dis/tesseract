@@ -74,9 +74,9 @@ rc_t tpcc_worker::txn_new_order() {
   schema_index->ReadSchemaRecord(txn, rc, *customer_key, v3, &oid);
   TryVerifyRelaxed(rc);
 
-  ermia::Schema_record *order_line_schema = (ermia::Schema_record *)v1.data();
-  ermia::Schema_record *oorder_schema = (ermia::Schema_record *)v2.data();
-  ermia::Schema_record *customer_schema = (ermia::Schema_record *)v3.data();
+  ermia::schema_record *order_line_schema = (ermia::schema_record *)v1.data();
+  ermia::schema_record *oorder_schema = (ermia::schema_record *)v2.data();
+  ermia::schema_record *customer_schema = (ermia::schema_record *)v3.data();
 
   const customer::key k_c(warehouse_id, districtID, customerID);
   ermia::varstr valptr;
@@ -362,8 +362,8 @@ rc_t tpcc_worker::txn_payment() {
   schema_index->ReadSchemaRecord(txn, rc, *customer_key, v2, &oid);
   TryVerifyRelaxed(rc);
 
-  ermia::Schema_record *schema = (ermia::Schema_record *)v1.data();
-  ermia::Schema_record *customer_schema = (ermia::Schema_record *)v2.data();
+  ermia::schema_record *schema = (ermia::schema_record *)v1.data();
+  ermia::schema_record *customer_schema = (ermia::schema_record *)v2.data();
 
 #ifdef COPYDDL
   ermia::ConcurrentMasstreeIndex *customer_table_index =
@@ -608,9 +608,9 @@ rc_t tpcc_worker::txn_delivery() {
   schema_index->ReadSchemaRecord(txn, rc, *customer_key, v3, &oid);
   TryVerifyRelaxed(rc);
 
-  ermia::Schema_record *order_line_schema = (ermia::Schema_record *)v1.data();
-  ermia::Schema_record *oorder_schema = (ermia::Schema_record *)v2.data();
-  ermia::Schema_record *customer_schema = (ermia::Schema_record *)v3.data();
+  ermia::schema_record *order_line_schema = (ermia::schema_record *)v1.data();
+  ermia::schema_record *oorder_schema = (ermia::schema_record *)v2.data();
+  ermia::schema_record *customer_schema = (ermia::schema_record *)v3.data();
 
 #ifdef COPYDDL
   ermia::ConcurrentMasstreeIndex *oorder_table_index =
@@ -859,9 +859,9 @@ rc_t tpcc_worker::txn_order_status() {
   schema_index->ReadSchemaRecord(txn, rc, *customer_key, v3, &oid);
   TryVerifyRelaxed(rc);
 
-  ermia::Schema_record *order_line_schema = (ermia::Schema_record *)v1.data();
-  ermia::Schema_record *oorder_schema = (ermia::Schema_record *)v2.data();
-  ermia::Schema_record *customer_schema = (ermia::Schema_record *)v3.data();
+  ermia::schema_record *order_line_schema = (ermia::schema_record *)v1.data();
+  ermia::schema_record *oorder_schema = (ermia::schema_record *)v2.data();
+  ermia::schema_record *customer_schema = (ermia::schema_record *)v3.data();
 
 #ifdef COPYDDL
   ermia::ConcurrentMasstreeIndex *customer_table_index =
@@ -1085,7 +1085,7 @@ rc_t tpcc_worker::txn_stock_level() {
   schema_index->ReadSchemaRecord(txn, rc, *order_line_key, v1, &oid);
   TryVerifyRelaxed(rc);
 
-  ermia::Schema_record *order_line_schema = (ermia::Schema_record *)v1.data();
+  ermia::schema_record *order_line_schema = (ermia::schema_record *)v1.data();
 
   // NB: since txn_stock_level() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
@@ -1217,9 +1217,9 @@ rc_t tpcc_worker::txn_credit_check() {
   schema_index->ReadSchemaRecord(txn, rc, *customer_key, v3, &oid);
   TryVerifyRelaxed(rc);
 
-  ermia::Schema_record *order_line_schema = (ermia::Schema_record *)v1.data();
-  ermia::Schema_record *oorder_schema = (ermia::Schema_record *)v2.data();
-  ermia::Schema_record *customer_schema = (ermia::Schema_record *)v3.data();
+  ermia::schema_record *order_line_schema = (ermia::schema_record *)v1.data();
+  ermia::schema_record *oorder_schema = (ermia::schema_record *)v2.data();
+  ermia::schema_record *customer_schema = (ermia::schema_record *)v3.data();
 
 #ifdef COPYDDL
   ermia::ConcurrentMasstreeIndex *customer_table_index =
@@ -1374,7 +1374,7 @@ rc_t tpcc_worker::txn_query2() {
   schema_index->ReadSchemaRecord(txn, rc, *order_line_key, v1, &oid);
   TryVerifyRelaxed(rc);
 
-  ermia::Schema_record *schema = (ermia::Schema_record *)v1.data();
+  ermia::schema_record *schema = (ermia::schema_record *)v1.data();
 
   static thread_local tpcc_table_scanner r_scanner(arena);
   r_scanner.clear();
@@ -1620,14 +1620,14 @@ rc_t tpcc_worker::txn_ddl() {
   schema_index->ReadSchemaRecord(txn, rc, *order_line_key, v1, &oid);
   TryVerifyRelaxed(rc);
 
-  struct ermia::Schema_record schema;
+  struct ermia::schema_record schema;
   memcpy(&schema, (char *)v1.data(), sizeof(schema));
 
   uint64_t schema_version = schema.v + 1;
   DLOG(INFO) << "change to new schema: " << schema_version;
   schema.v = schema_version;
   schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
-  char str2[sizeof(ermia::Schema_record)];
+  char str2[sizeof(ermia::schema_record)];
   memcpy(str2, &schema, sizeof(str2));
   ermia::varstr &v2 = str(sizeof(str2));
   v2.copy_from(str2, sizeof(str2));
@@ -1661,7 +1661,7 @@ rc_t tpcc_worker::txn_ddl() {
     schema_index->ReadSchemaRecord(txn, rc, *order_line_key, v1, &oid);
     TryVerifyRelaxed(rc);
 
-    struct ermia::Schema_record order_line_schema;
+    struct ermia::schema_record order_line_schema;
     memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
 
     ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
@@ -1713,8 +1713,8 @@ rc_t tpcc_worker::txn_ddl() {
 
     order_line_schema.ddl_type =
         ermia::ddl::ddl_type_map(ermia::config::ddl_type);
-    char str4[sizeof(ermia::Schema_record)];
-    ALWAYS_ASSERT(sizeof(ermia::Schema_record) == sizeof(order_line_schema));
+    char str4[sizeof(ermia::schema_record)];
+    ALWAYS_ASSERT(sizeof(ermia::schema_record) == sizeof(order_line_schema));
     memcpy(str4, &order_line_schema, sizeof(str4));
     ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
 
@@ -1746,7 +1746,7 @@ rc_t tpcc_worker::txn_ddl() {
     schema_index->ReadSchemaRecord(txn, rc, *customer_key, v1, &oid);
     TryVerifyRelaxed(rc);
 
-    struct ermia::Schema_record customer_schema;
+    struct ermia::schema_record customer_schema;
     memcpy(&customer_schema, (char *)v1.data(), sizeof(customer_schema));
 
     ermia::ConcurrentMasstreeIndex *old_customer_table_index =
@@ -1859,8 +1859,8 @@ rc_t tpcc_worker::txn_ddl() {
 
     customer_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
 
-    char str4[sizeof(ermia::Schema_record)];
-    ALWAYS_ASSERT(sizeof(ermia::Schema_record) == sizeof(customer_schema));
+    char str4[sizeof(ermia::schema_record)];
+    ALWAYS_ASSERT(sizeof(ermia::schema_record) == sizeof(customer_schema));
     memcpy(str4, &customer_schema, sizeof(str4));
     ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
 
@@ -1880,7 +1880,7 @@ rc_t tpcc_worker::txn_ddl() {
     ermia::varstr &k2 = str(sizeof(str5));
     k2.copy_from(str5, sizeof(str5));
 
-    struct ermia::Schema_record public_customer_schema;
+    struct ermia::schema_record public_customer_schema;
     public_customer_schema.v = schema_version;
     public_customer_schema.old_v = old_schema_version;
     public_customer_schema.state = ermia::ddl::schema_state_type::NOT_READY;
@@ -1941,8 +1941,8 @@ rc_t tpcc_worker::txn_ddl() {
 
     public_customer_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
 
-    char str6[sizeof(ermia::Schema_record)];
-    ALWAYS_ASSERT(sizeof(ermia::Schema_record) ==
+    char str6[sizeof(ermia::schema_record)];
+    ALWAYS_ASSERT(sizeof(ermia::schema_record) ==
                   sizeof(public_customer_schema));
     memcpy(str6, &public_customer_schema, sizeof(str6));
     ermia::varstr &v4 = Encode_(str(sizeof(str6)), str6);
@@ -1986,10 +1986,10 @@ rc_t tpcc_worker::txn_ddl() {
     schema_index->ReadSchemaRecord(txn, rc, k2, v2, &oid);
     TryVerifyRelaxed(rc);
 
-    struct ermia::Schema_record oorder_schema;
+    struct ermia::schema_record oorder_schema;
     memcpy(&oorder_schema, (char *)v1.data(), sizeof(oorder_schema));
 
-    struct ermia::Schema_record order_line_schema;
+    struct ermia::schema_record order_line_schema;
     memcpy(&order_line_schema, (char *)v2.data(), sizeof(order_line_schema));
 
     ermia::ConcurrentMasstreeIndex *old_oorder_table_index =
@@ -2171,8 +2171,8 @@ rc_t tpcc_worker::txn_ddl() {
 
     oorder_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
 
-    char str4[sizeof(ermia::Schema_record)];
-    ALWAYS_ASSERT(sizeof(ermia::Schema_record) == sizeof(oorder_schema));
+    char str4[sizeof(ermia::schema_record)];
+    ALWAYS_ASSERT(sizeof(ermia::schema_record) == sizeof(oorder_schema));
     memcpy(str4, &oorder_schema, sizeof(str4));
     ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
 
@@ -2213,7 +2213,7 @@ rc_t tpcc_worker::txn_ddl() {
     schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
     TryVerifyRelaxed(rc);
 
-    struct ermia::Schema_record order_line_schema;
+    struct ermia::schema_record order_line_schema;
     memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
 
     ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
@@ -2251,8 +2251,8 @@ rc_t tpcc_worker::txn_ddl() {
     order_line_schema.index = new_order_line_table_index;
     order_line_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
     order_line_schema.show_index = true;
-    char str4[sizeof(ermia::Schema_record)];
-    ALWAYS_ASSERT(sizeof(ermia::Schema_record) == sizeof(order_line_schema));
+    char str4[sizeof(ermia::schema_record)];
+    ALWAYS_ASSERT(sizeof(ermia::schema_record) == sizeof(order_line_schema));
     memcpy(str4, &order_line_schema, sizeof(str4));
     ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
 
@@ -2286,7 +2286,7 @@ rc_t tpcc_worker::txn_ddl() {
     schema_index->ReadSchemaRecord(txn, rc, k1, v1, &oid);
     TryVerifyRelaxed(rc);
 
-    struct ermia::Schema_record order_line_schema;
+    struct ermia::schema_record order_line_schema;
     memcpy(&order_line_schema, (char *)v1.data(), sizeof(order_line_schema));
 
     ermia::ConcurrentMasstreeIndex *old_order_line_table_index =
@@ -2375,8 +2375,8 @@ rc_t tpcc_worker::txn_ddl() {
     }
 
     order_line_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
-    char str4[sizeof(ermia::Schema_record)];
-    ALWAYS_ASSERT(sizeof(ermia::Schema_record) == sizeof(order_line_schema));
+    char str4[sizeof(ermia::schema_record)];
+    ALWAYS_ASSERT(sizeof(ermia::schema_record) == sizeof(order_line_schema));
     memcpy(str4, &order_line_schema, sizeof(str4));
     ermia::varstr &v3 = Encode_(str(sizeof(str4)), str4);
 

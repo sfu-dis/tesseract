@@ -5,7 +5,7 @@
 
 namespace ermia {
 
-struct Schema_base {
+struct schema_base {
   uint64_t v;
   uint64_t csn;
   uint64_t reformat_idx;
@@ -17,7 +17,7 @@ struct Schema_base {
   bool show_index;  // simulate no index
 };
 
-struct Schema_record : public Schema_base {
+struct schema_record : public schema_base {
   TableDescriptor *old_td;
   ddl::schema_state_type state;
   uint64_t old_v;

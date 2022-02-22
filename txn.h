@@ -31,7 +31,7 @@ extern volatile bool cdc_test;
 extern std::atomic<uint64_t> ddl_end;
 extern uint64_t *_tls_durable_lsn CACHE_ALIGNED;
 
-struct Schema_record;
+struct schema_record;
 
 #if defined(SSN) || defined(SSI)
 #define set_tuple_xstamp(tuple, s)                                    \
