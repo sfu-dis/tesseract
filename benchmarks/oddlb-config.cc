@@ -4,7 +4,7 @@
 #include "bench.h"
 #include "oddlb.h"
 
-uint oddl_reps_per_tx = 1;
+uint oddl_reps_per_tx = 10;
 uint oddl_initial_table_size = 10000000;
 
 void oddlb_create_db(ermia::Engine *db) {

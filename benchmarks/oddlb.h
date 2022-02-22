@@ -12,6 +12,7 @@
 #include "record/encoder.h"
 #include "record/inline_str.h"
 
+extern uint oddl_reps_per_tx;
 extern uint oddl_initial_table_size;
 
 struct OddlbWorkload {
