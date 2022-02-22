@@ -1,12 +1,10 @@
 #ifndef _NDB_BENCH_ENCODER_H_
 #define _NDB_BENCH_ENCODER_H_
 
-#include <stdint.h>
-
 #include <string>
-
-#include "../util.h"
+#include <stdint.h>
 #include "serializer.h"
+#include "../util.h"
 
 #ifdef MASSTREE
 #include "../masstree/str.hh"
@@ -99,9 +97,11 @@ static inline size_t Size(const T &t) {
 #define STRUCT_EQ_X(tpe, name) \
   if (this->name != other.name) return false;
 
-#define STRUCT_PARAM_FIRST_X(tpe, name) const tpe &name
+#define STRUCT_PARAM_FIRST_X(tpe, name) \
+  const tpe& name
 
-#define STRUCT_PARAM_REST_X(tpe, name) , const tpe &name
+#define STRUCT_PARAM_REST_X(tpe, name) \
+  , const tpe& name
 
 #define STRUCT_INITLIST_FIRST_X(tpe, name) name(name)
 
@@ -237,62 +237,62 @@ static inline size_t Size(const T &t) {
 // nbytes(const T *obj)
 
 // implements encoded versions of the above functions
-#define DO_STRUCT_ENCODE_REST(name)                                           \
-  ALWAYS_INLINE const uint8_t *write(uint8_t *buf, const struct name *obj)    \
-      const {                                                                 \
-    encode_write(buf, obj);                                                   \
-    return buf;                                                               \
-  }                                                                           \
-  ALWAYS_INLINE const struct name *read(const uint8_t *buf, struct name *obj) \
-      const {                                                                 \
-    encode_read(buf, obj);                                                    \
-    return obj;                                                               \
-  }                                                                           \
-  ALWAYS_INLINE const struct name *prefix_read(                               \
-      const uint8_t *buf, struct name *obj, size_t prefix) const {            \
-    encode_prefix_read(buf, obj, prefix);                                     \
-    return obj;                                                               \
-  }                                                                           \
-  ALWAYS_INLINE const struct name *failsafe_read(                             \
-      const uint8_t *buf, size_t nbytes, struct name *obj) const {            \
-    if (unlikely(!encode_failsafe_read(buf, nbytes, obj))) return nullptr;    \
-    return obj;                                                               \
-  }                                                                           \
-  ALWAYS_INLINE size_t nbytes(const struct name *obj) const {                 \
-    return encode_nbytes(obj);                                                \
+#define DO_STRUCT_ENCODE_REST(name)                                         \
+  ALWAYS_INLINE const uint8_t *write(uint8_t *buf,                          \
+                                            const struct name *obj) const { \
+    encode_write(buf, obj);                                                 \
+    return buf;                                                             \
+  }                                                                         \
+  ALWAYS_INLINE const struct name *read(const uint8_t *buf,                 \
+                                               struct name *obj) const {    \
+    encode_read(buf, obj);                                                  \
+    return obj;                                                             \
+  }                                                                         \
+  ALWAYS_INLINE const struct name *prefix_read(                             \
+      const uint8_t *buf, struct name *obj, size_t prefix) const {          \
+    encode_prefix_read(buf, obj, prefix);                                   \
+    return obj;                                                             \
+  }                                                                         \
+  ALWAYS_INLINE const struct name *failsafe_read(                           \
+      const uint8_t *buf, size_t nbytes, struct name *obj) const {          \
+    if (unlikely(!encode_failsafe_read(buf, nbytes, obj))) return nullptr;  \
+    return obj;                                                             \
+  }                                                                         \
+  ALWAYS_INLINE size_t nbytes(const struct name *obj) const {               \
+    return encode_nbytes(obj);                                              \
   }
 
 // implements direct pass-through version of the above functions
-#define DO_STRUCT_PASS_THROUGH_REST(name)                                     \
-  ALWAYS_INLINE const uint8_t *write(uint8_t *buf, const struct name *obj)    \
-      const {                                                                 \
-    *((struct name *)buf) = *obj;                                             \
-    return buf;                                                               \
-  }                                                                           \
-  ALWAYS_INLINE const struct name *read(const uint8_t *buf, struct name *obj) \
-      const {                                                                 \
-    *obj = *((const struct name *)buf);                                       \
-    return obj;                                                               \
-  }                                                                           \
-  ALWAYS_INLINE const struct name *prefix_read(                               \
-      const uint8_t *buf, struct name *obj, size_t prefix) const {            \
-    *obj = *((const struct name *)buf);                                       \
-    return obj;                                                               \
-  }                                                                           \
-  ALWAYS_INLINE const struct name *failsafe_read(                             \
-      const uint8_t *buf, size_t nbytes, struct name *obj) const {            \
-    if (unlikely(nbytes < sizeof(*obj))) return nullptr;                      \
-    *obj = *((const struct name *)buf);                                       \
-    return obj;                                                               \
-  }                                                                           \
-  ALWAYS_INLINE size_t nbytes(const struct name *obj) const {                 \
-    return sizeof(*obj);                                                      \
+#define DO_STRUCT_PASS_THROUGH_REST(name)                                   \
+  ALWAYS_INLINE const uint8_t *write(uint8_t *buf,                          \
+                                            const struct name *obj) const { \
+    *((struct name *)buf) = *obj;                                           \
+    return buf;                                                             \
+  }                                                                         \
+  ALWAYS_INLINE const struct name *read(const uint8_t *buf,                 \
+                                               struct name *obj) const {    \
+    *obj = *((const struct name *)buf);                                     \
+    return obj;                                                             \
+  }                                                                         \
+  ALWAYS_INLINE const struct name *prefix_read(                             \
+      const uint8_t *buf, struct name *obj, size_t prefix) const {          \
+    *obj = *((const struct name *)buf);                                     \
+    return obj;                                                             \
+  }                                                                         \
+  ALWAYS_INLINE const struct name *failsafe_read(                           \
+      const uint8_t *buf, size_t nbytes, struct name *obj) const {          \
+    if (unlikely(nbytes < sizeof(*obj))) return nullptr;                    \
+    *obj = *((const struct name *)buf);                                     \
+    return obj;                                                             \
+  }                                                                         \
+  ALWAYS_INLINE size_t nbytes(const struct name *obj) const {               \
+    return sizeof(*obj);                                                    \
   }
 
 #ifdef MASSTREE
 #define DO_STRUCT_MASSTREE(name)                                         \
-  ALWAYS_INLINE const struct name *read(lcdf::Str buf, struct name *obj) \
-      const {                                                            \
+  ALWAYS_INLINE const struct name *read(lcdf::Str buf,                   \
+                                               struct name *obj) const { \
     return read((const uint8_t *)buf.data(), obj);                       \
   }
 #else
@@ -312,12 +312,12 @@ static inline size_t Size(const T &t) {
     return ret;                                                               \
   }                                                                           \
   ALWAYS_INLINE const struct name *read(const std::string &buf,               \
-                                        struct name *obj) const {             \
+                                               struct name *obj) const {      \
     return read((const uint8_t *)buf.data(), obj);                            \
   }                                                                           \
   DO_STRUCT_MASSTREE(name)                                                    \
-  ALWAYS_INLINE const struct name *read(const char *buf, struct name *obj)    \
-      const {                                                                 \
+  ALWAYS_INLINE const struct name *read(const char *buf,               \
+                                               struct name *obj) const {      \
     return read((const uint8_t *)buf, obj);                                   \
   }                                                                           \
   ALWAYS_INLINE const struct name *prefix_read(                               \
@@ -448,14 +448,16 @@ static inline size_t Size(const T &t) {
       APPLY_X_AND_Y(keyfields, SERIALIZE_FAILSAFE_READ_KEY_FIELD_X)            \
       return true;                                                             \
     }                                                                          \
-    ALWAYS_INLINE size_t encode_nbytes(const struct name::key *obj) const {    \
+    ALWAYS_INLINE size_t                                                       \
+    encode_nbytes(const struct name::key *obj) const {                         \
       return sizeof(*obj);                                                     \
     }                                                                          \
     static inline constexpr size_t encode_max_nbytes() {                       \
       return keyfields(SERIALIZE_MAX_NBYTES_KEY_FIELD_X,                       \
                        SERIALIZE_MAX_NBYTES_KEY_FIELD_Y);                      \
     }                                                                          \
-    ALWAYS_INLINE size_t encode_max_nbytes_prefix(size_t nfields) const {      \
+    ALWAYS_INLINE size_t                                                       \
+    encode_max_nbytes_prefix(size_t nfields) const {                           \
       size_t ret = 0;                                                          \
       size_t i = 0;                                                            \
       if (likely(nfields >= name::key::NFIELDS))                               \
@@ -496,7 +498,8 @@ static inline size_t Size(const T &t) {
       return valuefields(SERIALIZE_MAX_NBYTES_VALUE_FIELD_X,                   \
                          SERIALIZE_MAX_NBYTES_VALUE_FIELD_Y);                  \
     }                                                                          \
-    ALWAYS_INLINE size_t encode_max_nbytes_prefix(size_t nfields) const {      \
+    ALWAYS_INLINE size_t                                                       \
+    encode_max_nbytes_prefix(size_t nfields) const {                           \
       size_t ret = 0;                                                          \
       size_t i = 0;                                                            \
       if (likely(nfields >= name::value::NFIELDS))                             \
