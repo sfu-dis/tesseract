@@ -213,7 +213,7 @@ class tpcc_bench_runner : public bench_runner {
     RegisterIndex(db, "region", "region", true);
     RegisterIndex(db, "supplier", "supplier", true);
     RegisterIndex(db, "warehouse", "warehouse", true);
-    create_schema_table(db, "SCHEMA");
+    ermia::create_schema_table(db, "SCHEMA");
   }
 
   virtual void prepare(char *) {
@@ -247,7 +247,7 @@ class tpcc_bench_runner : public bench_runner {
  protected:
   virtual std::vector<bench_loader *> make_loaders() {
     std::vector<bench_loader *> ret;
-    ret.push_back(new schematable_loader(0, db, open_tables));
+    ret.push_back(new tpcc_schematable_loader(0, db, open_tables));
     ret.push_back(new tpcc_warehouse_loader(9324, db, open_tables, partitions));
     ret.push_back(new tpcc_nation_loader(1512, db, open_tables, partitions));
     ret.push_back(new tpcc_region_loader(789121, db, open_tables, partitions));

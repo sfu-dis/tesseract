@@ -21,6 +21,158 @@ void oddlb_create_db(ermia::Engine *db) {
   ermia::thread::PutThread(thread);
 }
 
+void oddlb_schematable_loader::load() {
+  ermia::OrderedIndex *tbl = open_tables.at("SCHEMA");
+  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
+
+  auto add_column = [=](ermia::varstr *key, ermia::varstr &value,
+                        ermia::str_arena *arena, uint64_t schema_version,
+                        ermia::FID fid, ermia::OID oid) {
+    uint64_t a = 0;
+    if (schema_version == 1) {
+      oddlb_kv_1::value *record = (oddlb_kv_1::value *)value.data();
+      a = record->o_value_a;
+    } else {
+      oddlb_kv_2::value *record = (oddlb_kv_2::value *)value.data();
+      a = record->o_value_a;
+    }
+
+    oddlb_kv_2::value record2;
+    record2.o_value_version = schema_version;
+    record2.o_value_a = a;
+    record2.o_value_b = schema_version;
+    record2.o_value_c = schema_version;
+    ermia::varstr *new_value = arena->next(sizeof(record2));
+    new_value->copy_from((char *)&record2, sizeof(record2));
+    return new_value;
+  };
+
+  auto add_column_1 = [=](ermia::varstr *key, ermia::varstr &value,
+                          ermia::str_arena *arena, uint64_t schema_version,
+                          ermia::FID fid, ermia::OID oid) {
+    oddlb_kv_2::value *record = (oddlb_kv_2::value *)value.data();
+
+    oddlb_kv_3::value record2;
+    record2.o_value_version = schema_version;
+    record2.o_value_a = record->o_value_a;
+    record2.o_value_b = schema_version;
+    record2.o_value_c = schema_version;
+    record2.o_value_d = schema_version;
+    ermia::varstr *new_value = arena->next(sizeof(record2));
+    new_value->copy_from((char *)&record2, sizeof(record2));
+    return new_value;
+  };
+
+  auto add_column_2 = [=](ermia::varstr *key, ermia::varstr &value,
+                          ermia::str_arena *arena, uint64_t schema_version,
+                          ermia::FID fid, ermia::OID oid) {
+    oddlb_kv_3::value *record = (oddlb_kv_3::value *)value.data();
+
+    oddlb_kv_4::value record2;
+    record2.o_value_version = schema_version;
+    record2.o_value_a = record->o_value_a;
+    record2.o_value_b = schema_version;
+    record2.o_value_c = schema_version;
+    record2.o_value_d = schema_version;
+    record2.o_value_e = schema_version;
+    ermia::varstr *new_value = arena->next(sizeof(record2));
+    new_value->copy_from((char *)&record2, sizeof(record2));
+    return new_value;
+  };
+
+  auto add_column_3 = [=](ermia::varstr *key, ermia::varstr &value,
+                          ermia::str_arena *arena, uint64_t schema_version,
+                          ermia::FID fid, ermia::OID oid) {
+    oddlb_kv_4::value *record = (oddlb_kv_4::value *)value.data();
+
+    oddlb_kv_5::value record2;
+    record2.o_value_version = schema_version;
+    record2.o_value_a = record->o_value_a;
+    record2.o_value_b = schema_version;
+    record2.o_value_c = schema_version;
+    record2.o_value_d = schema_version;
+    record2.o_value_e = schema_version;
+    record2.o_value_f = schema_version;
+    ermia::varstr *new_value = arena->next(sizeof(record2));
+    new_value->copy_from((char *)&record2, sizeof(record2));
+    return new_value;
+  };
+
+  auto add_column_4 = [=](ermia::varstr *key, ermia::varstr &value,
+                          ermia::str_arena *arena, uint64_t schema_version,
+                          ermia::FID fid, ermia::OID oid) {
+    oddlb_kv_5::value *record = (oddlb_kv_5::value *)value.data();
+
+    oddlb_kv_6::value record2;
+    record2.o_value_version = schema_version;
+    record2.o_value_a = record->o_value_a;
+    record2.o_value_b = schema_version;
+    record2.o_value_c = schema_version;
+    record2.o_value_d = schema_version;
+    record2.o_value_e = schema_version;
+    record2.o_value_f = schema_version;
+    record2.o_value_g = schema_version;
+    ermia::varstr *new_value = arena->next(sizeof(record2));
+    new_value->copy_from((char *)&record2, sizeof(record2));
+    return new_value;
+  };
+
+  auto column_verification = [=](ermia::varstr &value,
+                                 uint64_t schema_version) {
+    if (schema_version == 1) {
+      oddlb_kv_1::value *record = (oddlb_kv_1::value *)value.data();
+      return record->o_value_b < 10000000;
+    } else {
+      oddlb_kv_2::value *record = (oddlb_kv_2::value *)value.data();
+      return record->o_value_b < 10000000;
+    }
+  };
+
+  char str1[] = "USERTABLE";
+  ermia::varstr &k1 = str(sizeof(str1));
+  k1.copy_from(str1, sizeof(str1));
+
+  struct ermia::schema_record usertable_schema;
+  usertable_schema.state = ermia::ddl::schema_state_type::READY;
+  usertable_schema.old_td = nullptr;
+  if (ermia::config::ddl_type == 4) {
+    int i = 0;
+    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(add_column);
+    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(add_column_1);
+    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(add_column_2);
+    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(add_column_3);
+    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(add_column_4);
+  }
+  usertable_schema.old_index = nullptr;
+  usertable_schema.v = 0;
+  usertable_schema.csn = 0;
+  if (ermia::config::ddl_type != 4) {
+    usertable_schema.reformat_idx = ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(add_column);
+  }
+  usertable_schema.constraint_idx = ermia::ddl::constraints.size();
+  usertable_schema.secondary_index_key_create_idx = -1;
+  ermia::ddl::constraints.push_back(column_verification);
+  usertable_schema.index =
+      ermia::Catalog::GetTable("USERTABLE")->GetPrimaryIndex();
+  usertable_schema.td = ermia::Catalog::GetTable("USERTABLE");
+  usertable_schema.show_index = true;
+  ermia::varstr &v1 = str(sizeof(usertable_schema));
+  v1.copy_from((char *)&usertable_schema, sizeof(usertable_schema));
+
+  TryVerifyStrict(tbl->InsertRecord(txn, k1, v1));
+  TryVerifyStrict(db->Commit(txn));
+
+  if (ermia::config::verbose) {
+    std::cerr << "[INFO] schema table loaded" << std::endl;
+  };
+}
+
 void oddlb_usertable_loader::load() {
   ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
   uint32_t nloaders = std::thread::hardware_concurrency() /

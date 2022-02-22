@@ -57,6 +57,17 @@ struct OddlbWorkload {
   bool distinct_keys_;
 };
 
+class oddlb_schematable_loader : public ermia::schematable_loader {
+ public:
+  oddlb_schematable_loader(
+      unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables)
+      : ermia::schematable_loader(seed, db, open_tables) {}
+
+ protected:
+  void load();
+};
+
 class oddlb_usertable_loader : public bench_loader {
  public:
   oddlb_usertable_loader(
@@ -80,7 +91,7 @@ class oddlb_bench_runner : public bench_runner {
  public:
   oddlb_bench_runner(ermia::Engine *db) : bench_runner(db) {
     oddlb_create_db(db);
-    create_schema_table(db, "SCHEMA");
+    ermia::create_schema_table(db, "SCHEMA");
   }
 
   virtual void prepare(char *) {
@@ -107,7 +118,7 @@ class oddlb_bench_runner : public bench_runner {
 
     std::vector<bench_loader *> ret;
 
-    ret.push_back(new microbenchmark_schematable_loader(0, db, open_tables));
+    ret.push_back(new oddlb_schematable_loader(0, db, open_tables));
 
     for (uint32_t i = 0; i < nloaders; ++i) {
       ret.push_back(new oddlb_usertable_loader(0, db, open_tables, i));
