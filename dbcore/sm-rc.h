@@ -20,7 +20,6 @@
 #define RC_INVALID 0x0
 #define RC_TRUE 0x1
 #define RC_FALSE 0x2
-#define RC_DDL_TRUE 0x3
 #define RC_ABORT 0x4
 #define RC_ABORT_INTERNAL (RC_ABORT | 0x8)
 #define RC_ABORT_SI_CONFLICT (RC_ABORT | 0x10)

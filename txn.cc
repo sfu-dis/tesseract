@@ -186,7 +186,7 @@ void transaction::Abort() {
 }
 
 rc_t transaction::commit() {
-  ALWAYS_ASSERT(state() == TXN::TXN_ACTIVE || state() == TXN::TXN_DDL);
+  ALWAYS_ASSERT(state() == TXN::TXN_ACTIVE);
   volatile_write(xc->state, TXN::TXN_COMMITTING);
   rc_t ret;
 #if defined(SSN) || defined(SSI)
