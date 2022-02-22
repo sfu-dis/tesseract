@@ -16,7 +16,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       : oddlb_base_worker(worker_id, seed, db, open_tables, barrier_a,
                           barrier_b) {}
 
-  double read_ratio = 1, write_ratio = 0;
+  double read_ratio = 0.2, write_ratio = 0.8;
 
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;

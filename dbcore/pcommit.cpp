@@ -38,11 +38,10 @@ void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush,
 void commit_queue::extend() {
   CRITICAL_SECTION(cs, lock);
   Entry *new_queue = new Entry[length * 2];
-  memcpy(new_queue, &(queue[start]), sizeof(Entry) * items);
+  memcpy(new_queue, queue, sizeof(Entry) * length);
   length *= 2;
   delete[] queue;
   queue = new_queue;
-  start = 0;
 }
 
 void tls_committer::initialize(uint32_t id) {
