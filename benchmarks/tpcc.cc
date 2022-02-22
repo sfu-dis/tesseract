@@ -1620,14 +1620,14 @@ rc_t tpcc_worker::txn_ddl() {
   schema_index->ReadSchemaRecord(txn, rc, *order_line_key, v1, &oid);
   TryVerifyRelaxed(rc);
 
-  struct ermia::Schema_base schema;
+  struct ermia::Schema_record schema;
   memcpy(&schema, (char *)v1.data(), sizeof(schema));
 
   uint64_t schema_version = schema.v + 1;
   DLOG(INFO) << "change to new schema: " << schema_version;
   schema.v = schema_version;
   schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
-  char str2[sizeof(ermia::Schema_base)];
+  char str2[sizeof(ermia::Schema_record)];
   memcpy(str2, &schema, sizeof(str2));
   ermia::varstr &v2 = str(sizeof(str2));
   v2.copy_from(str2, sizeof(str2));

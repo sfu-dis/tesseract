@@ -35,7 +35,6 @@ void schematable_loader::load() {
   k2.copy_from(str2, sizeof(str2));
   k3.copy_from(str3, sizeof(str3));
 
-#ifdef COPYDDL
   struct ermia::Schema_record order_line_schema;
   order_line_schema.state = ermia::ddl::schema_state_type::READY;
   order_line_schema.old_td = nullptr;
@@ -51,9 +50,6 @@ void schematable_loader::load() {
   customer_schema.old_td = nullptr;
   customer_schema.old_index = nullptr;
 
-#else
-  struct ermia::Schema_base order_line_schema, oorder_schema, customer_schema;
-#endif
   order_line_schema.v = 0;
   order_line_schema.csn = 0;
   order_line_schema.reformat_idx = ermia::ddl::reformats.size();
@@ -213,7 +209,6 @@ void microbenchmark_schematable_loader::load() {
   ermia::varstr &k1 = str(sizeof(str1));
   k1.copy_from(str1, sizeof(str1));
 
-#ifdef COPYDDL
   struct ermia::Schema_record usertable_schema;
   usertable_schema.state = ermia::ddl::schema_state_type::READY;
   usertable_schema.old_td = nullptr;
@@ -231,9 +226,6 @@ void microbenchmark_schematable_loader::load() {
     ermia::ddl::reformats.push_back(add_column_4);
   }
   usertable_schema.old_index = nullptr;
-#else
-  struct ermia::Schema_base usertable_schema;
-#endif
   usertable_schema.v = 0;
   usertable_schema.csn = 0;
   if (ermia::config::ddl_type != 4) {

@@ -161,14 +161,14 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #endif
     }
 #elif defined(BLOCKDDL)
-    struct ermia::Schema_base schema;
+    struct ermia::Schema_record schema;
     memcpy(&schema, (char *)schema_value.data(), sizeof(schema));
 
     uint64_t schema_version = schema.v + 1;
     DLOG(INFO) << "change to new schema: " << schema_version;
     schema.v = schema_version;
-    ermia::varstr &v1 = str(sizeof(ermia::Schema_base));
-    v1.copy_from((char *)&schema, sizeof(ermia::Schema_base));
+    ermia::varstr &v1 = str(sizeof(ermia::Schema_record));
+    v1.copy_from((char *)&schema, sizeof(ermia::Schema_record));
 
     TryCatch(schema_index->WriteSchemaTable(txn, rc, *table_key, v1));
 
@@ -185,14 +185,14 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
     TryCatch(ddl_exe->scan(txn, arena));
 #elif SIDDL
-    struct ermia::Schema_base schema;
+    struct ermia::Schema_record schema;
     memcpy(&schema, (char *)schema_value.data(), sizeof(schema));
 
     uint64_t schema_version = schema.v + 1;
     DLOG(INFO) << "change to new schema: " << schema_version;
     schema.v = schema_version;
-    ermia::varstr &v = str(sizeof(ermia::Schema_base));
-    v.copy_from((char *)&schema, sizeof(ermia::Schema_base));
+    ermia::varstr &v = str(sizeof(ermia::Schema_record));
+    v.copy_from((char *)&schema, sizeof(ermia::Schema_record));
 
     txn->set_old_td(schema.td);
 
@@ -242,11 +242,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     schema_index->ReadSchemaRecord(txn, rc, *table_key, v1, &oid);
     TryCatch(rc);
 
-#ifdef COPYDDL
     ermia::Schema_record *schema = (ermia::Schema_record *)v1.data();
-#else
-    ermia::Schema_base *schema = (ermia::Schema_record *)v1.data();
-#endif
     uint64_t schema_version = schema->v;
 
     ermia::varstr &k2 = str(sizeof(uint64_t));
@@ -262,11 +258,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         (ermia::ConcurrentMasstreeIndex *)schema->index;
 #endif
 
-#ifdef COPYDDL
     table_index->GetRecord(txn, rc, k2, v2, &oid, schema);
-#else
-    table_index->GetRecord(txn, rc, k2, v2, &oid);
-#endif
     if (rc._val != RC_TRUE) TryCatch(rc_t{RC_ABORT_USER});
 
     ermia::Schema_base *record_test = (ermia::Schema_base *)v2.data();
@@ -346,11 +338,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     schema_index->ReadSchemaRecord(txn, rc, *table_key, v, &oid);
     TryCatch(rc);
 
-#ifdef COPYDDL
     ermia::Schema_record *schema = (ermia::Schema_record *)v.data();
-#else
-    ermia::Schema_base *schema = (ermia::Schema_record *)v.data();
-#endif
     uint64_t schema_version = schema->v;
 
 #ifdef COPYDDL
@@ -417,11 +405,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       }
     }
 
-#ifdef COPYDDL
     TryCatch(table_index->UpdateRecord(txn, k1, v2, schema));
-#else
-    TryCatch(table_index->UpdateRecord(txn, k1, v2));
-#endif
 
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
