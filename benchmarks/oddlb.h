@@ -168,6 +168,4 @@ class oddlb_base_worker : public bench_worker {
   ermia::FID schema_fid;
   ermia::FID table_fid;
 #endif
-
-  mcs_lock lock;
 };

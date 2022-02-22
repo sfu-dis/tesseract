@@ -43,13 +43,6 @@ class str_arena {
     return ret;
   }
 
-  char *arena_alloc(uint64_t size) {
-    uint64_t off = n;
-    n += align_up(size);
-    char *ret = str + off;
-    return ret;
-  }
-
   // Assume the caller is the benchmark using str(Size(v))
   inline void return_space(uint64_t size) {
     n -= (align_up(size + sizeof(varstr)));

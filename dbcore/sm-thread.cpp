@@ -147,7 +147,6 @@ void Initialize() {
 
   if (config::threadpool) {
     num_thread_pools = numa_max_node() + 1;
-    printf("num_thread_pools: %d\n", num_thread_pools);
     PerNodeThreadPool::max_threads_per_node =
         std::thread::hardware_concurrency() / num_thread_pools;
     thread_pools = (PerNodeThreadPool *)malloc(sizeof(PerNodeThreadPool) *
