@@ -1014,7 +1014,6 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
             v_ol.ol_quantity = 5;
             // v_ol.ol_dist_info comes from stock_data(ol_supply_w_id, ol_o_id)
             // v_ol.ol_dist_info = RandomStr(r, 24);
-            v_ol.v = 0;
 
 #ifndef NDEBUG
             checker::SanityCheckOrderLine(&k_ol, &v_ol);

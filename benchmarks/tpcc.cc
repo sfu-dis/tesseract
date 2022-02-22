@@ -213,7 +213,6 @@ rc_t tpcc_worker::txn_new_order() {
       v_ol.ol_amount = float(ol_quantity) * v_i->i_price;
       v_ol.ol_supply_w_id = int32_t(ol_supply_w_id);
       v_ol.ol_quantity = int8_t(ol_quantity);
-      v_ol.v = order_line_schema->v;
 
       sum += v_ol.ol_amount;
 
@@ -232,8 +231,7 @@ rc_t tpcc_worker::txn_new_order() {
         v_ol_1.ol_amount = float(ol_quantity) * v_i->i_price;
         v_ol_1.ol_supply_w_id = int32_t(ol_supply_w_id);
         v_ol_1.ol_quantity = int8_t(ol_quantity);
-        v_ol_1.v = order_line_schema->v;
-        v_ol_1.ol_tax = 0.1;
+        v_ol_1.ol_tax = (float)0.1;
 
         sum += v_ol_1.ol_amount;
 
@@ -700,7 +698,6 @@ rc_t tpcc_worker::txn_delivery() {
         sum += v_ol->ol_amount;
         order_line::value v_ol_new(*v_ol);
         v_ol_new.ol_delivery_d = ts;
-        v_ol_new.v = order_line_schema->v;
         ASSERT(s_arena.get()->manages(c.values[i].first));
 
         TryCatch(order_line_table_index->UpdateRecord(
@@ -721,8 +718,7 @@ rc_t tpcc_worker::txn_delivery() {
           sum += v_ol->ol_amount;
           order_line_1::value v_ol_new(*v_ol);
           v_ol_new.ol_delivery_d = ts;
-          v_ol_new.v = order_line_schema->v;
-          v_ol_new.ol_tax = 0.1;
+          v_ol_new.ol_tax = (float)0.1;
           ASSERT(s_arena.get()->manages(c.values[i].first));
 
           TryCatch(order_line_table_index->UpdateRecord(

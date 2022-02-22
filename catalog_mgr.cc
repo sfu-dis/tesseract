@@ -19,8 +19,7 @@ void schematable_loader::load() {
     v_ol_1.ol_amount = v_ol->ol_amount;
     v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
     v_ol_1.ol_quantity = v_ol->ol_quantity;
-    v_ol_1.v = schema_version;
-    v_ol_1.ol_tax = 0.1;
+    v_ol_1.ol_tax = (float)0.1;
 
     const size_t order_line_sz = ::Size(v_ol_1);
     ermia::varstr *new_value = arena->next(order_line_sz);

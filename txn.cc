@@ -534,7 +534,8 @@ rc_t transaction::si_commit() {
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
 
-    uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
+    uint64_t log_tuple_size = w.size;
+    // ALWAYS_ASSERT(sizeof(dbtuple) + tuple->size == w.size);
 
     // Populate log block and obtain persistent address
     uint32_t off = lb->payload_size;

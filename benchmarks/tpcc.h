@@ -99,13 +99,12 @@ DO_STRUCT(oorder_c_id_idx, OORDER_C_ID_IDX_KEY_FIELDS,
       y(int32_t, ol_number)
 #define ORDER_LINE_VALUE_FIELDS(x, y)                                \
   x(int32_t, ol_i_id) y(uint32_t, ol_delivery_d) y(float, ol_amount) \
-      y(int32_t, ol_supply_w_id) y(int8_t, ol_quantity) y(uint64_t, v)
+      y(int32_t, ol_supply_w_id) y(int8_t, ol_quantity)
 DO_STRUCT(order_line, ORDER_LINE_KEY_FIELDS, ORDER_LINE_VALUE_FIELDS)
 
-#define ORDER_LINE_VALUE_1_FIELDS(x, y)                                \
-  x(int32_t, ol_i_id) y(uint32_t, ol_delivery_d) y(float, ol_amount)   \
-      y(int32_t, ol_supply_w_id) y(int8_t, ol_quantity) y(uint64_t, v) \
-          y(float, ol_tax)
+#define ORDER_LINE_VALUE_1_FIELDS(x, y)                              \
+  x(int32_t, ol_i_id) y(uint32_t, ol_delivery_d) y(float, ol_amount) \
+      y(int32_t, ol_supply_w_id) y(int8_t, ol_quantity) y(float, ol_tax)
 DO_STRUCT(order_line_1, ORDER_LINE_KEY_FIELDS, ORDER_LINE_VALUE_1_FIELDS)
 
 #define ORDER_LINE_VALUE_STOCK_FIELDS(x, y)                          \
