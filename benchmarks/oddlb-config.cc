@@ -31,22 +31,15 @@ void oddlb_usertable_loader::load() {
   for (uint64_t i = 0; i < to_insert; ++i) {
     ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
 
-    struct ermia::Schema1 record1;
-    record1.v = 0;
-    record1.a = start_key + i;  // a is key
-    record1.b = start_key + i;
+    const oddlb_kv_1::key k(start_key + i);
 
-    char str1[sizeof(record1.a)], str2[sizeof(record1)];
-    memcpy(str1, &record1.a, sizeof(str1));
-    memcpy(str2, &record1, sizeof(str2));
+    oddlb_kv_1::value record1;
+    record1.o_value_version = 0;
+    record1.o_value_a = start_key + i;  // a is key
+    record1.o_value_b = start_key + i;
 
-    ermia::varstr &k = str(sizeof(str1));
-    k.copy_from(str1, sizeof(str1));
-
-    ermia::varstr &v = str(sizeof(str2));
-    v.copy_from(str2, sizeof(str2));
-
-    TryVerifyStrict(tbl->InsertRecord(txn, k, v));
+    TryVerifyStrict(tbl->InsertRecord(txn, Encode(str(Size(k)), k),
+                                      Encode(str(Size(record1)), record1)));
     TryVerifyStrict(db->Commit(txn));
   }
 
@@ -56,22 +49,16 @@ void oddlb_usertable_loader::load() {
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = 0;
 
-    char str1[sizeof(uint64_t)];
-    uint64_t a = start_key + i;
-    memcpy(str1, &a, sizeof(str1));
+    const oddlb_kv_1::key k(start_key + i);
 
-    ermia::varstr &k = str(sizeof(str1));
-    k.copy_from(str1, sizeof(str1));
+    ermia::varstr v;
 
-    ermia::varstr &v = str(0);
+    tbl->GetRecord(txn, rc, Encode(str(Size(k)), k), v, &oid);
 
-    tbl->GetRecord(txn, rc, k, v, &oid);
-
-    struct ermia::Schema1 record1_test;
-    memcpy(&record1_test, (char *)v.data(), sizeof(record1_test));
-    ALWAYS_ASSERT(record1_test.v == 0);
-    ALWAYS_ASSERT(record1_test.a == start_key + i);
-    ALWAYS_ASSERT(record1_test.b == start_key + i);
+    oddlb_kv_1::value *record1_test = (oddlb_kv_1::value *)v.data();
+    ALWAYS_ASSERT(record1_test->o_value_version == 0);
+    ALWAYS_ASSERT(record1_test->o_value_a == start_key + i);
+    ALWAYS_ASSERT(record1_test->o_value_b == start_key + i);
     TryVerifyStrict(rc);
     TryVerifyStrict(db->Commit(txn));
   }

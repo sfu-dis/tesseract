@@ -103,18 +103,18 @@ void microbenchmark_schematable_loader::load() {
                         ermia::FID fid, ermia::OID oid) {
     uint64_t a = 0;
     if (schema_version == 1) {
-      ermia::Schema1 *record = (ermia::Schema1 *)value.data();
-      a = record->a;
+      oddlb_kv_1::value *record = (oddlb_kv_1::value *)value.data();
+      a = record->o_value_a;
     } else {
-      ermia::Schema2 *record = (ermia::Schema2 *)value.data();
-      a = record->a;
+      oddlb_kv_2::value *record = (oddlb_kv_2::value *)value.data();
+      a = record->o_value_a;
     }
 
-    struct ermia::Schema2 record2;
-    record2.v = schema_version;
-    record2.a = a;
-    record2.b = schema_version;
-    record2.c = schema_version;
+    oddlb_kv_2::value record2;
+    record2.o_value_version = schema_version;
+    record2.o_value_a = a;
+    record2.o_value_b = schema_version;
+    record2.o_value_c = schema_version;
     ermia::varstr *new_value = arena->next(sizeof(record2));
     new_value->copy_from((char *)&record2, sizeof(record2));
     return new_value;
@@ -123,15 +123,14 @@ void microbenchmark_schematable_loader::load() {
   auto add_column_1 = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
                           ermia::FID fid, ermia::OID oid) {
-    ermia::Schema2 *record = (ermia::Schema2 *)value.data();
-    uint64_t a = record->a;
+    oddlb_kv_2::value *record = (oddlb_kv_2::value *)value.data();
 
-    struct ermia::Schema3 record2;
-    record2.v = schema_version;
-    record2.a = a;
-    record2.b = schema_version;
-    record2.c = schema_version;
-    record2.d = schema_version;
+    oddlb_kv_3::value record2;
+    record2.o_value_version = schema_version;
+    record2.o_value_a = record->o_value_a;
+    record2.o_value_b = schema_version;
+    record2.o_value_c = schema_version;
+    record2.o_value_d = schema_version;
     ermia::varstr *new_value = arena->next(sizeof(record2));
     new_value->copy_from((char *)&record2, sizeof(record2));
     return new_value;
@@ -140,16 +139,15 @@ void microbenchmark_schematable_loader::load() {
   auto add_column_2 = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
                           ermia::FID fid, ermia::OID oid) {
-    ermia::Schema3 *record = (ermia::Schema3 *)value.data();
-    uint64_t a = record->a;
+    oddlb_kv_3::value *record = (oddlb_kv_3::value *)value.data();
 
-    struct ermia::Schema4 record2;
-    record2.v = schema_version;
-    record2.a = a;
-    record2.b = schema_version;
-    record2.c = schema_version;
-    record2.d = schema_version;
-    record2.e = schema_version;
+    oddlb_kv_4::value record2;
+    record2.o_value_version = schema_version;
+    record2.o_value_a = record->o_value_a;
+    record2.o_value_b = schema_version;
+    record2.o_value_c = schema_version;
+    record2.o_value_d = schema_version;
+    record2.o_value_e = schema_version;
     ermia::varstr *new_value = arena->next(sizeof(record2));
     new_value->copy_from((char *)&record2, sizeof(record2));
     return new_value;
@@ -158,17 +156,16 @@ void microbenchmark_schematable_loader::load() {
   auto add_column_3 = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
                           ermia::FID fid, ermia::OID oid) {
-    ermia::Schema4 *record = (ermia::Schema4 *)value.data();
-    uint64_t a = record->a;
+    oddlb_kv_4::value *record = (oddlb_kv_4::value *)value.data();
 
-    struct ermia::Schema5 record2;
-    record2.v = schema_version;
-    record2.a = a;
-    record2.b = schema_version;
-    record2.c = schema_version;
-    record2.d = schema_version;
-    record2.e = schema_version;
-    record2.f = schema_version;
+    oddlb_kv_5::value record2;
+    record2.o_value_version = schema_version;
+    record2.o_value_a = record->o_value_a;
+    record2.o_value_b = schema_version;
+    record2.o_value_c = schema_version;
+    record2.o_value_d = schema_version;
+    record2.o_value_e = schema_version;
+    record2.o_value_f = schema_version;
     ermia::varstr *new_value = arena->next(sizeof(record2));
     new_value->copy_from((char *)&record2, sizeof(record2));
     return new_value;
@@ -177,18 +174,17 @@ void microbenchmark_schematable_loader::load() {
   auto add_column_4 = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
                           ermia::FID fid, ermia::OID oid) {
-    ermia::Schema5 *record = (ermia::Schema5 *)value.data();
-    uint64_t a = record->a;
+    oddlb_kv_5::value *record = (oddlb_kv_5::value *)value.data();
 
-    struct ermia::Schema6 record2;
-    record2.v = schema_version;
-    record2.a = a;
-    record2.b = schema_version;
-    record2.c = schema_version;
-    record2.d = schema_version;
-    record2.e = schema_version;
-    record2.f = schema_version;
-    record2.g = schema_version;
+    oddlb_kv_6::value record2;
+    record2.o_value_version = schema_version;
+    record2.o_value_a = record->o_value_a;
+    record2.o_value_b = schema_version;
+    record2.o_value_c = schema_version;
+    record2.o_value_d = schema_version;
+    record2.o_value_e = schema_version;
+    record2.o_value_f = schema_version;
+    record2.o_value_g = schema_version;
     ermia::varstr *new_value = arena->next(sizeof(record2));
     new_value->copy_from((char *)&record2, sizeof(record2));
     return new_value;
@@ -197,11 +193,11 @@ void microbenchmark_schematable_loader::load() {
   auto column_verification = [=](ermia::varstr &value,
                                  uint64_t schema_version) {
     if (schema_version == 1) {
-      ermia::Schema1 *record = (ermia::Schema1 *)value.data();
-      return record->b < 10000000;
+      oddlb_kv_1::value *record = (oddlb_kv_1::value *)value.data();
+      return record->o_value_b < 10000000;
     } else {
-      ermia::Schema2 *record = (ermia::Schema2 *)value.data();
-      return record->b < 10000000;
+      oddlb_kv_2::value *record = (oddlb_kv_2::value *)value.data();
+      return record->o_value_b < 10000000;
     }
   };
 

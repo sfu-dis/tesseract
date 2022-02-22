@@ -16,7 +16,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       : oddlb_base_worker(worker_id, seed, db, open_tables, barrier_a,
                           barrier_b) {}
 
-  double read_ratio = 0.2, write_ratio = 0.8;
+  double read_ratio = 1, write_ratio = 0;
 
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
@@ -41,26 +41,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
   }
   static rc_t TxnRMW(bench_worker *w) {
     return static_cast<oddlb_sequential_worker *>(w)->txn_rmw();
-  }
-
-  void no_copy_verification_op(ermia::Schema_record *schema,
-                               ermia::varstr &value, ermia::str_arena *arena) {
-    uint64_t latest_version = schema->v;
-    uint64_t current_version = 1;
-    ermia::varstr *new_value;
-    for (; current_version <= latest_version; current_version++) {
-      new_value = ermia::ddl::reformats[schema->reformats[current_version - 1]](
-          nullptr, value, arena, current_version, -1, -1);
-    }
-
-    ermia::Schema6 *record2_test = (ermia::Schema6 *)new_value->data();
-
-    ALWAYS_ASSERT(record2_test->b == latest_version);
-    ALWAYS_ASSERT(record2_test->c == latest_version);
-    ALWAYS_ASSERT(record2_test->d == latest_version);
-    ALWAYS_ASSERT(record2_test->e == latest_version);
-    ALWAYS_ASSERT(record2_test->f == latest_version);
-    ALWAYS_ASSERT(record2_test->g == latest_version);
   }
 
   rc_t txn_ddl() {
@@ -132,9 +112,8 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       }
       schema.td = old_schema->td;
       schema.index = old_schema->index;
-      schema.state = schema.ddl_type == ermia::ddl::ddl_type::VERIFICATION_ONLY
-                         ? ermia::ddl::schema_state_type::NOT_READY
-                         : ermia::ddl::schema_state_type::READY;
+      schema.state = ermia::ddl::schema_state_type::NOT_READY;
+
       txn->set_old_td(old_schema->td);
       txn->add_old_td_map(old_schema->td);
     }
@@ -246,8 +225,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       ermia::Schema_record *schema = (ermia::Schema_record *)v1.data();
       uint64_t schema_version = schema->v;
 
-      ermia::varstr &k2 = str(sizeof(uint64_t));
-      k2.copy_from((char *)&a, sizeof(uint64_t));
+      const oddlb_kv_1::key k2(a);
 
       ermia::varstr v2;
 
@@ -259,8 +237,11 @@ class oddlb_sequential_worker : public oddlb_base_worker {
           (ermia::ConcurrentMasstreeIndex *)schema->index;
 #endif
 
-      table_index->GetRecord(txn, rc, k2, v2, &oid, schema);
-      if (rc._val != RC_TRUE) TryCatch(rc_t{RC_ABORT_USER});
+      table_index->GetRecord(txn, rc, Encode(str(Size(k2)), k2), v2, &oid,
+                             schema);
+      if (rc._val != RC_TRUE) {
+        TryCatch(rc_t{RC_ABORT_USER});
+      }
 
       ermia::Schema_base *record_test = (ermia::Schema_base *)v2.data();
 
@@ -282,41 +263,33 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       }
 
       if (schema_version == 0) {
-        ermia::Schema1 *record1_test = (ermia::Schema1 *)v2.data();
+        oddlb_kv_1::value *record1_test = (oddlb_kv_1::value *)v2.data();
 
-        ALWAYS_ASSERT(record1_test->a == a);
-        ALWAYS_ASSERT(record1_test->b == a || record1_test->b == 20000000);
+        ALWAYS_ASSERT(record1_test->o_value_a == a);
+        ALWAYS_ASSERT(record1_test->o_value_b == a ||
+                      record1_test->o_value_b == 20000000);
       } else {
         if (schema->ddl_type == ermia::ddl::ddl_type::COPY_VERIFICATION ||
             schema->ddl_type == ermia::ddl::ddl_type::COPY_ONLY) {
-          ermia::Schema2 *record2_test = (ermia::Schema2 *)v2.data();
+          oddlb_kv_2::value *record2_test = (oddlb_kv_2::value *)v2.data();
 
-          ALWAYS_ASSERT(record2_test->a == a);
-          ALWAYS_ASSERT(record2_test->b == schema_version);
-          ALWAYS_ASSERT(record2_test->c == schema_version);
+          ALWAYS_ASSERT(record2_test->o_value_a == a);
+          ALWAYS_ASSERT(record2_test->o_value_b == schema_version);
+          ALWAYS_ASSERT(record2_test->o_value_c == schema_version);
         } else if (schema->ddl_type ==
                    ermia::ddl::ddl_type::VERIFICATION_ONLY) {
-          ermia::Schema1 *record1_test = (ermia::Schema1 *)v2.data();
+          oddlb_kv_1::value *record1_test = (oddlb_kv_1::value *)v2.data();
 
-          ALWAYS_ASSERT(record1_test->a == a);
-          ALWAYS_ASSERT(record1_test->b == a || record1_test->b == 20000000);
+          ALWAYS_ASSERT(record1_test->o_value_a == a);
+          ALWAYS_ASSERT(record1_test->o_value_b == a ||
+                        record1_test->o_value_b == 20000000);
         } else if (schema->ddl_type ==
                    ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
-          if (record_test->v != schema_version) {
-#ifdef COPYDDL
-            no_copy_verification_op(schema, v2, &(txn->string_allocator()));
-#endif
-          } else {
-            ermia::Schema6 *record2_test = (ermia::Schema6 *)v2.data();
+          oddlb_kv_2::value *record2_test = (oddlb_kv_2::value *)v2.data();
 
-            ALWAYS_ASSERT(record2_test->a == a);
-            ALWAYS_ASSERT(record2_test->b == schema_version);
-            ALWAYS_ASSERT(record2_test->c == schema_version);
-            ALWAYS_ASSERT(record2_test->d == schema_version);
-            ALWAYS_ASSERT(record2_test->e == schema_version);
-            ALWAYS_ASSERT(record2_test->f == schema_version);
-            ALWAYS_ASSERT(record2_test->g == schema_version);
-          }
+          ALWAYS_ASSERT(record2_test->o_value_a == a);
+          ALWAYS_ASSERT(record2_test->o_value_b == schema_version);
+          ALWAYS_ASSERT(record2_test->o_value_c == schema_version);
         }
       }
     }
@@ -350,8 +323,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
           (ermia::ConcurrentMasstreeIndex *)schema->index;
 #endif
 
-      ermia::varstr &k1 = str(sizeof(uint64_t));
-      k1.copy_from((char *)&a, sizeof(uint64_t));
+      const oddlb_kv_1::key k1(a);
 
       ermia::varstr v1;
 
@@ -360,57 +332,50 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
       ermia::varstr v2;
       if (schema_version == 0) {
-        struct ermia::Schema1 record1;
-        record1.v = schema_version;
-        record1.a = a;
+        oddlb_kv_1::value record1;
+        record1.o_value_version = schema_version;
+        record1.o_value_a = a;
         if (unlikely(ermia::cdc_test)) {
-          record1.b = 20000000;
+          record1.o_value_b = 20000000;
         } else {
-          record1.b = a;
+          record1.o_value_b = a;
         }
 
-        v2 = str(sizeof(ermia::Schema1));
-        v2.copy_from((char *)&record1, sizeof(ermia::Schema1));
+        v2 = Encode(str(Size(record1)), record1);
       } else {
         if (schema->ddl_type == ermia::ddl::ddl_type::COPY_VERIFICATION ||
             schema->ddl_type == ermia::ddl::ddl_type::COPY_ONLY) {
-          struct ermia::Schema2 record2;
+          oddlb_kv_2::value record2;
 
-          record2.v = schema_version;
-          record2.a = a;
-          record2.b = schema_version;
-          record2.c = schema_version;
+          record2.o_value_version = schema_version;
+          record2.o_value_a = a;
+          record2.o_value_b = schema_version;
+          record2.o_value_c = schema_version;
 
-          v2 = str(sizeof(ermia::Schema2));
-          v2.copy_from((char *)&record2, sizeof(ermia::Schema2));
+          v2 = Encode(str(Size(record2)), record2);
         } else if (schema->ddl_type ==
                    ermia::ddl::ddl_type::VERIFICATION_ONLY) {
-          struct ermia::Schema1 record1;
-          record1.v = schema_version;
-          record1.a = a;
-          record1.b = a;
+          oddlb_kv_1::value record1;
+          record1.o_value_version = schema_version;
+          record1.o_value_a = a;
+          record1.o_value_b = a;
 
-          v2 = str(sizeof(ermia::Schema1));
-          v2.copy_from((char *)&record1, sizeof(ermia::Schema1));
+          v2 = Encode(str(Size(record1)), record1);
         } else if (schema->ddl_type ==
                    ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
-          struct ermia::Schema6 record2;
+          oddlb_kv_2::value record2;
 
-          record2.v = schema_version;
-          record2.a = a;
-          record2.b = schema_version;
-          record2.c = schema_version;
-          record2.d = schema_version;
-          record2.e = schema_version;
-          record2.f = schema_version;
-          record2.g = schema_version;
+          record2.o_value_version = schema_version;
+          record2.o_value_a = a;
+          record2.o_value_b = schema_version;
+          record2.o_value_c = schema_version;
 
-          v2 = str(sizeof(ermia::Schema6));
-          v2.copy_from((char *)&record2, sizeof(ermia::Schema6));
+          v2 = Encode(str(Size(record2)), record2);
         }
       }
 
-      TryCatch(table_index->UpdateRecord(txn, k1, v2, schema));
+      TryCatch(table_index->UpdateRecord(txn, Encode(str(Size(k1)), k1), v2,
+                                         schema));
     }
 
     TryCatch(db->Commit(txn));

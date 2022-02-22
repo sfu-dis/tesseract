@@ -1,54 +1,36 @@
 #pragma once
 
-namespace ermia {
+#include "record/encoder.h"
+#include "record/inline_str.h"
 
-struct Schema_base_ {
-  uint64_t v;
-};
+#define ODDLB_KEY_FIELDS(x, y) x(uint64_t, o_key)
+#define ODDLB_VALUE_1_FIELDS(x, y) \
+  x(uint64_t, o_value_version) y(uint64_t, o_value_a) y(uint64_t, o_value_b)
+DO_STRUCT(oddlb_kv_1, ODDLB_KEY_FIELDS, ODDLB_VALUE_1_FIELDS);
 
-struct Schema1 : public Schema_base_ {
-  uint64_t a;
-  uint64_t b;
-};
+#define ODDLB_VALUE_2_FIELDS(x, y)                                           \
+  x(uint64_t, o_value_version) y(uint64_t, o_value_a) y(uint64_t, o_value_b) \
+      y(uint64_t, o_value_c)
+DO_STRUCT(oddlb_kv_2, ODDLB_KEY_FIELDS, ODDLB_VALUE_2_FIELDS);
 
-struct Schema2 : public Schema_base_ {
-  uint64_t a;
-  uint64_t b;
-  uint64_t c;
-};
+#define ODDLB_VALUE_3_FIELDS(x, y)                                           \
+  x(uint64_t, o_value_version) y(uint64_t, o_value_a) y(uint64_t, o_value_b) \
+      y(uint64_t, o_value_c) y(uint64_t, o_value_d)
+DO_STRUCT(oddlb_kv_3, ODDLB_KEY_FIELDS, ODDLB_VALUE_3_FIELDS);
 
-struct Schema3 : public Schema_base_ {
-  uint64_t a;
-  uint64_t b;
-  uint64_t c;
-  uint64_t d;
-};
+#define ODDLB_VALUE_4_FIELDS(x, y)                                           \
+  x(uint64_t, o_value_version) y(uint64_t, o_value_a) y(uint64_t, o_value_b) \
+      y(uint64_t, o_value_c) y(uint64_t, o_value_d) y(uint64_t, o_value_e)
+DO_STRUCT(oddlb_kv_4, ODDLB_KEY_FIELDS, ODDLB_VALUE_4_FIELDS);
 
-struct Schema4 : public Schema_base_ {
-  uint64_t a;
-  uint64_t b;
-  uint64_t c;
-  uint64_t d;
-  uint64_t e;
-};
+#define ODDLB_VALUE_5_FIELDS(x, y)                                           \
+  x(uint64_t, o_value_version) y(uint64_t, o_value_a) y(uint64_t, o_value_b) \
+      y(uint64_t, o_value_c) y(uint64_t, o_value_d) y(uint64_t, o_value_e)   \
+          y(uint64_t, o_value_f)
+DO_STRUCT(oddlb_kv_5, ODDLB_KEY_FIELDS, ODDLB_VALUE_5_FIELDS);
 
-struct Schema5 : public Schema_base_ {
-  uint64_t a;
-  uint64_t b;
-  uint64_t c;
-  uint64_t d;
-  uint64_t e;
-  uint64_t f;
-};
-
-struct Schema6 : public Schema_base_ {
-  uint64_t a;
-  uint64_t b;
-  uint64_t c;
-  uint64_t d;
-  uint64_t e;
-  uint64_t f;
-  uint64_t g;
-};
-
-}  // namespace ermia
+#define ODDLB_VALUE_6_FIELDS(x, y)                                           \
+  x(uint64_t, o_value_version) y(uint64_t, o_value_a) y(uint64_t, o_value_b) \
+      y(uint64_t, o_value_c) y(uint64_t, o_value_d) y(uint64_t, o_value_e)   \
+          y(uint64_t, o_value_f) y(uint64_t, o_value_g)
+DO_STRUCT(oddlb_kv_6, ODDLB_KEY_FIELDS, ODDLB_VALUE_6_FIELDS);
