@@ -849,9 +849,8 @@ start_over:
         uint16_t asi_type = csn.asi_type();
         if (asi_type == fat_ptr::ASI_XID) {
           *version_csn = visitor_xc->begin;
-        } else {
+        } else if (asi_type == fat_ptr::ASI_CSN) {
           *version_csn = CSN::from_ptr(csn).offset();
-          ;
         }
       }
       RETURN AWAIT cur_obj->GetPinnedTuple();

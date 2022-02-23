@@ -251,7 +251,7 @@ rc_t transaction::si_commit() {
   xc->end = write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;
 
 #if defined(COPYDDL)
-  if (is_dml() && DMLConsistencyHandler() && ddl_running) {
+  if (is_dml() && DMLConsistencyHandler()) {
     DLOG(INFO) << "DML failed with begin: " << xc->begin
                << ", end: " << xc->end;
     return rc_t{RC_ABORT_SI_CONFLICT};
@@ -531,7 +531,6 @@ rc_t transaction::si_commit() {
     dbtuple *tuple = (dbtuple *)object->GetPayload();
 
     uint64_t log_tuple_size = w.size;
-    // ALWAYS_ASSERT(sizeof(dbtuple) + tuple->size == w.size);
 
     // Populate log block and obtain persistent address
     uint32_t off = lb->payload_size;
@@ -698,7 +697,7 @@ bool transaction::DMLConsistencyHandler() {
 
   for (auto &v : schema_read_map) {
     dbtuple *tuple =
-        oidmgr->oid_get_version(schema_td->GetTupleArray(), v.second, tmp_xc);
+        oidmgr->oid_get_version(schema_td->GetTupleArray(), v.first, tmp_xc);
     if (!tuple) {
       tmp_xc->begin = begin;
       return true;
@@ -709,9 +708,7 @@ bool transaction::DMLConsistencyHandler() {
         return true;
       }
       schema_record *schema = (schema_record *)tuple_v.data();
-      if ((schema->ddl_type == ddl::ddl_type::COPY_ONLY ||
-           schema->ddl_type == ddl::ddl_type::COPY_VERIFICATION) &&
-          schema->td != v.first) {
+      if (schema->v != v.second) {
         tmp_xc->begin = begin;
         return true;
       }
@@ -987,7 +984,8 @@ retry:
       RETURN rc_t{RC_ABORT_SI_CONFLICT};
     }
   }
-  if (expected == NULL_PTR || CSN::from_ptr(csn).offset() < tuple_csn) {
+  if (expected == NULL_PTR || (csn.asi_type() == fat_ptr::ASI_CSN &&
+                               CSN::from_ptr(csn).offset() < tuple_csn)) {
     if (!__sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr,
                                       new_head._ptr)) {
       goto retry;

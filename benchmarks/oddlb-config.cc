@@ -137,6 +137,7 @@ void oddlb_schematable_loader::load() {
   usertable_schema.old_td = nullptr;
   if (ermia::config::ddl_type == 4) {
     int i = 0;
+    usertable_schema.reformat_idx = i;
     usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
     ermia::ddl::reformats.push_back(add_column);
     usertable_schema.reformats[i++] = ermia::ddl::reformats.size();

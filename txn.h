@@ -402,7 +402,7 @@ class transaction {
   uint64_t log_size;
   str_arena *sa;
   uint32_t coro_batch_idx;  // its index in the batch
-  std::unordered_map<TableDescriptor *, OID> schema_read_map;
+  std::unordered_map<OID, uint64_t> schema_read_map;
   std::unordered_map<FID, TableDescriptor *> new_td_map;
   TableDescriptor *old_td;
   std::unordered_map<FID, TableDescriptor *> old_td_map;

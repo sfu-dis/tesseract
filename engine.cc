@@ -88,7 +88,7 @@ retry:
       }
     }
     if (t->is_dml()) {
-      t->schema_read_map[schema->td] = *out_oid;
+      t->schema_read_map[*out_oid] = schema->v;
     }
   }
 #endif
@@ -246,7 +246,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
     if (schema && schema->old_index && !found) {
       ((ConcurrentMasstreeIndex *)(schema->old_index))
-          ->GetRecord(t, rc, key, value, out_oid, schema);
+          ->GetRecord(t, rc, key, value, out_oid);
       if (rc._val == RC_TRUE) {
         auto *key_array = schema->old_td->GetKeyArray();
         fat_ptr *entry =
@@ -352,7 +352,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
       volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
       if (rc._val == RC_TRUE && schema &&
           schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION &&
-          version_csn < schema->csn) {
+          version_csn <= schema->csn) {
         auto *key_array = table_descriptor->GetKeyArray();
         fat_ptr *entry =
             config::enable_ddl_keys ? key_array->get(oid) : nullptr;
@@ -516,7 +516,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
     OID out_oid = INVALID_OID;
     varstr old_value;
     ((ConcurrentMasstreeIndex *)(schema->old_index))
-        ->GetRecord(t, rc, key, old_value, &out_oid, schema);
+        ->GetRecord(t, rc, key, old_value, &out_oid);
     if (rc._val == RC_TRUE) {
       rc = AWAIT InsertRecord(t, key, value, &out_oid, schema);
     } else {

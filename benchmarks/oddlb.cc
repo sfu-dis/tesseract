@@ -65,7 +65,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     schema.v = schema_version;
     schema.old_v = old_schema->v;
     schema.old_td = old_schema->td;
-    schema.state = ermia::ddl::schema_state_type::READY;
+    schema.state = ermia::ddl::schema_state_type::NOT_READY;
     schema.ddl_type = ermia::ddl::ddl_type_map(ermia::config::ddl_type);
     schema.show_index = true;
     schema.reformat_idx = old_schema->reformat_idx;
@@ -81,7 +81,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       db->CreateTable(table_name);
 
       schema.td = ermia::Catalog::GetTable(table_name);
-      schema.state = ermia::ddl::schema_state_type::NOT_READY;
 #ifdef LAZYDDL
       schema.old_index = old_schema->index;
       schema.old_tds[old_schema->v] = old_schema->td;
@@ -111,7 +110,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       }
       schema.td = old_schema->td;
       schema.index = old_schema->index;
-      schema.state = ermia::ddl::schema_state_type::NOT_READY;
 
       txn->set_old_td(old_schema->td);
       txn->add_old_td_map(old_schema->td);
@@ -244,22 +242,21 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         TryCatch(rc_t{RC_ABORT_USER});
       }
 
-      ermia::schema_base *record_test = SchemaDecode(v2, schema_base_temp);
+      oddlb_kv_1::value *record_test = (oddlb_kv_1::value *)v2.data();
 
 #ifdef SIDDL
-      if (record_test->v != schema_version) {
+      if (record_test->o_value_version != schema_version) {
         TryCatch(rc_t{RC_ABORT_USER});
       }
 #endif
 
-      if (schema->ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION &&
-          schema->ddl_type != ermia::ddl::ddl_type::VERIFICATION_ONLY &&
-          record_test->v != schema_version) {
+      if (schema->ddl_type != ermia::ddl::ddl_type::VERIFICATION_ONLY &&
+          record_test->o_value_version != schema_version) {
 #ifdef BLOCKDDL
         TryCatch(rc_t{RC_ABORT_USER});
 #else
         LOG(FATAL) << "Read: It should get " << schema_version << " ,but get "
-                   << record_test->v;
+                   << record_test->o_value_version;
 #endif
       }
 
