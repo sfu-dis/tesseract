@@ -38,8 +38,8 @@ struct schema_record : public schema_base {
   OrderedIndex *old_index;
   uint32_t old_tds_total;
   uint32_t reformats_total;
-  TableDescriptor *old_tds[16];
-  uint32_t reformats[16];
+  TableDescriptor *old_tds[12];
+  uint32_t reformats[12];
 
   // Runtime schema record convert to persistent schema value
   inline void record_to_value(schema_kv::value &schema_value) {
@@ -59,7 +59,7 @@ struct schema_record : public schema_base {
     schema_value.old_index = (uint64_t)old_index;
     schema_value.old_fids_total = old_tds_total;
     schema_value.reformats_total = reformats_total;
-    FID old_fids[16];
+    FID old_fids[12];
     for (int i = 0; i < old_tds_total; i++) {
       old_fids[i] = old_tds[i]->GetTupleFid();
     }
