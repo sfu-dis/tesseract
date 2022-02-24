@@ -374,9 +374,12 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
         fat_ptr *entry =
             config::enable_ddl_keys ? key_array->get(oid) : nullptr;
         varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
-        varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
-            key, value, &(t->string_allocator()), schema->v,
-            table_descriptor->GetTupleFid(), oid);
+        varstr *new_tuple_value = &value;
+        for (int i = 0; i < schema->reformats_total; i++) {
+          new_tuple_value = ddl::reformats[schema->reformats[i]](
+              key, *new_tuple_value, &(t->string_allocator()), schema->v,
+              table_descriptor->GetTupleFid(), oid);
+        }
         if (!new_tuple_value) {
           volatile_write(rc._val, RC_ABORT_INTERNAL);
           RETURN;
@@ -729,9 +732,12 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     if (schema && schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION &&
         version_csn < schema->csn) {
       varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
-      varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
-          key, vv, &(t->string_allocator()), schema->v,
-          table_descriptor->GetTupleFid(), oid);
+      varstr *new_tuple_value = &vv;
+      for (int i = 0; i < schema->reformats_total; i++) {
+        new_tuple_value = ddl::reformats[schema->reformats[i]](
+            key, *new_tuple_value, &(t->string_allocator()), schema->v,
+            table_descriptor->GetTupleFid(), oid);
+      }
       if (!new_tuple_value) {
         return false;
       }
