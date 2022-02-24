@@ -72,7 +72,8 @@ retry:
 
 #ifdef COPYDDL
   if (t->is_dml() || t->is_read_only()) {
-    schema_record *schema = (schema_record *)value.data();
+    schema_kv::value schema_value_temp;
+    const schema_kv::value *schema = Decode(value, schema_value_temp);
     if (schema->state == ddl::schema_state_type::NOT_READY) {
       if (schema->ddl_type != ddl::ddl_type::COPY_ONLY ||
           config::enable_cdc_schema_lock) {
@@ -82,13 +83,15 @@ retry:
         goto retry;
       } else {
         t->SetWaitForNewSchema(true);
-        t->set_old_td(schema->old_td);
-        t->add_new_td_map(schema->td);
-        t->add_old_td_map(schema->old_td);
+        TableDescriptor *old_td = Catalog::GetTable(schema->old_fid);
+        ALWAYS_ASSERT(old_td);
+        t->set_old_td(old_td);
+        t->add_old_td_map(old_td);
+        t->add_new_td_map(Catalog::GetTable(schema->fid));
       }
     }
     if (t->is_dml()) {
-      t->schema_read_map[*out_oid] = schema->v;
+      t->schema_read_map[*out_oid] = schema->version;
     }
   }
 #endif
@@ -279,6 +282,20 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
       // Key-OID mapping exists, now try to get the actual tuple to be sure
       tuple = AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(),
                                             oid, t->xc, &version_csn);
+
+#if defined(COPYDDL) && !defined(LAZYDDL)
+      std::unordered_map<FID, TableDescriptor *> new_td_map =
+          t->get_new_td_map();
+      if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
+          (new_td_map.find(table_descriptor->GetTupleFid()) !=
+           new_td_map.end())) {
+        if (AWAIT t->OverlapCheck(new_td_map[table_descriptor->GetTupleFid()],
+                                  t->old_td, oid)) {
+          volatile_write(rc._val, RC_ABORT_INTERNAL);
+          RETURN;
+        }
+      }
+#endif
 
       if (schema && table_descriptor != schema->td) {
         volatile_write(rc._val, RC_ABORT_INTERNAL);
@@ -532,7 +549,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
 #if defined(COPYDDL) && !defined(LAZYDDL)
   std::unordered_map<FID, TableDescriptor *> new_td_map = t->get_new_td_map();
   if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
-      new_td_map[table_descriptor->GetTupleFid()]) {
+      (new_td_map.find(table_descriptor->GetTupleFid()) != new_td_map.end())) {
     if (AWAIT t->OverlapCheck(new_td_map[table_descriptor->GetTupleFid()],
                               t->old_td, oid)) {
       RETURN rc_t{RC_ABORT_INTERNAL};

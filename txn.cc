@@ -385,17 +385,19 @@ rc_t transaction::si_commit() {
       dbtuple *tuple = (dbtuple *)object->GetPayload();
 
       varstr value(tuple->get_value_start(), tuple->size);
-      schema_record *schema = (schema_record *)value.data();
-      schema->state = ddl::schema_state_type::READY;
-      schema->csn = xc->end;
+      schema_kv::value schema_value_temp;
+      const schema_kv::value *schema_not_ready =
+          Decode(value, schema_value_temp);
+      schema_kv::value schema_ready(*schema_not_ready);
+      schema_ready.state = ddl::schema_state_type::READY;
+      schema_ready.csn = xc->end;
 
       string_allocator().reset();
-      varstr *new_value = string_allocator().next(sizeof(schema_record));
-      new_value->copy_from((char *)schema, sizeof(schema_record));
+      varstr *new_value = string_allocator().next(Size(schema_ready));
 
-      ALWAYS_ASSERT(
-          DDLSchemaUnblock(schema_td, w.oid, new_value, xc->end)._val ==
-          RC_TRUE);
+      ALWAYS_ASSERT(DDLSchemaUnblock(schema_td, w.oid,
+                                     &Encode(*new_value, schema_ready), xc->end)
+                        ._val == RC_TRUE);
     }
   }
 #endif
@@ -707,8 +709,9 @@ bool transaction::DMLConsistencyHandler() {
         tmp_xc->begin = begin;
         return true;
       }
-      schema_record *schema = (schema_record *)tuple_v.data();
-      if (schema->v != v.second) {
+      schema_kv::value schema_value_temp;
+      const schema_kv::value *schema = Decode(tuple_v, schema_value_temp);
+      if (schema->version != v.second) {
         tmp_xc->begin = begin;
         return true;
       }
@@ -1201,8 +1204,9 @@ OID transaction::table_scan(TableDescriptor *td, const varstr *key, OID oid) {
   for (OID o = 1; o <= oid; o++) {
     fat_ptr *entry = key_array->get(o);
     varstr *k = entry ? (varstr *)((*entry).offset()) : nullptr;
-    if (k && key && memcmp(k->data(), key->data(), key->size())) {
-      // return o;
+    if (k && key && key->size() == k->size() &&
+        memcmp(k->data(), key->data(), key->size()) == 0) {
+      return o;
     }
   }
   return 0;

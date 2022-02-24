@@ -135,6 +135,7 @@ void oddlb_schematable_loader::load() {
   struct ermia::schema_record usertable_schema;
   usertable_schema.state = ermia::ddl::schema_state_type::READY;
   usertable_schema.old_td = nullptr;
+  usertable_schema.reformats_total = 0;
   if (ermia::config::ddl_type == 4) {
     int i = 0;
     usertable_schema.reformat_idx = i;
@@ -148,6 +149,7 @@ void oddlb_schematable_loader::load() {
     ermia::ddl::reformats.push_back(add_column_3);
     usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
     ermia::ddl::reformats.push_back(add_column_4);
+    usertable_schema.reformats_total = i;
   }
   usertable_schema.old_index = nullptr;
   usertable_schema.v = 0;
@@ -155,6 +157,7 @@ void oddlb_schematable_loader::load() {
   if (ermia::config::ddl_type != 4) {
     usertable_schema.reformat_idx = ermia::ddl::reformats.size();
     ermia::ddl::reformats.push_back(add_column);
+    usertable_schema.reformats_total = 1;
   }
   usertable_schema.constraint_idx = ermia::ddl::constraints.size();
   usertable_schema.secondary_index_key_create_idx = -1;
@@ -163,10 +166,21 @@ void oddlb_schematable_loader::load() {
       ermia::Catalog::GetTable("USERTABLE")->GetPrimaryIndex();
   usertable_schema.td = ermia::Catalog::GetTable("USERTABLE");
   usertable_schema.show_index = true;
-  ermia::varstr &v1 = str(sizeof(usertable_schema));
-  v1.copy_from((char *)&usertable_schema, sizeof(usertable_schema));
 
-  TryVerifyStrict(tbl->InsertRecord(txn, k1, v1));
+  schema_kv::value schema_value;
+  usertable_schema.record_to_value(schema_value);
+
+  // Sanity check
+  struct ermia::schema_record schema_test;
+  schema_test.value_to_record(&schema_value);
+
+  ALWAYS_ASSERT(schema_test.v == 0);
+  ALWAYS_ASSERT(schema_test.csn == 0);
+  ALWAYS_ASSERT(schema_test.td == ermia::Catalog::GetTable("USERTABLE"));
+  ALWAYS_ASSERT(schema_test.show_index);
+
+  TryVerifyStrict(tbl->InsertRecord(
+      txn, k1, Encode(str(Size(schema_value)), schema_value)));
   TryVerifyStrict(db->Commit(txn));
 
   if (ermia::config::verbose) {
