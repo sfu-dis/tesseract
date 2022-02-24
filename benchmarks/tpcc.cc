@@ -2404,7 +2404,6 @@ rc_t tpcc_worker::txn_ddl() {
   TryCatch(db->Commit(txn));
 #endif
   DLOG(INFO) << "DDL commit OK";
-  printf("DDL commit OK\n");
   return {RC_TRUE};
 }
 
