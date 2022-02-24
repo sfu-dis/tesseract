@@ -172,6 +172,65 @@ class oddlb_base_worker : public bench_worker {
     return *a.next(size);
   }
 
+  ermia::varstr &GenerateValue(uint32_t a, ermia::schema_record *schema) {
+    uint32_t schema_version = schema->v;
+    switch (schema_version) {
+      case 1: {
+        oddlb_kv_2::value record2;
+        record2.o_value_version = schema_version;
+        record2.o_value_a = a;
+        record2.o_value_b = schema_version;
+        record2.o_value_c = schema_version;
+        return Encode(str(Size(record2)), record2);
+      }
+      case 2: {
+        oddlb_kv_3::value record3;
+        record3.o_value_version = schema_version;
+        record3.o_value_a = a;
+        record3.o_value_b = schema_version;
+        record3.o_value_c = schema_version;
+        record3.o_value_d = schema_version;
+        return Encode(str(Size(record3)), record3);
+      }
+      case 3: {
+        oddlb_kv_4::value record4;
+        record4.o_value_version = schema_version;
+        record4.o_value_a = a;
+        record4.o_value_b = schema_version;
+        record4.o_value_c = schema_version;
+        record4.o_value_d = schema_version;
+        record4.o_value_e = schema_version;
+        return Encode(str(Size(record4)), record4);
+      }
+      case 4: {
+        oddlb_kv_5::value record5;
+        record5.o_value_version = schema_version;
+        record5.o_value_a = a;
+        record5.o_value_b = schema_version;
+        record5.o_value_c = schema_version;
+        record5.o_value_d = schema_version;
+        record5.o_value_e = schema_version;
+        record5.o_value_f = schema_version;
+        return Encode(str(Size(record5)), record5);
+      }
+      case 5: {
+        oddlb_kv_6::value record6;
+        record6.o_value_version = schema_version;
+        record6.o_value_a = a;
+        record6.o_value_b = schema_version;
+        record6.o_value_c = schema_version;
+        record6.o_value_d = schema_version;
+        record6.o_value_e = schema_version;
+        record6.o_value_f = schema_version;
+        record6.o_value_g = schema_version;
+        return Encode(str(Size(record6)), record6);
+      }
+      default: {
+        LOG(FATAL) << "Not supported";
+      }
+    }
+  }
+
   ermia::ConcurrentMasstreeIndex *schema_index;
   ermia::varstr *table_key;
 #if defined(SIDDL) || defined(BLOCKDDL)

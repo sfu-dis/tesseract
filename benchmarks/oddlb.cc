@@ -286,11 +286,23 @@ class oddlb_sequential_worker : public oddlb_base_worker {
                         record1_test->o_value_b == 20000000);
         } else if (schema.ddl_type ==
                    ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
-          oddlb_kv_2::value *record2_test = (oddlb_kv_2::value *)v2.data();
+          oddlb_kv_6::value *record2_test = (oddlb_kv_6::value *)v2.data();
 
           ALWAYS_ASSERT(record2_test->o_value_a == a);
           ALWAYS_ASSERT(record2_test->o_value_b == schema_version);
           ALWAYS_ASSERT(record2_test->o_value_c == schema_version);
+          if (schema.v == 2) {
+            ALWAYS_ASSERT(record2_test->o_value_d == schema_version);
+          }
+          if (schema.v == 3) {
+            ALWAYS_ASSERT(record2_test->o_value_e == schema_version);
+          }
+          if (schema.v == 4) {
+            ALWAYS_ASSERT(record2_test->o_value_f == schema_version);
+          }
+          if (schema.v == 5) {
+            ALWAYS_ASSERT(record2_test->o_value_g == schema_version);
+          }
         }
       }
     }
@@ -366,14 +378,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
           v2 = Encode(str(Size(record1)), record1);
         } else if (schema.ddl_type ==
                    ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
-          oddlb_kv_2::value record2;
-
-          record2.o_value_version = schema_version;
-          record2.o_value_a = a;
-          record2.o_value_b = schema_version;
-          record2.o_value_c = schema_version;
-
-          v2 = Encode(str(Size(record2)), record2);
+          v2 = GenerateValue(a, &schema);
         }
       }
 
