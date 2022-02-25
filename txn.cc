@@ -1188,7 +1188,9 @@ transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
   if (new_expected != NULL_PTR && old_expected != NULL_PTR &&
       (old_csn.asi_type() == fat_ptr::ASI_XID ||
        new_csn.asi_type() == fat_ptr::ASI_XID ||
-       CSN::from_ptr(old_csn).offset() > CSN::from_ptr(new_csn).offset())) {
+       (old_csn.asi_type() == fat_ptr::ASI_CSN &&
+        new_csn.asi_type() == fat_ptr::ASI_CSN &&
+        CSN::from_ptr(old_csn).offset() > CSN::from_ptr(new_csn).offset()))) {
     RETURN true;
   }
 
