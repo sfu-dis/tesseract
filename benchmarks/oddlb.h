@@ -235,7 +235,7 @@ class oddlb_base_worker : public bench_worker {
   // 1: add column (no-copy-no-verification)
   // 2: add constraint
   // 3: add column & add constraint
-  ermia::ddl::ddl_type get_example_ddl_type(uint32_t ddl_example) {
+  static ermia::ddl::ddl_type get_example_ddl_type(uint32_t ddl_example) {
     switch (ddl_example) {
       case 0:
         return ermia::ddl::ddl_type::COPY_ONLY;
