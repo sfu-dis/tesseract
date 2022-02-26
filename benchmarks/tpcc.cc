@@ -1608,7 +1608,7 @@ struct key_tuple {
   }
 };
 
-rc_t tpcc_worker::txn_ddl() {
+rc_t tpcc_worker::txn_ddl(uint32_t ddl_example) {
 #ifdef BLOCKDDL
   ermia::transaction *txn =
       db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
@@ -1652,7 +1652,7 @@ rc_t tpcc_worker::txn_ddl() {
       db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
   // Read schema tables first
-  if (ermia::config::ddl_example == 0) {
+  if (ddl_example == 0) {
     char str1[] = "order_line";
     ermia::varstr v1;
     rc_t rc = rc_t{RC_INVALID};
@@ -1676,7 +1676,7 @@ rc_t tpcc_worker::txn_ddl() {
     order_line_schema.old_v = old_schema_version;
     order_line_schema.state = ermia::ddl::schema_state_type::NOT_READY;
 
-    if (ermia::config::ddl_type != 4) {
+    if (order_line_schema.ddl_type != 4) {
       order_line_schema.old_td = old_order_line_td;
 
       rc = rc_t{RC_INVALID};
@@ -1711,8 +1711,7 @@ rc_t tpcc_worker::txn_ddl() {
       txn->add_old_td_map(old_order_line_td);
     }
 
-    order_line_schema.ddl_type =
-        ermia::ddl::ddl_type_map(ermia::config::ddl_type);
+    order_line_schema.ddl_type = ermia::ddl::ddl_type::COPY_ONLY;
     char str4[sizeof(ermia::schema_record)];
     ALWAYS_ASSERT(sizeof(ermia::schema_record) == sizeof(order_line_schema));
     memcpy(str4, &order_line_schema, sizeof(str4));
@@ -1731,13 +1730,13 @@ rc_t tpcc_worker::txn_ddl() {
         order_line_schema.state);
     txn->set_ddl_executor(ddl_exe);
 
-    if (ermia::config::ddl_type != 4) {
+    if (order_line_schema.ddl_type != 4) {
 #if !defined(LAZYDDL)
       rc = ddl_exe->scan(txn, arena);
       TryCatch(rc);
 #endif
     }
-  } else if (ermia::config::ddl_example == 1) {
+  } else if (ddl_example == 1) {
     char str1[] = "customer";
     ermia::varstr v1;
     rc_t rc = rc_t{RC_INVALID};
@@ -1970,7 +1969,7 @@ rc_t tpcc_worker::txn_ddl() {
     rc = ddl_exe->scan(txn, arena);
     TryCatch(rc);
 #endif
-  } else if (ermia::config::ddl_example == 2) {
+  } else if (ddl_example == 2) {
     char str1[] = "oorder", str2[] = "order_line";
     ermia::varstr &k1 = SchemaEncode(str(sizeof(str1)), str1),
                   &k2 = SchemaEncode(str(sizeof(str2)), str2);
@@ -2203,7 +2202,7 @@ rc_t tpcc_worker::txn_ddl() {
     rc = ddl_exe->scan(txn, arena);
     TryCatch(rc);
 #endif
-  } else if (ermia::config::ddl_example == 3) {
+  } else if (ddl_example == 3) {
     char str1[] = "order_line";
     ermia::varstr &k1 = SchemaEncode(str(sizeof(str1)), str1);
     ermia::varstr v1;
@@ -2276,7 +2275,7 @@ rc_t tpcc_worker::txn_ddl() {
     rc = ddl_exe->scan(txn, arena);
     TryCatch(rc);
 #endif
-  } else if (ermia::config::ddl_example == 4) {
+  } else if (ddl_example == 4) {
     char str1[] = "order_line";
     ermia::varstr &k1 = SchemaEncode(str(sizeof(str1)), str1);
     ermia::varstr v1;
@@ -2300,7 +2299,7 @@ rc_t tpcc_worker::txn_ddl() {
     order_line_schema.v = schema_version;
     order_line_schema.old_v = old_schema_version;
     order_line_schema.state = ermia::ddl::schema_state_type::NOT_READY;
-    if (ermia::config::ddl_type != 4) {
+    if (order_line_schema.ddl_type != 4) {
       order_line_schema.old_td = old_order_line_td;
 
       rc = rc_t{RC_INVALID};
@@ -2393,7 +2392,7 @@ rc_t tpcc_worker::txn_ddl() {
         order_line_schema.state);
     txn->set_ddl_executor(ddl_exe);
 
-    if (ermia::config::ddl_type != 4) {
+    if (order_line_schema.ddl_type != 4) {
 #if !defined(LAZYDDL)
       rc = ddl_exe->scan(txn, arena);
       TryCatch(rc);
@@ -2454,7 +2453,7 @@ bench_worker::workload_desc_vec tpcc_worker::get_workload() const {
 
 bench_worker::ddl_workload_desc_vec tpcc_worker::get_ddl_workload() const {
   ddl_workload_desc_vec ddl_w;
-  ddl_w.push_back(ddl_workload_desc("DDL", 0, TxnDDL));
+  ddl_w.push_back(ddl_workload_desc("DDL", 0, TxnDDL, 0));
   return ddl_w;
 }
 

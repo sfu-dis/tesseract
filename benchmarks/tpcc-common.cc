@@ -329,10 +329,12 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
         {"microbench-wr-rows", required_argument, 0, 'q'},
         {"suppliers", required_argument, 0, 'z'},
         {"hybrid", no_argument, &g_hybrid, 1},
+        {"ddl-start-times", required_argument, 0, 'd'},
+        {"ddl-examples", required_argument, 0, 'e'},
         {0, 0, 0, 0}};
     int option_index = 0;
-    int c =
-        getopt_long(argc, argv, "r:w:s:t:n:p:q:z", long_options, &option_index);
+    int c = getopt_long(argc, argv, "r:w:s:t:n:p:q:z:d:e", long_options,
+                        &option_index);
     if (c == -1) break;
     switch (c) {
       case 0:
@@ -372,10 +374,35 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
         }
         ALWAYS_ASSERT(s == 100);
       } break;
+
       case 'z':
         g_nr_suppliers = strtoul(optarg, NULL, 10);
         ALWAYS_ASSERT(g_nr_suppliers > 0);
         break;
+
+      case 'd': {
+        const std::vector<std::string> toks = util::split(optarg, ',');
+        unsigned s = 0;
+        for (size_t i = 0; i < toks.size(); i++) {
+          unsigned t = strtoul(toks[i].c_str(), nullptr, 10);
+          ALWAYS_ASSERT(t >= 0);
+          ddl_start_times[i] = t;
+          s++;
+        }
+        ALWAYS_ASSERT(s == ermia::config::ddl_total);
+      } break;
+
+      case 'e': {
+        const std::vector<std::string> toks = util::split(optarg, ',');
+        unsigned s = 0;
+        for (size_t i = 0; i < toks.size(); i++) {
+          unsigned e = strtoul(toks[i].c_str(), nullptr, 10);
+          ALWAYS_ASSERT(e >= 0);
+          ddl_examples[i] = e;
+          s++;
+        }
+        ALWAYS_ASSERT(s == ermia::config::ddl_total);
+      } break;
 
       case '?':
         // getopt_long already printed an error message.

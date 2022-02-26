@@ -231,6 +231,25 @@ class oddlb_base_worker : public bench_worker {
     }
   }
 
+  // 0: add column
+  // 1: add column (no-copy-no-verification)
+  // 2: add constraint
+  // 3: add column & add constraint
+  ermia::ddl::ddl_type get_example_ddl_type(uint32_t ddl_example) {
+    switch (ddl_example) {
+      case 0:
+        return ermia::ddl::ddl_type::COPY_ONLY;
+      case 1:
+        return ermia::ddl::ddl_type::NO_COPY_VERIFICATION;
+      case 2:
+        return ermia::ddl::ddl_type::VERIFICATION_ONLY;
+      case 3:
+        return ermia::ddl::ddl_type::COPY_VERIFICATION;
+      default:
+        LOG(FATAL) << "Not supported";
+    }
+  }
+
   ermia::ConcurrentMasstreeIndex *schema_index;
   ermia::varstr *table_key;
 #if defined(SIDDL) || defined(BLOCKDDL)

@@ -112,7 +112,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
   if (config::enable_dml_slow_down && ddl_running && is_dml()) {
     util::fast_random r(xc->begin);
-    if (r.next_uniform() >= 0.8) {
+    if (r.next_uniform() >= 0.99) {
       usleep(1);
     }
   }
@@ -319,7 +319,7 @@ rc_t transaction::si_commit() {
     DLOG(INFO) << "DDL schema commit with size " << write_set.size();
 
 #ifdef COPYDDL
-    if (config::ddl_type != 4) {
+    if (ddl_exe->get_ddl_type() != ddl::ddl_type::NO_COPY_VERIFICATION) {
       for (auto &v : new_td_map) {
         // Fix new table file's marks
         auto *alloc = oidmgr->get_allocator(this->old_td->GetTupleFid());
@@ -351,7 +351,7 @@ rc_t transaction::si_commit() {
 
 #ifdef COPYDDL
   if (is_ddl()) {
-    if (config::ddl_type != 4) {
+    if (ddl_exe->get_ddl_type() != ddl::ddl_type::NO_COPY_VERIFICATION) {
 #if !defined(LAZYDDL)
       // Start the second round of CDC
       DLOG(INFO) << "Second CDC begins";

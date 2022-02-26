@@ -23,6 +23,7 @@ typedef std::function<bool(varstr &value, uint64_t schema_version)> Constraint;
 
 // DDL type
 enum ddl_type {
+  INVALID,
   COPY_ONLY,
   VERIFICATION_ONLY,
   COPY_VERIFICATION,
@@ -112,9 +113,13 @@ class ddl_executor {
   // Scan workers
   std::vector<ermia::thread::Thread *> scan_workers;
 
+  // DDL type
+  ddl_type dt;
+
  public:
   // Constructor and destructor
-  ddl_executor() {}
+  ddl_executor() : dt(ddl_type::INVALID) {}
+  ddl_executor(ddl_type dt) : dt(dt) {}
   ~ddl_executor() {}
 
   inline void add_ddl_executor_paras(
@@ -128,6 +133,8 @@ class ddl_executor {
         state, secondary_index_key_create_idx, handle_insert, handle_update,
         scan_reformat_idx));
   }
+
+  inline ddl_type get_ddl_type() { return dt; }
 
   inline void set_cdc_workers(
       std::vector<ermia::thread::Thread *> _cdc_workers) {

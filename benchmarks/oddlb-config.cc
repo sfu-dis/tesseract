@@ -136,29 +136,22 @@ void oddlb_schematable_loader::load() {
   usertable_schema.state = ermia::ddl::schema_state_type::READY;
   usertable_schema.old_td = nullptr;
   usertable_schema.reformats_total = 0;
-  if (ermia::config::ddl_type == 4) {
-    int i = 0;
-    usertable_schema.reformat_idx = i;
-    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
-    ermia::ddl::reformats.push_back(add_column);
-    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
-    ermia::ddl::reformats.push_back(add_column_1);
-    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
-    ermia::ddl::reformats.push_back(add_column_2);
-    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
-    ermia::ddl::reformats.push_back(add_column_3);
-    usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
-    ermia::ddl::reformats.push_back(add_column_4);
-    usertable_schema.reformats_total = i;
-  }
+  int i = 0;
+  usertable_schema.reformat_idx = i;
+  usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+  ermia::ddl::reformats.push_back(add_column);
+  usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+  ermia::ddl::reformats.push_back(add_column_1);
+  usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+  ermia::ddl::reformats.push_back(add_column_2);
+  usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+  ermia::ddl::reformats.push_back(add_column_3);
+  usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
+  ermia::ddl::reformats.push_back(add_column_4);
+  usertable_schema.reformats_total = i;
   usertable_schema.old_index = nullptr;
   usertable_schema.v = 0;
   usertable_schema.csn = 0;
-  if (ermia::config::ddl_type != 4) {
-    usertable_schema.reformat_idx = ermia::ddl::reformats.size();
-    ermia::ddl::reformats.push_back(add_column);
-    usertable_schema.reformats_total = 1;
-  }
   usertable_schema.constraint_idx = ermia::ddl::constraints.size();
   usertable_schema.secondary_index_key_create_idx = -1;
   ermia::ddl::constraints.push_back(column_verification);
@@ -243,10 +236,12 @@ void oddlb_parse_options(int argc, char **argv) {
     static struct option long_options[] = {
         {"reps-per-tx", required_argument, 0, 'r'},
         {"initial-table-size", required_argument, 0, 's'},
+        {"ddl-start-times", required_argument, 0, 'd'},
+        {"ddl-examples", required_argument, 0, 'e'},
         {0, 0, 0, 0}};
 
     int option_index = 0;
-    int c = getopt_long(argc, argv, "r:s:", long_options, &option_index);
+    int c = getopt_long(argc, argv, "r:s:d:e:", long_options, &option_index);
     if (c == -1) break;
     switch (c) {
       case 0:
@@ -261,6 +256,30 @@ void oddlb_parse_options(int argc, char **argv) {
       case 's':
         oddl_initial_table_size = strtoul(optarg, NULL, 10);
         break;
+
+      case 'd': {
+        const std::vector<std::string> toks = util::split(optarg, ',');
+        unsigned s = 0;
+        for (size_t i = 0; i < toks.size(); i++) {
+          unsigned t = strtoul(toks[i].c_str(), nullptr, 10);
+          ALWAYS_ASSERT(t >= 0);
+          ddl_start_times[i] = t;
+          s++;
+        }
+        ALWAYS_ASSERT(s == ermia::config::ddl_total);
+      } break;
+
+      case 'e': {
+        const std::vector<std::string> toks = util::split(optarg, ',');
+        unsigned s = 0;
+        for (size_t i = 0; i < toks.size(); i++) {
+          unsigned e = strtoul(toks[i].c_str(), nullptr, 10);
+          ALWAYS_ASSERT(e >= 0);
+          ddl_examples[i] = e;
+          s++;
+        }
+        ALWAYS_ASSERT(s == ermia::config::ddl_total);
+      } break;
 
       case '?':
         /* getopt_long already printed an error message. */

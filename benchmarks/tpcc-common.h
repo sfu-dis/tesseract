@@ -1486,10 +1486,10 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
     return static_cast<tpcc_worker *>(w)->txn_query2();
   }
 
-  rc_t txn_ddl();
+  rc_t txn_ddl(uint32_t ddl_example);
 
-  static rc_t TxnDDL(bench_worker *w) {
-    return static_cast<tpcc_worker *>(w)->txn_ddl();
+  static rc_t TxnDDL(bench_worker *w, uint32_t ddl_example) {
+    return static_cast<tpcc_worker *>(w)->txn_ddl(ddl_example);
   }
 
   virtual workload_desc_vec get_workload() const override;

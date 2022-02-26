@@ -21,20 +21,26 @@ class oddlb_sequential_worker : public oddlb_base_worker {
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
 
-    if (read_ratio) w.push_back(workload_desc("Read", read_ratio, TxnRead));
-    if (write_ratio) w.push_back(workload_desc("RMW", write_ratio, TxnRMW));
+    if (read_ratio) {
+      w.push_back(workload_desc("Read", read_ratio, TxnRead));
+    }
+    if (write_ratio) {
+      w.push_back(workload_desc("RMW", write_ratio, TxnRMW));
+    }
 
     return w;
   }
 
   virtual ddl_workload_desc_vec get_ddl_workload() const {
     ddl_workload_desc_vec ddl_w;
-    ddl_w.push_back(ddl_workload_desc("DDL", 0, TxnDDL));
+    for (int i = 0; i < ermia::config::ddl_total; i++) {
+      ddl_w.push_back(ddl_workload_desc("DDL", 0, TxnDDL, ddl_examples[i]));
+    }
     return ddl_w;
   }
 
-  static rc_t TxnDDL(bench_worker *w) {
-    return static_cast<oddlb_sequential_worker *>(w)->txn_ddl();
+  static rc_t TxnDDL(bench_worker *w, uint32_t ddl_example) {
+    return static_cast<oddlb_sequential_worker *>(w)->txn_ddl(ddl_example);
   }
   static rc_t TxnRead(bench_worker *w) {
     return static_cast<oddlb_sequential_worker *>(w)->txn_read();
@@ -43,7 +49,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     return static_cast<oddlb_sequential_worker *>(w)->txn_rmw();
   }
 
-  rc_t txn_ddl() {
+  rc_t txn_ddl(uint32_t ddl_example) {
 #if SIDDL
   retry:
 #endif
@@ -61,6 +67,8 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     const schema_kv::value *old_schema_value =
         Decode(valptr, schema_value_temp);
     schema.value_to_record(old_schema_value);
+    schema.ddl_type = get_example_ddl_type(ddl_example);
+
 #ifdef COPYDDL
     schema.old_v = schema.v;
     uint64_t schema_version = schema.old_v + 1;
@@ -68,7 +76,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     schema.v = schema_version;
     schema.old_td = schema.td;
     schema.state = ermia::ddl::schema_state_type::NOT_READY;
-    schema.ddl_type = ermia::ddl::ddl_type_map(ermia::config::ddl_type);
     schema.show_index = true;
 
     rc = rc_t{RC_INVALID};
@@ -123,7 +130,8 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     TryCatch(rc);
 
     // New a ddl executor
-    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
+    ermia::ddl::ddl_executor *ddl_exe =
+        new ermia::ddl::ddl_executor(schema.ddl_type);
     ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
                                     schema.reformat_idx, schema.constraint_idx,
                                     schema.td, schema.old_td, schema.index,
@@ -150,7 +158,8 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         Encode(str(Size(new_schema_value)), new_schema_value)));
 
     // New a ddl executor
-    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
+    ermia::ddl::ddl_executor *ddl_exe =
+        new ermia::ddl::ddl_executor(schema.ddl_type);
     ddl_exe->add_ddl_executor_paras(schema.v, -1, schema.ddl_type,
                                     schema.reformat_idx, schema.constraint_idx,
                                     schema.td, schema.td, schema.index,
@@ -178,7 +187,8 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     TryCatch(rc);
 
     // New a ddl executor
-    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
+    ermia::ddl::ddl_executor *ddl_exe =
+        new ermia::ddl::ddl_executor(schema.ddl_type);
     ddl_exe->add_ddl_executor_paras(schema.v, -1, schema.ddl_type,
                                     schema.reformat_idx, schema.constraint_idx,
                                     schema.td, schema.td, schema.index,

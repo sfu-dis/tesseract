@@ -119,12 +119,10 @@ DEFINE_bool(scan_physical_workers_only, false,
             "Whether to use physical workers for scan");
 DEFINE_bool(enable_cdc_schema_lock, true,
             "Whether to lock schema records when CDC");
-DEFINE_uint64(ddl_type, 1, "DDL type");
 DEFINE_bool(enable_cdc_verification_test, false,
             "Whether enable CDC test for verification related DDL");
 DEFINE_bool(enable_dml_slow_down, true, "Whether make DMLs slow down when DDL");
 DEFINE_uint64(ddl_total, 1, "Number of DDL txns");
-DEFINE_uint64(ddl_start_time, 1, "When does a DDL txn start");
 DEFINE_uint64(no_copy_verification_version_add, 1,
               "To which version we want to add to version when doing no copy "
               "verification");
@@ -134,9 +132,6 @@ DEFINE_bool(enable_lazy_background, false,
             "Whether enable background migration for lazy DDL");
 DEFINE_bool(enable_late_scan_join, false,
             "Whether enable join scan workers after commit");
-DEFINE_bool(enable_check_ddl_latency, false,
-            "whether enable check latency during DDL");
-DEFINE_bool(enable_ddl_offloading, false, "Whether enable offloading for DDL");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -173,20 +168,16 @@ int main(int argc, char **argv) {
   ermia::config::cdc_threads = FLAGS_cdc_threads;
   ermia::config::scan_threads = FLAGS_scan_threads;
   ermia::config::enable_cdc_schema_lock = FLAGS_enable_cdc_schema_lock;
-  ermia::config::ddl_type = FLAGS_ddl_type;
   ermia::config::enable_cdc_verification_test =
       FLAGS_enable_cdc_verification_test;
   ermia::config::enable_dml_slow_down = FLAGS_enable_dml_slow_down;
   ermia::config::ddl_total = FLAGS_ddl_total;
-  ermia::config::ddl_start_time = FLAGS_ddl_start_time;
   ermia::config::no_copy_verification_version_add =
       FLAGS_no_copy_verification_version_add;
   ermia::config::ddl_example = FLAGS_ddl_example;
   ermia::config::enable_ddl_keys = FLAGS_enable_ddl_keys;
   ermia::config::enable_lazy_background = FLAGS_enable_lazy_background;
   ermia::config::enable_late_scan_join = FLAGS_enable_late_scan_join;
-  ermia::config::enable_check_ddl_latency = FLAGS_enable_check_ddl_latency;
-  ermia::config::enable_ddl_offloading = FLAGS_enable_ddl_offloading;
 
   if (ermia::config::physical_workers_only) {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
@@ -371,16 +362,12 @@ int main(int argc, char **argv) {
             << ermia::config::cdc_physical_workers_only << std::endl;
   std::cerr << "  enable_cdc_schema_lock		: "
             << ermia::config::enable_cdc_schema_lock << std::endl;
-  std::cerr << "  ddl_type				: "
-            << ermia::config::ddl_type << std::endl;
   std::cerr << "  enable_cdc_verification_test		: "
             << ermia::config::enable_cdc_verification_test << std::endl;
   std::cerr << "  enable_dml_slow_down    		: "
             << ermia::config::enable_dml_slow_down << std::endl;
   std::cerr << "  ddl_total				: "
             << ermia::config::ddl_total << std::endl;
-  std::cerr << "  ddl_start_time			: "
-            << ermia::config::ddl_start_time << std::endl;
   std::cerr << "  no_copy_verification_version_add	: "
             << ermia::config::no_copy_verification_version_add << std::endl;
   std::cerr << "  ddl_example			        : "
@@ -391,10 +378,6 @@ int main(int argc, char **argv) {
             << ermia::config::enable_lazy_background << std::endl;
   std::cerr << "  enable_late_scan_join			: "
             << ermia::config::enable_late_scan_join << std::endl;
-  std::cerr << "  enable_check_ddl_latency		: "
-            << ermia::config::enable_check_ddl_latency << std::endl;
-  std::cerr << "  enable_ddl_offloading			: "
-            << ermia::config::enable_ddl_offloading << std::endl;
 #endif
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");

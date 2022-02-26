@@ -22,6 +22,8 @@ std::vector<bench_worker *> bench_runner::workers;
 volatile int ddl_done = 0;
 volatile int ddl_worker_id = -1;
 volatile bool ddl_start = false;
+volatile unsigned ddl_start_times[8];
+volatile unsigned ddl_examples[8];
 
 thread_local ermia::epoch_num coroutine_batch_end_epoch = 0;
 
@@ -42,7 +44,7 @@ void bench_worker::do_ddl_workload_function(uint32_t i) {
 retry:
   util::timer t;
   const unsigned long old_seed = r.get_seed();
-  const auto ret = ddl_workload[i].fn(this);
+  const auto ret = ddl_workload[i].ddl_fn(this, ddl_workload[i].ddl_example);
   if (finish_workload(ret, i, t)) {
     r.set_seed(old_seed);
     goto retry;
@@ -250,7 +252,7 @@ void bench_runner::start_measurement() {
   ALWAYS_ASSERT(!workers.empty());
 #ifdef DDL
   util::fast_random r(2343352);
-  ddl_worker_id = r.next() % workers.size() - 1;
+  ddl_worker_id = r.next() % workers.size();
   DLOG(INFO) << "ddl_worker_id: " << ddl_worker_id;
 #endif
   for (std::vector<bench_worker *>::const_iterator it = workers.begin();
@@ -354,7 +356,8 @@ void bench_runner::start_measurement() {
   // uint32_t sleep_time = 1;
   uint32_t sleep_time = 1000 * 1000;
   auto gather_stats = [&]() {
-    if (slept == ermia::config::ddl_start_time * 1000000) {
+    if (ddl_done < ermia::config::ddl_total &&
+        slept == ddl_start_times[ddl_done] * 1000000) {
       ddl_start = true;
     }
     // sleep(1);
