@@ -251,6 +251,9 @@ rc_t transaction::si_commit() {
   xc->end = write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;
 
 #if defined(COPYDDL)
+  if (is_ddl()) {
+    cdc_running = true;
+  }
   if (is_dml() && DMLConsistencyHandler()) {
     DLOG(INFO) << "DML failed with begin: " << xc->begin
                << ", end: " << xc->end;
@@ -357,10 +360,10 @@ rc_t transaction::si_commit() {
       DLOG(INFO) << "Second CDC begins";
       cdc_second_phase = true;
       ddl_end.store(0);
-      std::vector<thread::Thread *> cdc_workers = changed_data_capture();
       while (ddl_end.load() != config::cdc_threads && !ddl_failed) {
       }
-      join_changed_data_capture_threads(cdc_workers);
+      cdc_running = false;
+      ddl_exe->join_cdc_workers();
       cdc_second_phase = false;
       DLOG(INFO) << "Second CDC ends";
       if (config::enable_late_scan_join) {
@@ -649,6 +652,11 @@ std::vector<thread::Thread *> transaction::changed_data_capture() {
         if (ddl_end_local && cdc_second_phase) {
           break;
         }
+        if (!cdc_running && !cdc_second_phase) {
+          ddl_end.fetch_add(1);
+        }
+        while (!cdc_running && !cdc_second_phase) {
+        }
       }
       ddl_end.fetch_add(1);
     };
@@ -657,16 +665,6 @@ std::vector<thread::Thread *> transaction::changed_data_capture() {
   }
 
   return cdc_workers;
-}
-
-void transaction::join_changed_data_capture_threads(
-    std::vector<thread::Thread *> cdc_workers) {
-  cdc_running = false;
-  for (std::vector<thread::Thread *>::const_iterator it = cdc_workers.begin();
-       it != cdc_workers.end(); ++it) {
-    (*it)->Join();
-    thread::PutThread(*it);
-  }
 }
 
 uint64_t transaction::get_cdc_largest_csn() {

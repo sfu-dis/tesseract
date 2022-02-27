@@ -193,8 +193,6 @@ class transaction {
 #ifdef COPYDDL
 #if !defined(LAZYDDL)
   std::vector<ermia::thread::Thread *> changed_data_capture();
-  void join_changed_data_capture_threads(
-      std::vector<ermia::thread::Thread *> cdc_workers);
   uint64_t get_cdc_smallest_csn();
   uint64_t get_cdc_largest_csn();
 #endif

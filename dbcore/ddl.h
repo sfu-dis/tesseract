@@ -154,13 +154,21 @@ class ddl_executor {
     }
   }
 
+  inline void join_cdc_workers() {
+    for (std::vector<thread::Thread *>::const_iterator it = cdc_workers.begin();
+         it != cdc_workers.end(); ++it) {
+      (*it)->Join();
+      thread::PutThread(*it);
+    }
+  }
+
   // Scan and do operations (copy, verification)
   rc_t scan(transaction *t, str_arena *arena);
 
   // Scan impl
-  rc_t _scan(transaction *t, str_arena *arena, OID oid, FID old_fid,
-             TXN::xid_context *xc, oid_array *old_tuple_array,
-             oid_array *key_array, dlog::log_block *lb);
+  rc_t scan_impl(transaction *t, str_arena *arena, OID oid, FID old_fid,
+                 TXN::xid_context *xc, oid_array *old_tuple_array,
+                 oid_array *key_array, dlog::log_block *lb);
 
   // CDC
   rc_t changed_data_capture_impl(transaction *t, uint32_t thread_id,

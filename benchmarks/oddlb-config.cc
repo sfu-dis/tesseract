@@ -4,8 +4,17 @@
 #include "bench.h"
 #include "oddlb.h"
 
-uint oddl_reps_per_tx = 10;
-uint oddl_initial_table_size = 10000000;
+uint oddlb_reps_per_tx = 10;
+uint oddlb_initial_table_size = 10000000;
+char oddlb_workload_flag = 'D';
+
+OddlbWorkload OddlbWorkloadA('A', 100U, 0);
+OddlbWorkload OddlbWorkloadB('B', 80U, 100U);
+OddlbWorkload OddlbWorkloadC('C', 50U, 100U);
+OddlbWorkload OddlbWorkloadD('D', 20U, 100U);
+OddlbWorkload OddlbWorkloadE('E', 0, 100U);
+
+OddlbWorkload oddlb_workload = OddlbWorkloadD;
 
 void oddlb_create_db(ermia::Engine *db) {
   ermia::thread::Thread *thread = ermia::thread::GetThread(true);
@@ -148,7 +157,7 @@ void oddlb_schematable_loader::load() {
   ermia::ddl::reformats.push_back(add_column_3);
   usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
   ermia::ddl::reformats.push_back(add_column_4);
-  usertable_schema.reformats_total = i;
+  usertable_schema.reformats_total = 0;
   usertable_schema.old_index = nullptr;
   usertable_schema.v = 0;
   usertable_schema.csn = 0;
@@ -185,7 +194,7 @@ void oddlb_usertable_loader::load() {
   ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
   uint32_t nloaders = std::thread::hardware_concurrency() /
                       (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
-  int64_t to_insert = oddl_initial_table_size / nloaders;
+  int64_t to_insert = oddlb_initial_table_size / nloaders;
   uint64_t start_key = loader_id * to_insert;
 
   for (uint64_t i = 0; i < to_insert; ++i) {
@@ -238,10 +247,11 @@ void oddlb_parse_options(int argc, char **argv) {
         {"initial-table-size", required_argument, 0, 's'},
         {"ddl-start-times", required_argument, 0, 'd'},
         {"ddl-examples", required_argument, 0, 'e'},
+        {"workload", required_argument, 0, 'w'},
         {0, 0, 0, 0}};
 
     int option_index = 0;
-    int c = getopt_long(argc, argv, "r:s:d:e:", long_options, &option_index);
+    int c = getopt_long(argc, argv, "r:s:d:e:w:", long_options, &option_index);
     if (c == -1) break;
     switch (c) {
       case 0:
@@ -250,11 +260,11 @@ void oddlb_parse_options(int argc, char **argv) {
         break;
 
       case 'r':
-        oddl_reps_per_tx = strtoul(optarg, NULL, 10);
+        oddlb_reps_per_tx = strtoul(optarg, NULL, 10);
         break;
 
       case 's':
-        oddl_initial_table_size = strtoul(optarg, NULL, 10);
+        oddlb_initial_table_size = strtoul(optarg, NULL, 10);
         break;
 
       case 'd': {
@@ -281,6 +291,25 @@ void oddlb_parse_options(int argc, char **argv) {
         ALWAYS_ASSERT(s == ermia::config::ddl_total);
       } break;
 
+      case 'w':
+        oddlb_workload_flag = optarg[0];
+        if (oddlb_workload_flag == 'A')
+          oddlb_workload = OddlbWorkloadA;
+        else if (oddlb_workload_flag == 'B')
+          oddlb_workload = OddlbWorkloadB;
+        else if (oddlb_workload_flag == 'C')
+          oddlb_workload = OddlbWorkloadC;
+        else if (oddlb_workload_flag == 'D')
+          oddlb_workload = OddlbWorkloadD;
+        else if (oddlb_workload_flag == 'E')
+          oddlb_workload = OddlbWorkloadE;
+        else {
+          std::cerr << "Wrong workload type: " << oddlb_workload_flag
+                    << std::endl;
+          abort();
+        }
+        break;
+
       case '?':
         /* getopt_long already printed an error message. */
         exit(1);
@@ -290,13 +319,15 @@ void oddlb_parse_options(int argc, char **argv) {
     }
   }
 
-  ALWAYS_ASSERT(oddl_initial_table_size);
+  ALWAYS_ASSERT(oddlb_initial_table_size);
 
   if (ermia::config::verbose) {
     std::cerr << "oddlb settings:" << std::endl
-              << "  initial user table size:    " << oddl_initial_table_size
+              << "  workload:                   " << oddlb_workload_flag
               << std::endl
-              << "  operations per transaction: " << oddl_reps_per_tx
+              << "  initial user table size:    " << oddlb_initial_table_size
+              << std::endl
+              << "  operations per transaction: " << oddlb_reps_per_tx
               << std::endl;
   }
 }

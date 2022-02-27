@@ -69,7 +69,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
       dlog::log_block *lb = nullptr;
       str_arena *arena = new str_arena(config::arena_size_mb);
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
-        r = _scan(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
+        r = scan_impl(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
         if (r._val != RC_TRUE || ddl_failed) {
           break;
         }
@@ -81,7 +81,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   dlog::log_block *lb = nullptr;
   OID end = scan_threads == 1 ? himark : total_per_scan_thread;
   for (OID oid = 0; oid <= end; oid++) {
-    r = _scan(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
+    r = scan_impl(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
     if (r._val != RC_TRUE || ddl_failed) {
       break;
     }
@@ -92,9 +92,12 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   }
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
-  t->join_changed_data_capture_threads(cdc_workers);
+  cdc_running = false;
+  while (ddl_end.load() != config::cdc_threads && !ddl_failed) {
+  }
   if (ddl_failed) {
     DLOG(INFO) << "DDL failed";
+    join_cdc_workers();
     for (std::vector<struct ddl_executor_paras *>::const_iterator it =
              ddl_executor_paras_list.begin();
          it != ddl_executor_paras_list.end(); ++it) {
@@ -275,9 +278,10 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
   return rc_t{RC_TRUE};
 }
 
-rc_t ddl_executor::_scan(transaction *t, str_arena *arena, OID oid, FID old_fid,
-                         TXN::xid_context *xc, oid_array *old_tuple_array,
-                         oid_array *key_array, dlog::log_block *lb) {
+rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
+                             FID old_fid, TXN::xid_context *xc,
+                             oid_array *old_tuple_array, oid_array *key_array,
+                             dlog::log_block *lb) {
   dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
   varstr tuple_value;
   fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
