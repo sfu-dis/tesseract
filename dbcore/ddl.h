@@ -30,8 +30,6 @@ enum ddl_type {
   NO_COPY_VERIFICATION,
 };
 
-ddl_type ddl_type_map(uint32_t type);
-
 enum schema_state_type {
   READY,
   NOT_READY,

@@ -11,21 +11,6 @@ namespace ddl {
 std::vector<Reformat> reformats;
 std::vector<Constraint> constraints;
 
-ddl_type ddl_type_map(uint32_t type) {
-  switch (type) {
-    case 1:
-      return COPY_ONLY;
-    case 2:
-      return VERIFICATION_ONLY;
-    case 3:
-      return COPY_VERIFICATION;
-    case 4:
-      return NO_COPY_VERIFICATION;
-    default:
-      LOG(FATAL) << "Not supported";
-  }
-}
-
 rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
   DLOG(INFO) << "First CDC begins";
