@@ -286,7 +286,6 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
           if ((end_csn && begin_csn <= header->csn && header->csn <= end_csn) ||
               (!end_csn && begin_csn <= header->csn)) {
             last_csn = header->csn;
-            volatile_write(_cdc_last_csn[i], last_csn);
             uint64_t offset_in_block = 0;
             while (offset_in_block < header->payload_size && !ddl_failed) {
               dlog::log_record *logrec =

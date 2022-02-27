@@ -7,8 +7,6 @@
 namespace ermia {
 
 TableDescriptor *schema_td = NULL;
-uint64_t *_cdc_last_csn =
-    (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
 
 thread_local dlog::tls_log tlog;
 std::mutex tlog_lock;

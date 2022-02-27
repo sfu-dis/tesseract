@@ -33,7 +33,6 @@ dlog::tls_log *GetLog(uint32_t logid);
 class Table;
 
 extern TableDescriptor *schema_td;
-extern uint64_t *_cdc_last_csn;
 
 class Engine {
  private:
