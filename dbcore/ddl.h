@@ -134,15 +134,6 @@ class ddl_executor {
 
   inline ddl_type get_ddl_type() { return dt; }
 
-  inline void set_cdc_workers(
-      std::vector<ermia::thread::Thread *> _cdc_workers) {
-    cdc_workers = _cdc_workers;
-  }
-
-  inline std::vector<ermia::thread::Thread *> get_cdc_workers() {
-    return cdc_workers;
-  }
-
   inline void join_scan_workers() {
     for (std::vector<thread::Thread *>::const_iterator it =
              scan_workers.begin();
