@@ -112,7 +112,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
   if (config::enable_dml_slow_down && ddl_running && is_dml()) {
     util::fast_random r(xc->begin);
-    if (r.next_uniform() >= 0.99) {
+    if (r.next_uniform() >= 0.7) {
       usleep(1);
     }
   }
@@ -315,7 +315,11 @@ rc_t transaction::si_commit() {
       ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
 
       // Set CSN
+#ifdef BLOCKDDL
+      fat_ptr csn_ptr = object->GenerateCsnPtr(xc->begin);
+#else
       fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
+#endif
       object->SetCSN(csn_ptr);
       ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
     }
@@ -595,7 +599,6 @@ rc_t transaction::si_commit() {
 }
 #endif
 
-#ifdef COPYDDL
 bool transaction::DMLConsistencyHandler() {
   TXN::xid_context *tmp_xc = TXN::xid_get_context(xid);
   uint64_t begin = xc->begin;
@@ -625,7 +628,6 @@ bool transaction::DMLConsistencyHandler() {
   tmp_xc->begin = begin;
   return false;
 }
-#endif
 
 // returns true if btree versions have changed, ie there's phantom
 bool transaction::MasstreeCheckPhantom() {

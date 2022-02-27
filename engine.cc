@@ -73,6 +73,7 @@ retry:
     schema_kv::value schema_value_temp;
     const schema_kv::value *schema = Decode(value, schema_value_temp);
     if (schema->state == ddl::schema_state_type::NOT_READY) {
+#if !defined(LAZYDDL)
       if (schema->ddl_type != ddl::ddl_type::COPY_ONLY ||
           config::enable_cdc_schema_lock) {
         goto retry;
@@ -87,6 +88,9 @@ retry:
         t->add_old_td_map(old_td);
         t->add_new_td_map(Catalog::GetTable(schema->fid));
       }
+#else
+      goto retry;
+#endif
     }
     if (t->is_dml()) {
       t->schema_read_map[*out_oid] = schema->version;

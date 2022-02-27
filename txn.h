@@ -190,9 +190,7 @@ class transaction {
   rc_t si_commit();
 #endif
 
-#ifdef COPYDDL
   bool DMLConsistencyHandler();
-#endif
 
   bool MasstreeCheckPhantom();
   void Abort();

@@ -270,12 +270,8 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
       if (schema.ddl_type != ermia::ddl::ddl_type::VERIFICATION_ONLY &&
           record_test->o_value_version != schema_version) {
-#ifdef BLOCKDDL
-        TryCatch(rc_t{RC_ABORT_USER});
-#else
         LOG(FATAL) << "Read: It should get " << schema_version << " ,but get "
                    << record_test->o_value_version;
-#endif
       }
 
       if (schema_version == 0) {
