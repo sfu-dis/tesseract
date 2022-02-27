@@ -169,7 +169,7 @@ class ddl_executor {
                  oid_array *key_array, dlog::log_block *lb);
 
   // CDC
-  std::vector<thread::Thread *> changed_data_capture(transaction *txn);
+  std::vector<thread::Thread *> changed_data_capture(transaction *t);
 
   // CDC impl
   rc_t changed_data_capture_impl(transaction *t, uint32_t thread_id,
