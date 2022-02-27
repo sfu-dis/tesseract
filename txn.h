@@ -191,11 +191,6 @@ class transaction {
 #endif
 
 #ifdef COPYDDL
-#if !defined(LAZYDDL)
-  std::vector<ermia::thread::Thread *> changed_data_capture();
-  uint64_t get_cdc_smallest_csn();
-  uint64_t get_cdc_largest_csn();
-#endif
   bool DMLConsistencyHandler();
 #endif
 
@@ -313,6 +308,8 @@ class transaction {
   inline void set_ddl_executor(ddl::ddl_executor *_ddl_exe) {
     ddl_exe = _ddl_exe;
   }
+
+  inline dlog::tls_log *get_log() { return log; }
 
 #ifdef BLOCKDDL
   enum lock_type { INVALID, SHARED, EXCLUSIVE };

@@ -14,7 +14,7 @@ std::vector<Constraint> constraints;
 rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
   DLOG(INFO) << "First CDC begins";
-  cdc_workers = t->changed_data_capture();
+  cdc_workers = changed_data_capture(t);
 #endif
 
   rc_t r;
@@ -100,6 +100,76 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
 #endif
 
   return rc_t{RC_TRUE};
+}
+
+std::vector<thread::Thread *> ddl_executor::changed_data_capture(
+    transaction *t) {
+  ddl_failed = false;
+  cdc_running = true;
+  dlog::tls_log *log = t->get_log();
+  uint32_t cdc_threads = config::cdc_threads;
+  uint32_t logs_per_cdc_thread = (config::worker_threads - 1) / cdc_threads;
+
+  uint32_t normal_workers[config::worker_threads - 1];
+  uint32_t j = 0;
+  uint32_t ddl_thread_id = -1;
+  for (uint32_t i = 0; i < dlog::tlogs.size(); i++) {
+    dlog::tls_log *tlog = dlog::tlogs[i];
+    if (tlog && tlog != log && volatile_read(pcommit::_tls_durable_csn[i])) {
+      normal_workers[j++] = i;
+      tlog->enqueue_flush();
+    } else if (tlog == log) {
+      ddl_thread_id = i;
+    }
+  }
+
+  std::vector<thread::Thread *> cdc_workers;
+  for (uint32_t i = 0; i < cdc_threads; i++) {
+    uint32_t begin_log = normal_workers[i * logs_per_cdc_thread];
+    uint32_t end_log = normal_workers[(i + 1) * logs_per_cdc_thread - 1];
+    if (i == cdc_threads - 1) end_log = normal_workers[--j];
+
+    thread::Thread *thread =
+        thread::GetThread(config::cdc_physical_workers_only);
+    ALWAYS_ASSERT(thread);
+    cdc_workers.push_back(thread);
+
+    uint32_t count = 0;
+    for (uint32_t i = begin_log; i <= end_log; i++) {
+      dlog::tls_log *tlog = dlog::tlogs[i];
+      uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
+      if (tlog && csn && tlog != GetLog() && i != ddl_thread_id) {
+        count++;
+      }
+    }
+
+    auto parallel_changed_data_capture = [=](char *) {
+      bool ddl_end_local = false;
+      str_arena *arena = new str_arena(config::arena_size_mb);
+      rc_t rc;
+      while (cdc_running) {
+        rc = changed_data_capture_impl(t, i, ddl_thread_id, begin_log, end_log,
+                                       arena, &ddl_end_local, count);
+        if (rc._val != RC_TRUE) {
+          ddl_failed = true;
+          cdc_running = false;
+        }
+        if (ddl_end_local && cdc_second_phase) {
+          break;
+        }
+        if (!cdc_running && !cdc_second_phase) {
+          ddl_end.fetch_add(1);
+        }
+        while (!cdc_running && !cdc_second_phase) {
+        }
+      }
+      ddl_end.fetch_add(1);
+    };
+
+    thread->StartTask(parallel_changed_data_capture);
+  }
+
+  return cdc_workers;
 }
 
 rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,

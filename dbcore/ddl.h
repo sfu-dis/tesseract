@@ -169,6 +169,9 @@ class ddl_executor {
                  oid_array *key_array, dlog::log_block *lb);
 
   // CDC
+  std::vector<thread::Thread *> changed_data_capture(transaction *txn);
+
+  // CDC impl
   rc_t changed_data_capture_impl(transaction *t, uint32_t thread_id,
                                  uint32_t ddl_thread_id, uint32_t begin_log,
                                  uint32_t end_log, str_arena *arena,
