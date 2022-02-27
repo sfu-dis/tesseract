@@ -180,7 +180,7 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
   return rc_t{RC_TRUE};
 }
 
-std::vector<thread::Thread *> ddl_executor::changed_data_capture(
+void ddl_executor::changed_data_capture(
     transaction *t) {
   ddl_failed = false;
   cdc_running = true;
@@ -201,7 +201,6 @@ std::vector<thread::Thread *> ddl_executor::changed_data_capture(
     }
   }
 
-  std::vector<thread::Thread *> cdc_workers;
   for (uint32_t i = 0; i < cdc_threads; i++) {
     uint32_t begin_log = normal_workers[i * logs_per_cdc_thread];
     uint32_t end_log = normal_workers[(i + 1) * logs_per_cdc_thread - 1];
@@ -246,8 +245,6 @@ std::vector<thread::Thread *> ddl_executor::changed_data_capture(
 
     thread->StartTask(parallel_changed_data_capture);
   }
-
-  return cdc_workers;
 }
 
 rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
