@@ -169,6 +169,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
                                     schema.td, schema.td, schema.index,
                                     ermia::ddl::schema_state_type::READY);
 
+    txn->set_ddl_executor(ddl_exe);
     txn->set_old_td(schema.td);
     txn->add_old_td_map(schema.td);
     txn->add_new_td_map(schema.td);
@@ -198,6 +199,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
                                     schema.td, schema.td, schema.index,
                                     ermia::ddl::schema_state_type::READY);
 
+    txn->set_ddl_executor(ddl_exe);
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(txn, arena);
     if (rc._val != RC_TRUE) {

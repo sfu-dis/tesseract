@@ -356,10 +356,9 @@ rc_t transaction::si_commit() {
 #endif
   }
 
-#ifdef COPYDDL
   if (is_ddl()) {
+#if defined(COPYDDL) && !defined(LAZYDDL)
     if (ddl_exe->get_ddl_type() != ddl::ddl_type::NO_COPY_VERIFICATION) {
-#if !defined(LAZYDDL)
       // Start the second round of CDC
       DLOG(INFO) << "Second CDC begins";
       cdc_second_phase = true;
@@ -383,8 +382,8 @@ rc_t transaction::si_commit() {
         }
         return rc_t{RC_ABORT_INTERNAL};
       }
-#endif
     }
+#endif
 
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       write_record_t w = write_set.get(is_ddl(), i);
@@ -407,7 +406,6 @@ rc_t transaction::si_commit() {
                         ._val == RC_TRUE);
     }
   }
-#endif
 
   if (is_ddl()) {
     ddl_running = false;
@@ -473,12 +471,7 @@ rc_t transaction::si_commit() {
 #else
                          CSN::from_ptr(csn).offset() < xc->end &&
 #endif
-#ifdef BLOCKDDL
-                         CSN::from_ptr(csn).offset() > xc->begin
-#else
-                         CSN::from_ptr(csn).offset() > xc->begin
-#endif
-              ) {
+                         CSN::from_ptr(csn).offset() >= xc->begin) {
                 dbtuple *tuple = (dbtuple *)cur_obj->GetPayload();
                 uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
                 uint32_t off = lb->payload_size;

@@ -354,7 +354,7 @@ void bench_runner::start_measurement() {
   double total_util = 0;
   double sec_util = 0;
   // uint32_t sleep_time = 1;
-  uint32_t sleep_time = 1000 * 1000;
+  uint32_t sleep_time = 100 * 1000;
   auto gather_stats = [&]() {
     if (ddl_done < ermia::config::ddl_total &&
         slept == ddl_start_times[ddl_done] * 1000000) {

@@ -30,10 +30,10 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   auto *key_array = old_td->GetKeyArray();
   DLOG(INFO) << "himark: " << himark;
 
-#ifdef LAZYDDL
-  uint32_t scan_threads = config::scan_threads + config::cdc_threads;
-#else
+#if defined(COPYDDL) && !defined(LAZYDDL)
   uint32_t scan_threads = config::scan_threads;
+#else
+  uint32_t scan_threads = config::scan_threads + config::cdc_threads;
 #endif
   uint32_t total_per_scan_thread = himark / scan_threads;
   DLOG(INFO) << "scan_threads: " << scan_threads
@@ -112,7 +112,7 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
   varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
   if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
     for (std::vector<struct ddl_executor_paras *>::const_iterator it =
-        ddl_executor_paras_list.begin();
+             ddl_executor_paras_list.begin();
          it != ddl_executor_paras_list.end(); ++it) {
       if ((*it)->old_td->GetTupleFid() != old_fid) continue;
       if ((*it)->type == VERIFICATION_ONLY ||
@@ -127,13 +127,13 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
       if ((*it)->type == COPY_ONLY || (*it)->type == COPY_VERIFICATION) {
         arena->reset();
         uint64_t reformat_idx = (*it)->scan_reformat_idx == -1
-                                ? (*it)->reformat_idx
-                                : (*it)->scan_reformat_idx;
+                                    ? (*it)->reformat_idx
+                                    : (*it)->scan_reformat_idx;
         varstr *new_tuple_value = reformats[reformat_idx](
             key, tuple_value, arena, (*it)->new_v, old_fid, oid);
         if (!new_tuple_value) continue;
 #ifdef COPYDDL
-        #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
         fat_ptr *out_entry = nullptr;
         OID o = t->DDLInsert((*it)->new_td, new_tuple_value, &out_entry);
         if (!o) {
@@ -180,8 +180,7 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
   return rc_t{RC_TRUE};
 }
 
-void ddl_executor::changed_data_capture(
-    transaction *t) {
+void ddl_executor::changed_data_capture(transaction *t) {
   ddl_failed = false;
   cdc_running = true;
   dlog::tls_log *log = t->get_log();
