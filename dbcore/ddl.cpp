@@ -14,7 +14,7 @@ std::vector<Constraint> constraints;
 rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
   DLOG(INFO) << "First CDC begins";
-  cdc_workers = changed_data_capture(t);
+  changed_data_capture(t);
 #endif
 
   rc_t r;
