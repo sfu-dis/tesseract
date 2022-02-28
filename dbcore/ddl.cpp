@@ -15,7 +15,7 @@ volatile bool ddl_failed = false;
 volatile bool cdc_running = false;
 volatile bool ddl_td_set = false;
 volatile bool cdc_test = false;
-std::atomic<uint64_t> ddl_end(0);
+std::atomic<uint64_t> cdc_end_total(0);
 uint64_t *_tls_durable_lsn =
     (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
 
@@ -268,7 +268,7 @@ uint32_t ddl_executor::changed_data_capture(transaction *t) {
           break;
         }
       }
-      ddl_end.fetch_add(1);
+      cdc_end_total.fetch_add(1);
     };
 
     thread->StartTask(parallel_changed_data_capture);

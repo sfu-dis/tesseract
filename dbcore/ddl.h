@@ -20,7 +20,7 @@ extern volatile bool ddl_failed;
 extern volatile bool cdc_running;
 extern volatile bool ddl_td_set;
 extern volatile bool cdc_test;
-extern std::atomic<uint64_t> ddl_end;
+extern std::atomic<uint64_t> cdc_end_total;
 extern uint64_t *_tls_durable_lsn CACHE_ALIGNED;
 
 // Schema reformation function

@@ -349,9 +349,9 @@ rc_t transaction::si_commit() {
       // Start the second round of CDC
       DLOG(INFO) << "Second CDC begins";
       ddl::cdc_second_phase = true;
-      ddl::ddl_end.store(0);
+      ddl::cdc_end_total.store(0);
       uint32_t cdc_threads = ddl_exe->changed_data_capture(this);
-      while (ddl::ddl_end.load() != cdc_threads && !ddl::ddl_failed) {
+      while (ddl::cdc_end_total.load() != cdc_threads && !ddl::ddl_failed) {
       }
       ddl::cdc_running = false;
       ddl_exe->join_cdc_workers();
