@@ -363,7 +363,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         oddlb_kv_1::value record1;
         record1.o_value_version = schema_version;
         record1.o_value_a = a;
-        if (unlikely(ermia::cdc_test)) {
+        if (unlikely(ermia::ddl::cdc_test)) {
           record1.o_value_b = 20000000;
         } else {
           record1.o_value_b = a;

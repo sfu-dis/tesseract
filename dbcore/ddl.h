@@ -13,6 +13,16 @@ class OrderedIndex;
 
 namespace ddl {
 
+extern volatile bool ddl_running;
+extern volatile bool cdc_first_phase;
+extern volatile bool cdc_second_phase;
+extern volatile bool ddl_failed;
+extern volatile bool cdc_running;
+extern volatile bool ddl_td_set;
+extern volatile bool cdc_test;
+extern std::atomic<uint64_t> ddl_end;
+extern uint64_t *_tls_durable_lsn CACHE_ALIGNED;
+
 // Schema reformation function
 typedef std::function<varstr *(varstr *key, varstr &value, str_arena *arena,
                                uint64_t schema_version, FID fid, OID oid)>
@@ -162,7 +172,7 @@ class ddl_executor {
                  oid_array *key_array, dlog::log_block *lb);
 
   // CDC
-  void changed_data_capture(transaction *t);
+  uint32_t changed_data_capture(transaction *t);
 
   // CDC impl
   rc_t changed_data_capture_impl(transaction *t, uint32_t thread_id,

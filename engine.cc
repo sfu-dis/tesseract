@@ -78,7 +78,7 @@ retry:
           config::enable_cdc_schema_lock) {
         goto retry;
       }
-      if (!ddl_td_set) {
+      if (!ddl::ddl_td_set) {
         goto retry;
       } else {
         t->SetWaitForNewSchema(true);

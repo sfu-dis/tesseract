@@ -22,16 +22,6 @@ using google::dense_hash_map;
 
 namespace ermia {
 
-extern volatile bool ddl_running;
-extern volatile bool cdc_first_phase;
-extern volatile bool cdc_second_phase;
-extern volatile bool ddl_failed;
-extern volatile bool cdc_running;
-extern volatile bool ddl_td_set;
-extern volatile bool cdc_test;
-extern std::atomic<uint64_t> ddl_end;
-extern uint64_t *_tls_durable_lsn CACHE_ALIGNED;
-
 struct schema_record;
 
 #if defined(SSN) || defined(SSI)

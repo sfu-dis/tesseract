@@ -15,7 +15,7 @@ namespace pcommit {
 uint64_t *_tls_durable_csn =
     (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
 
-// Up to which CSN are we sure all transcations are durable
+// Up to which CSN are we sure all transactions are durable
 std::atomic<uint64_t> global_durable_csn(0);
 
 void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush,

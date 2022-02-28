@@ -9,17 +9,6 @@ extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 
 namespace ermia {
 
-volatile bool ddl_running = false;
-volatile bool cdc_first_phase = false;
-volatile bool cdc_second_phase = false;
-volatile bool ddl_failed = false;
-volatile bool cdc_running = false;
-volatile bool ddl_td_set = false;
-volatile bool cdc_test = false;
-std::atomic<uint64_t> ddl_end(0);
-uint64_t *_tls_durable_lsn =
-    (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
-
 #ifdef BLOCKDDL
 std::unordered_map<FID, pthread_rwlock_t *> transaction::lock_map;
 std::mutex transaction::map_rw_latch;
@@ -37,9 +26,8 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   }
   wait_for_new_schema = false;
   if (is_ddl()) {
-    ddl_running = true;
-    ddl_td_set = false;
-    cdc_first_phase = true;
+    ddl::ddl_running = true;
+    ddl::ddl_td_set = false;
 #if defined(SIDDL)
     write_set.init_large_write_set();
 #endif
@@ -104,7 +92,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
         dlog::tls_log *tlog = dlog::tlogs[i];
         if (tlog && tlog != log &&
             volatile_read(pcommit::_tls_durable_csn[i])) {
-          _tls_durable_lsn[i] = tlog->get_durable_lsn();
+          ddl::_tls_durable_lsn[i] = tlog->get_durable_lsn();
         }
       }
 #endif
@@ -112,7 +100,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   }
 
   xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
-  if (config::enable_dml_slow_down && ddl_running && is_dml()) {
+  if (config::enable_dml_slow_down && ddl::ddl_running && is_dml()) {
     util::fast_random r(xc->begin);
     if (r.next_uniform() >= config::dml_slow_down_prob) {
       usleep(1);
@@ -350,7 +338,7 @@ rc_t transaction::si_commit() {
           (*it)->SetArrays(false);
         }
       }
-      ddl_td_set = true;
+      ddl::ddl_td_set = true;
     }
 #endif
   }
@@ -360,19 +348,19 @@ rc_t transaction::si_commit() {
     if (ddl_exe->get_ddl_type() != ddl::ddl_type::NO_COPY_VERIFICATION) {
       // Start the second round of CDC
       DLOG(INFO) << "Second CDC begins";
-      cdc_second_phase = true;
-      ddl_end.store(0);
-      ddl_exe->changed_data_capture(this);
-      while (ddl_end.load() != config::cdc_threads && !ddl_failed) {
+      ddl::cdc_second_phase = true;
+      ddl::ddl_end.store(0);
+      uint32_t cdc_threads = ddl_exe->changed_data_capture(this);
+      while (ddl::ddl_end.load() != cdc_threads && !ddl::ddl_failed) {
       }
-      cdc_running = false;
+      ddl::cdc_running = false;
       ddl_exe->join_cdc_workers();
-      cdc_second_phase = false;
+      ddl::cdc_second_phase = false;
       DLOG(INFO) << "Second CDC ends";
       if (config::enable_late_scan_join) {
         ddl_exe->join_scan_workers();
       }
-      if (ddl_failed) {
+      if (ddl::ddl_failed) {
         DLOG(INFO) << "DDL failed";
         for (auto &v : new_td_map) {
           OrderedIndex *index = v.second->GetPrimaryIndex();
@@ -408,7 +396,7 @@ rc_t transaction::si_commit() {
   }
 
   if (is_ddl()) {
-    ddl_running = false;
+    ddl::ddl_running = false;
     volatile_write(xc->state, TXN::TXN_CMMTD);
 #ifdef LAZYDDL
     // Background migration

@@ -8,6 +8,17 @@ namespace ermia {
 
 namespace ddl {
 
+volatile bool ddl_running = false;
+volatile bool cdc_first_phase = false;
+volatile bool cdc_second_phase = false;
+volatile bool ddl_failed = false;
+volatile bool cdc_running = false;
+volatile bool ddl_td_set = false;
+volatile bool cdc_test = false;
+std::atomic<uint64_t> ddl_end(0);
+uint64_t *_tls_durable_lsn =
+    (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
+
 std::vector<Reformat> reformats;
 std::vector<Constraint> constraints;
 
@@ -15,6 +26,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
   if (config::enable_parallel_scan_cdc) {
     DLOG(INFO) << "First CDC begins";
+    cdc_first_phase = true;
     changed_data_capture(t);
   }
 #endif
@@ -189,7 +201,7 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
   return rc_t{RC_TRUE};
 }
 
-void ddl_executor::changed_data_capture(transaction *t) {
+uint32_t ddl_executor::changed_data_capture(transaction *t) {
   ddl_failed = false;
   cdc_running = true;
   dlog::tls_log *log = t->get_log();
@@ -261,13 +273,15 @@ void ddl_executor::changed_data_capture(transaction *t) {
 
     thread->StartTask(parallel_changed_data_capture);
   }
+
+  return cdc_threads;
 }
 
 rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                                              uint32_t ddl_thread_id,
                                              uint32_t begin_log,
                                              uint32_t end_log, str_arena *arena,
-                                             bool *ddl_end, uint32_t count) {
+                                             bool *ddl_end_local, uint32_t count) {
   RCU::rcu_enter();
   TXN::xid_context *xc = t->GetXIDContext();
   uint64_t begin_csn = xc->begin;
@@ -419,7 +433,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
     }
   }
   RCU::rcu_exit();
-  *ddl_end = (count == 0);
+  *ddl_end_local = (count == 0);
   return rc_t{RC_TRUE};
 }
 
