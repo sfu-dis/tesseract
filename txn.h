@@ -23,6 +23,7 @@ using google::dense_hash_map;
 namespace ermia {
 
 extern volatile bool ddl_running;
+extern volatile bool cdc_first_phase;
 extern volatile bool cdc_second_phase;
 extern volatile bool ddl_failed;
 extern volatile bool cdc_running;
@@ -227,7 +228,8 @@ class transaction {
 
   // DML & DDL overlap check
   PROMISE(bool)
-  OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td, OID oid);
+  OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td, OID oid,
+               bool read_only);
 
   PROMISE(rc_t)
   Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);

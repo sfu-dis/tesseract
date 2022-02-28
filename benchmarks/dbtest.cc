@@ -115,7 +115,7 @@ DEFINE_uint64(cdc_threads, 3, "Number of CDC threads");
 DEFINE_bool(cdc_physical_workers_only, true,
             "Whether to use physical workers for CDC");
 DEFINE_uint64(scan_threads, 3, "Number of scan threads");
-DEFINE_bool(scan_physical_workers_only, false,
+DEFINE_bool(scan_physical_workers_only, true,
             "Whether to use physical workers for scan");
 DEFINE_bool(enable_cdc_schema_lock, true,
             "Whether to lock schema records when CDC");
@@ -132,6 +132,10 @@ DEFINE_bool(enable_lazy_background, false,
             "Whether enable background migration for lazy DDL");
 DEFINE_bool(enable_late_scan_join, false,
             "Whether enable join scan workers after commit");
+DEFINE_bool(enable_parallel_scan_cdc, true,
+            "Whether enable doing scan and CDC together");
+DEFINE_uint64(dml_slow_down_prob, 50,
+              "Probability of a DML should slow down when DDL");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -178,6 +182,8 @@ int main(int argc, char **argv) {
   ermia::config::enable_ddl_keys = FLAGS_enable_ddl_keys;
   ermia::config::enable_lazy_background = FLAGS_enable_lazy_background;
   ermia::config::enable_late_scan_join = FLAGS_enable_late_scan_join;
+  ermia::config::enable_parallel_scan_cdc = FLAGS_enable_parallel_scan_cdc;
+  ermia::config::dml_slow_down_prob = 1 - (float)FLAGS_dml_slow_down_prob / 100;
 
   if (ermia::config::physical_workers_only) {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
@@ -366,6 +372,10 @@ int main(int argc, char **argv) {
             << ermia::config::enable_cdc_verification_test << std::endl;
   std::cerr << "  enable_dml_slow_down    		: "
             << ermia::config::enable_dml_slow_down << std::endl;
+  if (ermia::config::enable_dml_slow_down) {
+    std::cerr << "  dml_slow_down_prob                    : "
+              << 1 - ermia::config::dml_slow_down_prob << std::endl;
+  }
   std::cerr << "  ddl_total				: "
             << ermia::config::ddl_total << std::endl;
   std::cerr << "  no_copy_verification_version_add	: "
@@ -378,6 +388,8 @@ int main(int argc, char **argv) {
             << ermia::config::enable_lazy_background << std::endl;
   std::cerr << "  enable_late_scan_join			: "
             << ermia::config::enable_late_scan_join << std::endl;
+  std::cerr << "  enable_parallel_scan_cdc              : "
+            << ermia::config::enable_parallel_scan_cdc << std::endl;
 #endif
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");

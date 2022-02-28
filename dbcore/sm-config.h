@@ -85,6 +85,8 @@ extern uint32_t ddl_example;
 extern bool enable_ddl_keys;
 extern bool enable_lazy_background;
 extern bool enable_late_scan_join;
+extern bool enable_parallel_scan_cdc;
+extern float dml_slow_down_prob;
 
 // Create an object for each version and install directly on the main
 // indirection arrays only; for experimental purpose only to see the

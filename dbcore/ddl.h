@@ -141,6 +141,7 @@ class ddl_executor {
       (*it)->Join();
       thread::PutThread(*it);
     }
+    scan_workers.clear();
   }
 
   inline void join_cdc_workers() {
@@ -149,6 +150,7 @@ class ddl_executor {
       (*it)->Join();
       thread::PutThread(*it);
     }
+    cdc_workers.clear();
   }
 
   // Scan and do operations (copy, verification)

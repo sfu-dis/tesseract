@@ -13,8 +13,10 @@ std::vector<Constraint> constraints;
 
 rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
-  DLOG(INFO) << "First CDC begins";
-  changed_data_capture(t);
+  if (config::enable_parallel_scan_cdc) {
+    DLOG(INFO) << "First CDC begins";
+    changed_data_capture(t);
+  }
 #endif
 
   rc_t r;
@@ -31,7 +33,12 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   DLOG(INFO) << "himark: " << himark;
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
-  uint32_t scan_threads = config::scan_threads;
+  uint32_t scan_threads;
+  if (config::enable_parallel_scan_cdc) {
+    scan_threads = config::scan_threads;
+  } else {
+    scan_threads = config::scan_threads + config::cdc_threads;
+  }
 #else
   uint32_t scan_threads = config::scan_threads + config::cdc_threads;
 #endif
@@ -77,8 +84,9 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   }
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
-  cdc_running = false;
-  while (ddl_end.load() != config::cdc_threads && !ddl_failed) {
+  if (config::enable_parallel_scan_cdc) {
+    cdc_running = false;
+    join_cdc_workers();
   }
   if (ddl_failed) {
     DLOG(INFO) << "DDL failed";
@@ -97,6 +105,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
     cdc_test = true;
   }
   ddl_td_set = false;
+  cdc_first_phase = false;
 #endif
 
   return rc_t{RC_TRUE};
@@ -184,8 +193,18 @@ void ddl_executor::changed_data_capture(transaction *t) {
   ddl_failed = false;
   cdc_running = true;
   dlog::tls_log *log = t->get_log();
-  uint32_t cdc_threads = config::cdc_threads;
+  uint32_t cdc_threads;
+  if ((config::enable_parallel_scan_cdc && !cdc_second_phase) ||
+      (config::enable_late_scan_join && cdc_second_phase)) {
+    cdc_threads = config::cdc_threads;
+  } else {
+    cdc_threads = config::cdc_threads + config::scan_threads - 1;
+  }
   uint32_t logs_per_cdc_thread = (config::worker_threads - 1) / cdc_threads;
+  if (config::worker_threads - 1 - logs_per_cdc_thread * cdc_threads >
+      logs_per_cdc_thread) {
+    logs_per_cdc_thread++;
+  }
 
   uint32_t normal_workers[config::worker_threads - 1];
   uint32_t j = 0;
@@ -194,7 +213,6 @@ void ddl_executor::changed_data_capture(transaction *t) {
     dlog::tls_log *tlog = dlog::tlogs[i];
     if (tlog && tlog != log && volatile_read(pcommit::_tls_durable_csn[i])) {
       normal_workers[j++] = i;
-      tlog->enqueue_flush();
     } else if (tlog == log) {
       ddl_thread_id = i;
     }
@@ -202,8 +220,12 @@ void ddl_executor::changed_data_capture(transaction *t) {
 
   for (uint32_t i = 0; i < cdc_threads; i++) {
     uint32_t begin_log = normal_workers[i * logs_per_cdc_thread];
-    uint32_t end_log = normal_workers[(i + 1) * logs_per_cdc_thread - 1];
-    if (i == cdc_threads - 1) end_log = normal_workers[--j];
+    uint32_t end_log;
+    if (i == cdc_threads - 1) {
+      end_log = normal_workers[--j];
+    } else {
+      end_log = normal_workers[(i + 1) * logs_per_cdc_thread - 1];
+    }
 
     thread::Thread *thread =
         thread::GetThread(config::cdc_physical_workers_only);
@@ -232,11 +254,6 @@ void ddl_executor::changed_data_capture(transaction *t) {
         }
         if (ddl_end_local && cdc_second_phase) {
           break;
-        }
-        if (!cdc_running && !cdc_second_phase) {
-          ddl_end.fetch_add(1);
-        }
-        while (!cdc_running && !cdc_second_phase) {
         }
       }
       ddl_end.fetch_add(1);

@@ -10,6 +10,7 @@ extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 namespace ermia {
 
 volatile bool ddl_running = false;
+volatile bool cdc_first_phase = false;
 volatile bool cdc_second_phase = false;
 volatile bool ddl_failed = false;
 volatile bool cdc_running = false;
@@ -38,6 +39,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   if (is_ddl()) {
     ddl_running = true;
     ddl_td_set = false;
+    cdc_first_phase = true;
 #if defined(SIDDL)
     write_set.init_large_write_set();
 #endif
@@ -112,7 +114,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
   if (config::enable_dml_slow_down && ddl_running && is_dml()) {
     util::fast_random r(xc->begin);
-    if (r.next_uniform() >= 0.7) {
+    if (r.next_uniform() >= config::dml_slow_down_prob) {
       usleep(1);
     }
   }
@@ -251,9 +253,6 @@ rc_t transaction::si_commit() {
   xc->end = write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;
 
 #if defined(COPYDDL)
-  if (is_ddl()) {
-    cdc_running = true;
-  }
   if (is_dml() && DMLConsistencyHandler()) {
     DLOG(INFO) << "DML failed with begin: " << xc->begin
                << ", end: " << xc->end;
@@ -363,6 +362,7 @@ rc_t transaction::si_commit() {
       DLOG(INFO) << "Second CDC begins";
       cdc_second_phase = true;
       ddl_end.store(0);
+      ddl_exe->changed_data_capture(this);
       while (ddl_end.load() != config::cdc_threads && !ddl_failed) {
       }
       cdc_running = false;
@@ -427,7 +427,7 @@ rc_t transaction::si_commit() {
       uint32_t himark = new_alloc->head.hiwater_mark;
       auto *new_tuple_array = v.second->GetTupleArray();
 
-      uint32_t ddl_log_threads = config::scan_threads + config::cdc_threads;
+      uint32_t ddl_log_threads = config::scan_threads + config::cdc_threads - 1;
       uint32_t num_per_scan_thread = himark / ddl_log_threads;
 
       std::vector<thread::Thread *> ddl_log_workers;
@@ -890,7 +890,7 @@ retry:
                                CSN::from_ptr(csn).offset() < tuple_csn)) {
     if (!__sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr,
                                       new_head._ptr)) {
-      goto retry;
+      // goto retry;
     }
   } else {
     MM::deallocate(new_head);
@@ -1065,7 +1065,8 @@ retry:
 
 PROMISE(bool)
 transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
-                          OID oid) {
+                          OID oid, bool read_only) {
+  if (!read_only) return false;
   auto *new_tuple_array = new_td->GetTupleArray();
   auto *old_tuple_array = old_td->GetTupleArray();
   new_tuple_array->ensure_size(oid);

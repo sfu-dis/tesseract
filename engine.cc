@@ -292,7 +292,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
           (new_td_map.find(table_descriptor->GetTupleFid()) !=
            new_td_map.end())) {
         if (AWAIT t->OverlapCheck(new_td_map[table_descriptor->GetTupleFid()],
-                                  t->old_td, oid)) {
+                                  t->old_td, oid, true)) {
           volatile_write(rc._val, RC_ABORT_INTERNAL);
           RETURN;
         }
@@ -556,7 +556,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
       (new_td_map.find(table_descriptor->GetTupleFid()) != new_td_map.end())) {
     if (AWAIT t->OverlapCheck(new_td_map[table_descriptor->GetTupleFid()],
-                              t->old_td, oid)) {
+                              t->old_td, oid, false)) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
   }
@@ -632,7 +632,7 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
   std::unordered_map<FID, TableDescriptor *> new_td_map = t->get_new_td_map();
   if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
       (new_td_map.find(table_descriptor->GetTupleFid()) != new_td_map.end())) {
-    if (AWAIT t->OverlapCheck(table_descriptor, t->old_td, oid)) {
+    if (AWAIT t->OverlapCheck(table_descriptor, t->old_td, oid, false)) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
   }
@@ -723,7 +723,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     if (t->IsWaitForNewSchema() && schema &&
         (new_td_map.find(table_descriptor->GetTupleFid()) !=
          new_td_map.end())) {
-      if (AWAIT t->OverlapCheck(table_descriptor, t->old_td, oid)) {
+      if (AWAIT t->OverlapCheck(table_descriptor, t->old_td, oid, true)) {
         caller_callback->return_code = rc_t{RC_ABORT_SI_CONFLICT};
         return false;
       }
