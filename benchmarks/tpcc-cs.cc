@@ -732,7 +732,7 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_order_status(
   const oorder_c_id_idx::key *k_oo_idx = Decode(*newest_o_c_id, k_oo_idx_temp);
   const uint o_id = k_oo_idx->o_o_id;
 
-  order_line_nop_callback c_order_line(0);
+  order_line_nop_callback c_order_line;
   const order_line::key k_ol_0(warehouse_id, districtID, o_id, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, o_id,
                                std::numeric_limits<int32_t>::max());
@@ -794,7 +794,7 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_stock_level(
                               : v_d->d_next_o_id;
 
   // manual joins are fun!
-  order_line_scan_callback c(0);
+  order_line_scan_callback c;
   const int32_t lower = cur_next_o_id >= 20 ? (cur_next_o_id - 20) : 0;
   const order_line::key k_ol_0(warehouse_id, districtID, lower, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, cur_next_o_id, 0);
@@ -974,7 +974,7 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_credit_check(
     //		ol_w_id = :w_id
     //		ol_o_id = o_id
     //		ol_number = 1-15
-    credit_check_order_line_scan_callback c_ol(0);
+    credit_check_order_line_scan_callback c_ol;
     const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
     // XXX(tzwang): coro_scan here make it very slow (~60% slower)

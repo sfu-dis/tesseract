@@ -62,7 +62,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
     schema_index->ReadSchemaRecord(txn, rc, *table_key, valptr, &oid);
-    TryVerifyRelaxed(rc);
 
     struct ermia::schema_record schema;
     schema_kv::value schema_value_temp;
@@ -149,7 +148,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       TryCatch(rc);
 #endif
     }
-#elif defined(BLOCKDDL)
+#else
     uint64_t schema_version = schema.v + 1;
     DLOG(INFO) << "change to new schema: " << schema_version;
     schema.v = schema_version;
@@ -174,32 +173,9 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     txn->add_old_td_map(schema.td);
     txn->add_new_td_map(schema.td);
 
+#ifdef BLOCKDDL    
     TryCatch(ddl_exe->scan(txn, arena));
 #elif SIDDL
-    uint64_t schema_version = schema.v + 1;
-    DLOG(INFO) << "change to new schema: " << schema_version;
-    schema.v = schema_version;
-
-    schema_kv::value new_schema_value;
-    schema.record_to_value(new_schema_value);
-
-    txn->set_old_td(schema.td);
-
-    rc = rc_t{RC_INVALID};
-    rc = schema_index->WriteSchemaTable(
-        txn, rc, *table_key,
-        Encode(str(Size(new_schema_value)), new_schema_value));
-    TryCatch(rc);
-
-    // New a ddl executor
-    ermia::ddl::ddl_executor *ddl_exe =
-        new ermia::ddl::ddl_executor(schema.ddl_type);
-    ddl_exe->add_ddl_executor_paras(schema.v, -1, schema.ddl_type,
-                                    schema.reformat_idx, schema.constraint_idx,
-                                    schema.td, schema.td, schema.index,
-                                    ermia::ddl::schema_state_type::READY);
-
-    txn->set_ddl_executor(ddl_exe);
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(txn, arena);
     if (rc._val != RC_TRUE) {
@@ -208,6 +184,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       goto retry;
     }
     TryCatch(rc);
+#endif
 #endif
     TryCatch(db->Commit(txn));
     DLOG(INFO) << "DDL commit OK";

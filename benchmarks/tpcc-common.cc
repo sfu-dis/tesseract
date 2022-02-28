@@ -484,8 +484,9 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
   }
 
   if (ermia::config::coro_tx) {
-    tpcc_bench_runner<tpcc_cs_worker> r(db);
-    r.run();
+    //tpcc_bench_runner<tpcc_cs_worker> r(db);
+    //r.run();
+    LOG(FATAL) << "Not supported";
   } else {
     tpcc_bench_runner<tpcc_worker> r(db);
     r.run();

@@ -1518,7 +1518,7 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   ermia::varstr *customer_key;
 };
 
-class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
+/*class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
  public:
   tpcc_cs_worker(
       unsigned int worker_id, unsigned long seed, ermia::Engine *db,
@@ -1606,6 +1606,6 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
  private:
   const uint home_warehouse_id;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
-};
+};*/
 
 #endif  // ADV_COROUTINE

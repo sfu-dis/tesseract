@@ -1053,8 +1053,7 @@ retry:
 
 PROMISE(bool)
 transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
-                          OID oid, bool read_only) {
-  if (!read_only) return false;
+                          OID oid) {
   auto *new_tuple_array = new_td->GetTupleArray();
   auto *old_tuple_array = old_td->GetTupleArray();
   new_tuple_array->ensure_size(oid);

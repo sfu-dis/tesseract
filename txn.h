@@ -218,8 +218,7 @@ class transaction {
 
   // DML & DDL overlap check
   PROMISE(bool)
-  OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td, OID oid,
-               bool read_only);
+  OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td, OID oid);
 
   PROMISE(rc_t)
   Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);

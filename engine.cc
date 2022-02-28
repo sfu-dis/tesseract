@@ -292,7 +292,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
           (new_td_map.find(table_descriptor->GetTupleFid()) !=
            new_td_map.end())) {
         if (AWAIT t->OverlapCheck(new_td_map[table_descriptor->GetTupleFid()],
-                                  t->old_td, oid, true)) {
+                                  t->old_td, oid)) {
           volatile_write(rc._val, RC_ABORT_INTERNAL);
           RETURN;
         }
@@ -702,7 +702,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     if (t->IsWaitForNewSchema() && schema &&
         (new_td_map.find(table_descriptor->GetTupleFid()) !=
          new_td_map.end())) {
-      if (AWAIT t->OverlapCheck(table_descriptor, t->old_td, oid, true)) {
+      if (AWAIT t->OverlapCheck(table_descriptor, t->old_td, oid)) {
         caller_callback->return_code = rc_t{RC_ABORT_SI_CONFLICT};
         return false;
       }
