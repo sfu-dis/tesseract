@@ -551,17 +551,6 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
     t->table_scan(table_descriptor, &key, oid);
   }
 
-#if defined(COPYDDL) && !defined(LAZYDDL)
-  std::unordered_map<FID, TableDescriptor *> new_td_map = t->get_new_td_map();
-  if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
-      (new_td_map.find(table_descriptor->GetTupleFid()) != new_td_map.end())) {
-    if (AWAIT t->OverlapCheck(new_td_map[table_descriptor->GetTupleFid()],
-                              t->old_td, oid, false)) {
-      RETURN rc_t{RC_ABORT_INTERNAL};
-    }
-  }
-#endif
-
 #ifdef OPTLAZYDDL
   if (rc._val == RC_TRUE && schema &&
       *(table_descriptor->GetTupleArray()->get(oid)) == NULL_PTR) {
@@ -627,16 +616,6 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
   if (schema && !schema->show_index) {
     t->table_scan(table_descriptor, &key, oid);
   }
-
-#if defined(COPYDDL) && !defined(LAZYDDL)
-  std::unordered_map<FID, TableDescriptor *> new_td_map = t->get_new_td_map();
-  if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
-      (new_td_map.find(table_descriptor->GetTupleFid()) != new_td_map.end())) {
-    if (AWAIT t->OverlapCheck(table_descriptor, t->old_td, oid, false)) {
-      RETURN rc_t{RC_ABORT_INTERNAL};
-    }
-  }
-#endif
 
 #ifdef OPTLAZYDDL
   if (rc._val != RC_TRUE && schema->old_td) {
