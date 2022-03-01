@@ -62,6 +62,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
     schema_index->ReadSchemaRecord(txn, rc, *table_key, valptr, &oid);
+    TryVerifyStrict(rc);
 
     struct ermia::schema_record schema;
     schema_kv::value schema_value_temp;
@@ -207,7 +208,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
     schema_index->ReadSchemaRecord(txn, rc, *table_key, v1, &oid);
-    TryCatch(rc);
+    TryVerifyStrict(rc);
 
     schema_kv::value schema_value_temp;
     const schema_kv::value *schema_value = Decode(v1, schema_value_temp);
@@ -308,7 +309,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
     schema_index->ReadSchemaRecord(txn, rc, *table_key, v, &oid);
-    TryCatch(rc);
+    TryVerifyStrict(rc);
 
     schema_kv::value schema_value_temp;
     const schema_kv::value *schema_value = Decode(v, schema_value_temp);
