@@ -156,7 +156,7 @@ void oddlb_schematable_loader::load() {
   ermia::ddl::reformats.push_back(add_column_3);
   usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
   ermia::ddl::reformats.push_back(add_column_4);
-  usertable_schema.reformats_total = 1;
+  usertable_schema.reformats_total = 0;
   usertable_schema.old_index = nullptr;
   usertable_schema.v = 0;
   usertable_schema.csn = 0;

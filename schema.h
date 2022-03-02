@@ -19,6 +19,8 @@ DO_STRUCT(schema_kv, SCHEMA_KEY_FIELDS, SCHEMA_VALUE_FIELDS);
 
 namespace ermia {
 
+#define ARRAY_TOTAL 12
+
 struct schema_base {
   uint32_t v;
   uint32_t csn;
@@ -38,8 +40,8 @@ struct schema_record : public schema_base {
   OrderedIndex *old_index;
   uint32_t old_tds_total;
   uint32_t reformats_total;
-  TableDescriptor *old_tds[12];
-  uint32_t reformats[12];
+  TableDescriptor *old_tds[ARRAY_TOTAL];
+  uint32_t reformats[ARRAY_TOTAL];
 
   // Runtime schema record convert to persistent schema value
   inline void record_to_value(schema_kv::value &schema_value) {
@@ -59,14 +61,14 @@ struct schema_record : public schema_base {
     schema_value.old_index = (uint64_t)old_index;
     schema_value.old_fids_total = old_tds_total;
     schema_value.reformats_total = reformats_total;
-    FID old_fids[12];
+    FID old_fids[ARRAY_TOTAL];
     for (int i = 0; i < old_tds_total; i++) {
       old_fids[i] = old_tds[i]->GetTupleFid();
     }
     schema_value.old_fids.assign((const char *)old_fids,
                                  sizeof(ermia::FID) * old_tds_total);
     schema_value.reformats.assign((const char *)reformats,
-                                  sizeof(uint32_t) * reformats_total);
+                                  sizeof(uint32_t) * ARRAY_TOTAL);
   }
 
   // Persistent schema value convert to runtime schema record
@@ -93,7 +95,7 @@ struct schema_record : public schema_base {
       old_tds[i] = ermia::Catalog::GetTable(
           *(uint32_t *)(schema_value->old_fids.data() + i));
     }
-    for (int i = 0; i < schema_value->reformats_total; i++) {
+    for (int i = 0; i < ARRAY_TOTAL; i++) {
       reformats[i] = *((uint32_t *)schema_value->reformats.data() + i);
     }
   }
