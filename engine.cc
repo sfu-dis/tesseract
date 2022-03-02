@@ -719,10 +719,6 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
             key, *new_tuple_value, &(t->string_allocator()), schema->v,
             table_descriptor->GetTupleFid(), oid);
       }
-      /*varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
-            key, vv, &(t->string_allocator()), schema->v,
-            table_descriptor->GetTupleFid(), oid);
-      */
       if (!new_tuple_value) {
         return false;
       }
