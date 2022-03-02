@@ -144,7 +144,6 @@ void oddlb_schematable_loader::load() {
   struct ermia::schema_record usertable_schema;
   usertable_schema.state = ermia::ddl::schema_state_type::READY;
   usertable_schema.old_td = nullptr;
-  usertable_schema.reformats_total = 0;
   int i = 0;
   usertable_schema.reformat_idx = i;
   usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
@@ -157,7 +156,7 @@ void oddlb_schematable_loader::load() {
   ermia::ddl::reformats.push_back(add_column_3);
   usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
   ermia::ddl::reformats.push_back(add_column_4);
-  usertable_schema.reformats_total = 0;
+  usertable_schema.reformats_total = 1;
   usertable_schema.old_index = nullptr;
   usertable_schema.v = 0;
   usertable_schema.csn = 0;

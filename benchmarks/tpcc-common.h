@@ -405,16 +405,18 @@ class tpcc_schematable_loader : public ermia::schematable_loader {
     order_line_schema.v = 0;
     order_line_schema.csn = 0;
     order_line_schema.reformat_idx = ermia::ddl::reformats.size();
-    order_line_schema.secondary_index_key_create_idx = -1;
+    order_line_schema.reformats[0] = ermia::ddl::reformats.size();
     ermia::ddl::reformats.push_back(add_column);
+    order_line_schema.secondary_index_key_create_idx = -1;
     order_line_schema.constraint_idx = -1;
     order_line_schema.index =
         ermia::Catalog::GetTable("order_line")->GetPrimaryIndex();
     order_line_schema.td = ermia::Catalog::GetTable("order_line");
-    order_line_schema.show_index =
-        ermia::config::ddl_example == 3 ? false : true;
-    ermia::varstr &v1 = str(sizeof(order_line_schema));
-    v1.copy_from((char *)&order_line_schema, sizeof(order_line_schema));
+    order_line_schema.show_index = true;
+    order_line_schema.reformats_total = 1;
+    order_line_schema.old_tds_total = 0;
+    schema_kv::value order_line_schema_value;
+    order_line_schema.record_to_value(order_line_schema_value);
 
     oorder_schema.v = 0;
     oorder_schema.csn = 0;
@@ -422,8 +424,10 @@ class tpcc_schematable_loader : public ermia::schematable_loader {
     oorder_schema.index = ermia::Catalog::GetTable("oorder")->GetPrimaryIndex();
     oorder_schema.td = ermia::Catalog::GetTable("oorder");
     oorder_schema.show_index = true;
-    ermia::varstr &v2 = str(sizeof(oorder_schema));
-    v2.copy_from((char *)&oorder_schema, sizeof(oorder_schema));
+    oorder_schema.reformats_total = 0;
+    oorder_schema.old_tds_total = 0;
+    schema_kv::value oorder_schema_value;
+    oorder_schema.record_to_value(oorder_schema_value);
 
     customer_schema.v = 0;
     customer_schema.csn = 0;
@@ -434,12 +438,19 @@ class tpcc_schematable_loader : public ermia::schematable_loader {
         ermia::Catalog::GetTable("customer")->GetPrimaryIndex();
     customer_schema.td = ermia::Catalog::GetTable("customer");
     customer_schema.show_index = true;
-    ermia::varstr &v3 = str(sizeof(customer_schema));
-    v3.copy_from((char *)&customer_schema, sizeof(customer_schema));
+    customer_schema.reformats_total = 0;
+    customer_schema.old_tds_total = 0;
+    schema_kv::value customer_schema_value;
+    customer_schema.record_to_value(customer_schema_value);
 
-    TryVerifyStrict(tbl->InsertRecord(txn, k1, v1));
-    TryVerifyStrict(tbl->InsertRecord(txn, k2, v2));
-    TryVerifyStrict(tbl->InsertRecord(txn, k3, v3));
+    TryVerifyStrict(tbl->InsertRecord(
+        txn, k1,
+        Encode(str(Size(order_line_schema_value)), order_line_schema_value)));
+    TryVerifyStrict(tbl->InsertRecord(
+        txn, k2, Encode(str(Size(oorder_schema_value)), oorder_schema_value)));
+    TryVerifyStrict(tbl->InsertRecord(
+        txn, k3,
+        Encode(str(Size(customer_schema_value)), customer_schema_value)));
     TryVerifyStrict(db->Commit(txn));
 
     if (ermia::config::verbose) {

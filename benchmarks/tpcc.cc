@@ -74,10 +74,13 @@ rc_t tpcc_worker::txn_new_order() {
   schema_index->ReadSchemaRecord(txn, rc, *customer_key, v3, &oid);
   TryVerifyStrict(rc);
 
-  schema_kv::value schema_value_temp;
-  const schema_kv::value *order_line_schema_value = Decode(v1, schema_value_temp);
-  const schema_kv::value *oorder_schema_value = Decode(v2, schema_value_temp);
-  const schema_kv::value *customer_schema_value = Decode(v3, schema_value_temp);
+  schema_kv::value schema_value_temp_1, schema_value_temp_2,
+      schema_value_temp_3;
+  const schema_kv::value *order_line_schema_value =
+      Decode(v1, schema_value_temp_1);
+  const schema_kv::value *oorder_schema_value = Decode(v2, schema_value_temp_2);
+  const schema_kv::value *customer_schema_value =
+      Decode(v3, schema_value_temp_3);
 
   ermia::schema_record order_line_schema;
   order_line_schema.value_to_record(order_line_schema_value);
@@ -373,7 +376,8 @@ rc_t tpcc_worker::txn_payment() {
   TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp;
-  const schema_kv::value *order_line_schema_value = Decode(v1, schema_value_temp);
+  const schema_kv::value *order_line_schema_value =
+      Decode(v1, schema_value_temp);
   const schema_kv::value *customer_schema_value = Decode(v2, schema_value_temp);
 
   ermia::schema_record order_line_schema;
@@ -625,10 +629,13 @@ rc_t tpcc_worker::txn_delivery() {
   schema_index->ReadSchemaRecord(txn, rc, *customer_key, v3, &oid);
   TryVerifyStrict(rc);
 
-  schema_kv::value schema_value_temp;
-  const schema_kv::value *order_line_schema_value = Decode(v1, schema_value_temp);
-  const schema_kv::value *oorder_schema_value = Decode(v2, schema_value_temp);
-  const schema_kv::value *customer_schema_value = Decode(v3, schema_value_temp);
+  schema_kv::value schema_value_temp_1, schema_value_temp_2,
+      schema_value_temp_3;
+  const schema_kv::value *order_line_schema_value =
+      Decode(v1, schema_value_temp_1);
+  const schema_kv::value *oorder_schema_value = Decode(v2, schema_value_temp_2);
+  const schema_kv::value *customer_schema_value =
+      Decode(v3, schema_value_temp_3);
 
   ermia::schema_record order_line_schema;
   order_line_schema.value_to_record(order_line_schema_value);
@@ -641,9 +648,9 @@ rc_t tpcc_worker::txn_delivery() {
 
 #ifdef COPYDDL
   ermia::ConcurrentMasstreeIndex *oorder_table_index =
-      (ermia::ConcurrentMasstreeIndex *)oorder_schema->index;
+      (ermia::ConcurrentMasstreeIndex *)oorder_schema.index;
   ermia::ConcurrentMasstreeIndex *customer_table_index =
-      (ermia::ConcurrentMasstreeIndex *)customer_schema->index;
+      (ermia::ConcurrentMasstreeIndex *)customer_schema.index;
 #endif
 
   for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
@@ -696,7 +703,7 @@ rc_t tpcc_worker::txn_delivery() {
 
 #ifdef COPYDDL
     ermia::ConcurrentMasstreeIndex *order_line_table_index =
-        (ermia::ConcurrentMasstreeIndex *)order_line_schema->index;
+        (ermia::ConcurrentMasstreeIndex *)order_line_schema.index;
 #endif
 
     // XXX(stephentu): mutable scans would help here
@@ -886,10 +893,13 @@ rc_t tpcc_worker::txn_order_status() {
   schema_index->ReadSchemaRecord(txn, rc, *customer_key, v3, &oid);
   TryVerifyStrict(rc);
 
-  schema_kv::value schema_value_temp;
-  const schema_kv::value *order_line_schema_value = Decode(v1, schema_value_temp);
-  const schema_kv::value *oorder_schema_value = Decode(v2, schema_value_temp);
-  const schema_kv::value *customer_schema_value = Decode(v3, schema_value_temp);
+  schema_kv::value schema_value_temp_1, schema_value_temp_2,
+      schema_value_temp_3;
+  const schema_kv::value *order_line_schema_value =
+      Decode(v1, schema_value_temp_1);
+  const schema_kv::value *oorder_schema_value = Decode(v2, schema_value_temp_2);
+  const schema_kv::value *customer_schema_value =
+      Decode(v3, schema_value_temp_3);
 
   ermia::schema_record order_line_schema;
   order_line_schema.value_to_record(order_line_schema_value);
@@ -902,10 +912,10 @@ rc_t tpcc_worker::txn_order_status() {
 
 #ifdef COPYDDL
   ermia::ConcurrentMasstreeIndex *customer_table_index =
-      (ermia::ConcurrentMasstreeIndex *)customer_schema->index;
+      (ermia::ConcurrentMasstreeIndex *)customer_schema.index;
   ermia::ConcurrentMasstreeIndex *customer_table_secondary_index =
       (ermia::ConcurrentMasstreeIndex *)(*(
-          (customer_schema->td)->GetSecIndexes().begin()));
+          (customer_schema.td)->GetSecIndexes().begin()));
 #endif
 
   customer::key k_c;
@@ -1012,7 +1022,7 @@ rc_t tpcc_worker::txn_order_status() {
 #ifdef COPYDDL
         ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index =
             (ermia::ConcurrentMasstreeIndex *)(*(
-                (oorder_schema->td)->GetSecIndexes().begin()));
+                (oorder_schema.td)->GetSecIndexes().begin()));
 #endif
         TryCatch(oorder_table_secondary_index->Scan(
             txn, Encode(str(Size(k_oo_idx_0)), k_oo_idx_0),
@@ -1040,7 +1050,7 @@ rc_t tpcc_worker::txn_order_status() {
 #ifdef COPYDDL
       ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index =
           (ermia::ConcurrentMasstreeIndex *)(*(
-              (oorder_schema->td)->GetSecIndexes().begin()));
+              (oorder_schema.td)->GetSecIndexes().begin()));
 #endif
       TryCatch(oorder_table_secondary_index->ReverseScan(
           txn, Encode(str(Size(k_oo_idx_hi)), k_oo_idx_hi), nullptr, c_oorder,
@@ -1123,7 +1133,8 @@ rc_t tpcc_worker::txn_stock_level() {
   TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp;
-  const schema_kv::value *order_line_schema_value = Decode(v1, schema_value_temp);
+  const schema_kv::value *order_line_schema_value =
+      Decode(v1, schema_value_temp);
 
   ermia::schema_record order_line_schema;
   order_line_schema.value_to_record(order_line_schema_value);
@@ -1157,7 +1168,7 @@ rc_t tpcc_worker::txn_stock_level() {
 
 #ifdef COPYDDL
   ermia::ConcurrentMasstreeIndex *order_line_table_index =
-      (ermia::ConcurrentMasstreeIndex *)order_line_schema->index;
+      (ermia::ConcurrentMasstreeIndex *)order_line_schema.index;
 #endif
 
   TryCatch(order_line_table_index->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
@@ -1258,10 +1269,13 @@ rc_t tpcc_worker::txn_credit_check() {
   schema_index->ReadSchemaRecord(txn, rc, *customer_key, v3, &oid);
   TryVerifyStrict(rc);
 
-  schema_kv::value schema_value_temp;
-  const schema_kv::value *order_line_schema_value = Decode(v1, schema_value_temp);
-  const schema_kv::value *oorder_schema_value = Decode(v2, schema_value_temp);
-  const schema_kv::value *customer_schema_value = Decode(v3, schema_value_temp);
+  schema_kv::value schema_value_temp_1, schema_value_temp_2,
+      schema_value_temp_3;
+  const schema_kv::value *order_line_schema_value =
+      Decode(v1, schema_value_temp_1);
+  const schema_kv::value *oorder_schema_value = Decode(v2, schema_value_temp_2);
+  const schema_kv::value *customer_schema_value =
+      Decode(v3, schema_value_temp_3);
 
   ermia::schema_record order_line_schema;
   order_line_schema.value_to_record(order_line_schema_value);
@@ -1274,10 +1288,10 @@ rc_t tpcc_worker::txn_credit_check() {
 
 #ifdef COPYDDL
   ermia::ConcurrentMasstreeIndex *customer_table_index =
-      (ermia::ConcurrentMasstreeIndex *)customer_schema->index;
+      (ermia::ConcurrentMasstreeIndex *)customer_schema.index;
   ermia::ConcurrentMasstreeIndex *customer_table_secondary_index =
       (ermia::ConcurrentMasstreeIndex *)(*(
-          (customer_schema->td)->GetSecIndexes().begin()));
+          (customer_schema.td)->GetSecIndexes().begin()));
 #endif
 
   // select * from customer with random C_ID
@@ -1322,9 +1336,9 @@ rc_t tpcc_worker::txn_credit_check() {
 
 #ifdef COPYDDL
   ermia::ConcurrentMasstreeIndex *order_line_table_index =
-      (ermia::ConcurrentMasstreeIndex *)order_line_schema->index;
+      (ermia::ConcurrentMasstreeIndex *)order_line_schema.index;
   ermia::ConcurrentMasstreeIndex *oorder_table_index =
-      (ermia::ConcurrentMasstreeIndex *)oorder_schema->index;
+      (ermia::ConcurrentMasstreeIndex *)oorder_schema.index;
 #endif
 
   if (oorder_schema.v == 0) {
@@ -1426,7 +1440,8 @@ rc_t tpcc_worker::txn_query2() {
   TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp;
-  const schema_kv::value *order_line_schema_value = Decode(v1, schema_value_temp);
+  const schema_kv::value *order_line_schema_value =
+      Decode(v1, schema_value_temp);
 
   ermia::schema_record order_line_schema;
   order_line_schema.value_to_record(order_line_schema_value);
@@ -1651,22 +1666,26 @@ rc_t tpcc_worker::txn_ddl(uint32_t ddl_example) {
       db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
   switch (ddl_example) {
-  case 0:
-    add_column(txn, ddl_example);
-    break;
-  case 1:
-    table_split(txn, ddl_example);
-    break;
-  case 2:
-    preaggregation(txn, ddl_example);
-    break;
-  case 3:
-    create_index(txn, ddl_example);
-    break;
-  case 4:
-    table_join(txn, ddl_example);
-  default:
-    break;
+    case 0:
+      add_column(txn, ddl_example);
+      break;
+    case 1:
+      table_split(txn, ddl_example);
+      break;
+    case 2:
+      preaggregation(txn, ddl_example);
+      break;
+    case 3:
+      create_index(txn, ddl_example);
+      break;
+    case 4:
+      table_join(txn, ddl_example);
+      break;
+    case 5:
+      add_column(txn, ddl_example);
+      break;
+    default:
+      break;
   }
 
   TryCatch(db->Commit(txn));
@@ -1721,7 +1740,9 @@ bench_worker::workload_desc_vec tpcc_worker::get_workload() const {
 
 bench_worker::ddl_workload_desc_vec tpcc_worker::get_ddl_workload() const {
   ddl_workload_desc_vec ddl_w;
-  ddl_w.push_back(ddl_workload_desc("DDL", 0, TxnDDL, 0));
+  for (int i = 0; i < ermia::config::ddl_total; i++) {
+    ddl_w.push_back(ddl_workload_desc("DDL", 0, TxnDDL, ddl_examples[i]));
+  }
   return ddl_w;
 }
 

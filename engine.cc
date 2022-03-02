@@ -708,10 +708,10 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
       }
     }
 #endif
-    auto *key_array = table_descriptor->GetKeyArray();
-    fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
     if (schema && schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION &&
         version_csn < schema->csn) {
+      auto *key_array = table_descriptor->GetKeyArray();
+      fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
       varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
       varstr *new_tuple_value = &vv;
       for (int i = 0; i < schema->reformats_total; i++) {
@@ -719,6 +719,10 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
             key, *new_tuple_value, &(t->string_allocator()), schema->v,
             table_descriptor->GetTupleFid(), oid);
       }
+      /*varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
+            key, vv, &(t->string_allocator()), schema->v,
+            table_descriptor->GetTupleFid(), oid);
+      */
       if (!new_tuple_value) {
         return false;
       }

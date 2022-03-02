@@ -1,5 +1,3 @@
-#pragma once
-
 #include "tpcc-common.h"
 
 template <typename T1, typename T2, typename T3>
@@ -20,8 +18,12 @@ struct key_tuple {
 };
 
 static ermia::ddl::ddl_type get_example_ddl_type(uint32_t ddl_example) {
-
-  return ermia::ddl::COPY_ONLY;
+  switch (ddl_example) {
+    case 5:
+      return ermia::ddl::NO_COPY_VERIFICATION;
+    default:
+      return ermia::ddl::COPY_ONLY;
+  }
 }
 
 rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
@@ -78,7 +80,7 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
     txn->add_new_td_map(schema.td);
     txn->add_old_td_map(schema.old_td);
   } else {
-    schema.reformats_total = 1;
+    schema.reformats_total = schema.v;
   }
 
   schema_kv::value new_schema_value;
@@ -241,7 +243,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
 
   rc = rc_t{RC_INVALID};
 
-  if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
+  if (customer_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
     char table_name[20];
     snprintf(table_name, 20, "customer_%lu", schema_version);
 
@@ -250,8 +252,8 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
     customer_schema.td = ermia::Catalog::GetTable(table_name);
     customer_schema.old_index = customer_schema.index;
 #ifdef LAZYDDL
-    customer_schema.old_tds[schema.old_v] = schema.old_td;
-    customer_schema.old_tds_total = schema.v;
+    customer_schema.old_tds[customer_schema.old_v] = customer_schema.old_td;
+    customer_schema.old_tds_total = customer_schema.v;
 #endif
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
@@ -267,14 +269,13 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
     customer_schema.index = new_private_customer_table_index;
 #else
     ermia::Catalog::GetTable(table_name)
-        ->SetPrimaryIndex(old_customer_table_index, table_name);
+        ->SetPrimaryIndex(customer_schema.old_index, table_name);
     ermia::Catalog::GetTable(table_name)
-        ->AddSecondaryIndex(old_customer_td->GetSecIndexes().at(0));
+        ->AddSecondaryIndex(customer_schema.old_td->GetSecIndexes().at(0));
     ALWAYS_ASSERT(tbl_customer_name_idx(1) ==
-                  old_customer_td->GetSecIndexes().at(0));
+                  customer_schema.old_td->GetSecIndexes().at(0));
     customer_schema.index =
         ermia::Catalog::GetTable(table_name)->GetPrimaryIndex();
-    ALWAYS_ASSERT(old_customer_table_index == customer_schema.index);
 #endif
 
     txn->set_old_td(customer_schema.old_td);
@@ -303,7 +304,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
       customer_schema.state);
   txn->set_ddl_executor(ddl_exe);
 
-  if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
+  if (customer_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
 #if !defined(LAZYDDL)
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(txn, arena);
@@ -353,11 +354,11 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
   schema_index->ReadSchemaRecord(txn, rc, *oorder_key, valptr2, &oid);
   TryVerifyStrict(rc);
 
-  schema_kv::value schema_value_temp;
+  schema_kv::value schema_value_temp_1, schema_value_temp_2;
   const schema_kv::value *old_order_line_schema_value =
-      Decode(valptr1, schema_value_temp);
+      Decode(valptr1, schema_value_temp_1);
   const schema_kv::value *old_oorder_schema_value =
-      Decode(valptr2, schema_value_temp);
+      Decode(valptr2, schema_value_temp_2);
 
   struct ermia::schema_record order_line_schema;
   order_line_schema.value_to_record(old_order_line_schema_value);
@@ -420,12 +421,10 @@ rc_t tpcc_worker::create_index(ermia::transaction *txn, uint32_t ddl_example) {
 
   // New a ddl executor
   ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
-  ddl_exe->add_ddl_executor_paras(
-      schema.v, schema.old_v,
-      schema.ddl_type, schema.reformat_idx,
-      schema.constraint_idx, schema.td,
-      schema.old_td, schema.index,
-      schema.state, -1, true, false, -1);
+  ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
+                                  schema.reformat_idx, schema.constraint_idx,
+                                  schema.td, schema.old_td, schema.index,
+                                  schema.state, -1, true, false, -1);
   txn->set_ddl_executor(ddl_exe);
 
   txn->set_old_td(schema.td);

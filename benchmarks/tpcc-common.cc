@@ -333,7 +333,7 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
         {"ddl-examples", required_argument, 0, 'e'},
         {0, 0, 0, 0}};
     int option_index = 0;
-    int c = getopt_long(argc, argv, "r:w:s:t:n:p:q:z:d:e", long_options,
+    int c = getopt_long(argc, argv, "r:w:s:t:n:p:q:z:d:e:", long_options,
                         &option_index);
     if (c == -1) break;
     switch (c) {
@@ -484,8 +484,8 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
   }
 
   if (ermia::config::coro_tx) {
-    //tpcc_bench_runner<tpcc_cs_worker> r(db);
-    //r.run();
+    // tpcc_bench_runner<tpcc_cs_worker> r(db);
+    // r.run();
     LOG(FATAL) << "Not supported";
   } else {
     tpcc_bench_runner<tpcc_worker> r(db);
