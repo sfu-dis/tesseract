@@ -33,3 +33,5 @@
 build
 tags
 .vscode
+.idea/
+cmake-build-debug/
