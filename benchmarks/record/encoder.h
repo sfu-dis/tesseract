@@ -35,12 +35,6 @@ static inline ermia::varstr &Encode(ermia::varstr &s, const T &t) {
 }
 
 template <typename T>
-static inline ermia::varstr &SchemaEncode(ermia::varstr &s, const T &t) {
-  s.copy_from(t, s.size());
-  return s;
-}
-
-template <typename T>
 static inline std::string &Encode(std::string &buf, const T &t) {
   const encoder<T> enc;
   return enc.write(buf, &t);
@@ -62,11 +56,6 @@ template <typename T>
 static inline const T *Decode(const ermia::varstr &str, T &obj) {
   const encoder<T> enc;
   return enc.read(str.data(), &obj);
-}
-
-template <typename T>
-static inline T *SchemaDecode(const ermia::varstr &str, T &obj) {
-  return (T *)str.data();
 }
 
 template <typename T>
