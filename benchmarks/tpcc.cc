@@ -375,10 +375,11 @@ rc_t tpcc_worker::txn_payment() {
   schema_index->ReadSchemaRecord(txn, rc, *customer_key, v2, &oid);
   TryVerifyStrict(rc);
 
-  schema_kv::value schema_value_temp;
+  schema_kv::value schema_value_temp_1, schema_value_temp_2;
   const schema_kv::value *order_line_schema_value =
-      Decode(v1, schema_value_temp);
-  const schema_kv::value *customer_schema_value = Decode(v2, schema_value_temp);
+      Decode(v1, schema_value_temp_1);
+  const schema_kv::value *customer_schema_value =
+      Decode(v2, schema_value_temp_2);
 
   ermia::schema_record order_line_schema;
   order_line_schema.value_to_record(order_line_schema_value);
@@ -1683,6 +1684,9 @@ rc_t tpcc_worker::txn_ddl(uint32_t ddl_example) {
       break;
     case 5:
       add_column(txn, ddl_example);
+      break;
+    case 6:
+      table_split(txn, ddl_example);
       break;
     default:
       break;

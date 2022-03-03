@@ -97,16 +97,12 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #endif
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
-      auto *new_table_index =
-          new ermia::ConcurrentMasstreeIndex(table_name, true);
-      new_table_index->SetArrays(true);
-      schema.td->SetPrimaryIndex(new_table_index);
-      schema.index = new_table_index;
+      db->CreateMasstreePrimaryIndex(table_name, std::string(table_name));
 #else
-      ermia::Catalog::GetTable(table_name)
-          ->SetPrimaryIndex(schema.old_index, table_name);
-      schema.index = ermia::Catalog::GetTable(table_name)->GetPrimaryIndex();
+      schema.td->SetPrimaryIndex(schema.old_index, table_name);
 #endif
+      schema.index = schema.td->GetPrimaryIndex();
+      ;
 
       txn->set_old_td(schema.old_td);
       txn->add_new_td_map(schema.td);
@@ -174,7 +170,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     txn->add_old_td_map(schema.td);
     txn->add_new_td_map(schema.td);
 
-#ifdef BLOCKDDL    
+#ifdef BLOCKDDL
     TryCatch(ddl_exe->scan(txn, arena));
 #elif SIDDL
     rc = rc_t{RC_INVALID};

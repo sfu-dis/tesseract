@@ -412,7 +412,7 @@ class tpcc_schematable_loader : public ermia::schematable_loader {
     order_line_schema.index =
         ermia::Catalog::GetTable("order_line")->GetPrimaryIndex();
     order_line_schema.td = ermia::Catalog::GetTable("order_line");
-    order_line_schema.show_index = true;
+    order_line_schema.show_index = ddl_examples[0] == 3 ? false : true;
     order_line_schema.reformats_total = 0;
     order_line_schema.old_tds_total = 0;
     schema_kv::value order_line_schema_value;

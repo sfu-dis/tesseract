@@ -211,10 +211,9 @@ class transaction {
   DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
                dlog::log_block *block = nullptr);
 
-  // DDL schema unblock
+  // Set DDL schema state to be Ready
   PROMISE(rc_t)
-  DDLSchemaUnblock(TableDescriptor *td, OID oid, varstr *value,
-                   uint64_t tuple_csn);
+  DDLSchemaReady(TableDescriptor *td, OID oid, varstr *value);
 
   // DML & DDL overlap check
   PROMISE(bool)
@@ -246,7 +245,7 @@ class transaction {
                                OID oid, uint64_t size,
                                dlog::log_record::logrec_type type) {
 #ifndef NDEBUG
-    for (uint32_t i = 0; i < is_ddl() && write_set.size(); ++i) {
+    for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto &w = write_set.entries_[i];
       ASSERT(w.entry);
       ASSERT(w.entry != entry);
@@ -310,7 +309,7 @@ class transaction {
     lock_info(FID fid, lock_type lt) : fid(fid), lt(lt) {}
   };
 
-  inline std::vector<lock_info *> get_table_set() { return table_set; }
+  inline std::vector<lock_info *> *get_table_set() { return &table_set; }
 
   inline void lock_table(FID table_fid, lock_type lt) {
     if (lt == lock_type::SHARED) {

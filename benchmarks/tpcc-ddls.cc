@@ -65,16 +65,11 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
 #endif
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
-    auto *new_table_index =
-        new ermia::ConcurrentMasstreeIndex(table_name, true);
-    new_table_index->SetArrays(true);
-    schema.td->SetPrimaryIndex(new_table_index);
-    schema.index = new_table_index;
+    db->CreateMasstreePrimaryIndex(table_name, std::string(table_name));
 #else
-    ermia::Catalog::GetTable(table_name)
-        ->SetPrimaryIndex(schema.old_index, table_name);
-    schema.index = ermia::Catalog::GetTable(table_name)->GetPrimaryIndex();
+    schema.td->SetPrimaryIndex(schema.old_index, table_name);
 #endif
+    schema.index = schema.td->GetPrimaryIndex();
 
     txn->set_old_td(schema.old_td);
     txn->add_new_td_map(schema.td);
@@ -257,32 +252,24 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
 #endif
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
-    auto *new_private_customer_table_index =
-        new ermia::ConcurrentMasstreeIndex(table_name, true);
-    new_private_customer_table_index->SetArrays(true);
-    auto *new_private_customer_table_secondary_index =
-        new ermia::ConcurrentMasstreeIndex(table_name, false);
-    new_private_customer_table_secondary_index->SetArrays(false);
-    customer_schema.td->SetPrimaryIndex(new_private_customer_table_index);
-    customer_schema.td->AddSecondaryIndex(
-        new_private_customer_table_secondary_index);
-    customer_schema.index = new_private_customer_table_index;
+    db->CreateMasstreePrimaryIndex(table_name, std::string(table_name));
+    db->CreateMasstreeSecondaryIndex(table_name, std::string(table_name));
 #else
-    ermia::Catalog::GetTable(table_name)
-        ->SetPrimaryIndex(customer_schema.old_index, table_name);
-    ermia::Catalog::GetTable(table_name)
-        ->AddSecondaryIndex(customer_schema.old_td->GetSecIndexes().at(0));
+    customer_schema.td->SetPrimaryIndex(customer_schema.old_index, table_name);
+    customer_schema.td->AddSecondaryIndex(
+        customer_schema.old_td->GetSecIndexes().at(0));
     ALWAYS_ASSERT(tbl_customer_name_idx(1) ==
                   customer_schema.old_td->GetSecIndexes().at(0));
-    customer_schema.index =
-        ermia::Catalog::GetTable(table_name)->GetPrimaryIndex();
 #endif
+    customer_schema.index = customer_schema.td->GetPrimaryIndex();
 
     txn->set_old_td(customer_schema.old_td);
     txn->add_new_td_map(customer_schema.td);
     txn->add_old_td_map(customer_schema.old_td);
   } else {
     customer_schema.reformats_total = 1;
+    customer_schema.reformats[customer_schema.old_v] =
+        customer_schema.reformat_idx;
   }
 
   schema_kv::value new_schema_value;
@@ -301,7 +288,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
       customer_schema.v, customer_schema.old_v, customer_schema.ddl_type,
       customer_schema.reformat_idx, customer_schema.constraint_idx,
       customer_schema.td, customer_schema.old_td, customer_schema.index,
-      customer_schema.state);
+      customer_schema.state, customer_schema.secondary_index_key_create_idx);
   txn->set_ddl_executor(ddl_exe);
 
   if (customer_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
@@ -420,7 +407,8 @@ rc_t tpcc_worker::create_index(ermia::transaction *txn, uint32_t ddl_example) {
   TryCatch(rc);
 
   // New a ddl executor
-  ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
+  ermia::ddl::ddl_executor *ddl_exe =
+      new ermia::ddl::ddl_executor(schema.ddl_type);
   ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
                                   schema.reformat_idx, schema.constraint_idx,
                                   schema.td, schema.old_td, schema.index,
@@ -511,16 +499,11 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, uint32_t ddl_example) {
 #endif
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
-    auto *new_table_index =
-        new ermia::ConcurrentMasstreeIndex(table_name, true);
-    new_table_index->SetArrays(true);
-    schema.td->SetPrimaryIndex(new_table_index);
-    schema.index = new_table_index;
+    db->CreateMasstreePrimaryIndex(table_name, std::string(table_name));
 #else
-    ermia::Catalog::GetTable(table_name)
-        ->SetPrimaryIndex(schema.old_index, table_name);
-    schema.index = ermia::Catalog::GetTable(table_name)->GetPrimaryIndex();
+    schema.td->SetPrimaryIndex(schema.old_index, table_name);
 #endif
+    schema.index = schema.td->GetPrimaryIndex();
 
     txn->set_old_td(schema.old_td);
     txn->add_new_td_map(schema.td);
