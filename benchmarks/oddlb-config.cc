@@ -39,10 +39,12 @@ void oddlb_schematable_loader::load() {
                         ermia::FID fid, ermia::OID oid) {
     uint64_t a = 0;
     if (schema_version == 1) {
-      oddlb_kv_1::value *record = (oddlb_kv_1::value *)value.data();
+      oddlb_kv_1::value record_temp;
+      const oddlb_kv_1::value *record = Decode(value, record_temp);
       a = record->o_value_a;
     } else {
-      oddlb_kv_2::value *record = (oddlb_kv_2::value *)value.data();
+      oddlb_kv_2::value record_temp;
+      const oddlb_kv_2::value *record = Decode(value, record_temp);
       a = record->o_value_a;
     }
 
@@ -52,14 +54,14 @@ void oddlb_schematable_loader::load() {
     record2.o_value_b = schema_version;
     record2.o_value_c = schema_version;
     ermia::varstr *new_value = arena->next(sizeof(record2));
-    new_value->copy_from((char *)&record2, sizeof(record2));
-    return new_value;
+    return &Encode(*new_value, record2);
   };
 
   auto add_column_1 = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
                           ermia::FID fid, ermia::OID oid) {
-    oddlb_kv_2::value *record = (oddlb_kv_2::value *)value.data();
+    oddlb_kv_2::value record_temp;
+    const oddlb_kv_2::value *record = Decode(value, record_temp);
 
     oddlb_kv_3::value record2;
     record2.o_value_version = schema_version;
@@ -68,14 +70,14 @@ void oddlb_schematable_loader::load() {
     record2.o_value_c = schema_version;
     record2.o_value_d = schema_version;
     ermia::varstr *new_value = arena->next(sizeof(record2));
-    new_value->copy_from((char *)&record2, sizeof(record2));
-    return new_value;
+    return &Encode(*new_value, record2);
   };
 
   auto add_column_2 = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
                           ermia::FID fid, ermia::OID oid) {
-    oddlb_kv_3::value *record = (oddlb_kv_3::value *)value.data();
+    oddlb_kv_3::value record_temp;
+    const oddlb_kv_3::value *record = Decode(value, record_temp);
 
     oddlb_kv_4::value record2;
     record2.o_value_version = schema_version;
@@ -85,14 +87,14 @@ void oddlb_schematable_loader::load() {
     record2.o_value_d = schema_version;
     record2.o_value_e = schema_version;
     ermia::varstr *new_value = arena->next(sizeof(record2));
-    new_value->copy_from((char *)&record2, sizeof(record2));
-    return new_value;
+    return &Encode(*new_value, record2);
   };
 
   auto add_column_3 = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
                           ermia::FID fid, ermia::OID oid) {
-    oddlb_kv_4::value *record = (oddlb_kv_4::value *)value.data();
+    oddlb_kv_4::value record_temp;
+    const oddlb_kv_4::value *record = Decode(value, record_temp);
 
     oddlb_kv_5::value record2;
     record2.o_value_version = schema_version;
@@ -103,14 +105,14 @@ void oddlb_schematable_loader::load() {
     record2.o_value_e = schema_version;
     record2.o_value_f = schema_version;
     ermia::varstr *new_value = arena->next(sizeof(record2));
-    new_value->copy_from((char *)&record2, sizeof(record2));
-    return new_value;
+    return &Encode(*new_value, record2);
   };
 
   auto add_column_4 = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
                           ermia::FID fid, ermia::OID oid) {
-    oddlb_kv_5::value *record = (oddlb_kv_5::value *)value.data();
+    oddlb_kv_5::value record_temp;
+    const oddlb_kv_5::value *record = Decode(value, record_temp);
 
     oddlb_kv_6::value record2;
     record2.o_value_version = schema_version;
@@ -122,24 +124,24 @@ void oddlb_schematable_loader::load() {
     record2.o_value_f = schema_version;
     record2.o_value_g = schema_version;
     ermia::varstr *new_value = arena->next(sizeof(record2));
-    new_value->copy_from((char *)&record2, sizeof(record2));
-    return new_value;
+    return &Encode(*new_value, record2);
   };
 
   auto column_verification = [=](ermia::varstr &value,
                                  uint64_t schema_version) {
     if (schema_version == 1) {
-      oddlb_kv_1::value *record = (oddlb_kv_1::value *)value.data();
+      oddlb_kv_1::value record_temp;
+      const oddlb_kv_1::value *record = Decode(value, record_temp);
       return record->o_value_b < 10000000;
     } else {
-      oddlb_kv_2::value *record = (oddlb_kv_2::value *)value.data();
+      oddlb_kv_2::value record_temp;
+      const oddlb_kv_2::value *record = Decode(value, record_temp);
       return record->o_value_b < 10000000;
     }
   };
 
-  char str1[] = "USERTABLE";
-  ermia::varstr &k1 = str(sizeof(str1));
-  k1.copy_from(str1, sizeof(str1));
+  const schema_kv::key schema_key(
+      open_tables.at("USERTABLE")->GetTableDescriptor()->GetTupleFid());
 
   struct ermia::schema_record usertable_schema;
   usertable_schema.state = ermia::ddl::schema_state_type::READY;
@@ -180,8 +182,9 @@ void oddlb_schematable_loader::load() {
   ALWAYS_ASSERT(schema_test.td == ermia::Catalog::GetTable("USERTABLE"));
   ALWAYS_ASSERT(schema_test.show_index);
 
-  TryVerifyStrict(tbl->InsertRecord(
-      txn, k1, Encode(str(Size(schema_value)), schema_value)));
+  TryVerifyStrict(
+      tbl->InsertRecord(txn, Encode(str(Size(schema_key)), schema_key),
+                        Encode(str(Size(schema_value)), schema_value)));
   TryVerifyStrict(db->Commit(txn));
 
   if (ermia::config::verbose) {
@@ -223,7 +226,8 @@ void oddlb_usertable_loader::load() {
 
     tbl->GetRecord(txn, rc, Encode(str(Size(k)), k), v, &oid);
 
-    oddlb_kv_1::value *record1_test = (oddlb_kv_1::value *)v.data();
+    oddlb_kv_1::value record1_test_temp;
+    const oddlb_kv_1::value *record1_test = Decode(v, record1_test_temp);
     ALWAYS_ASSERT(record1_test->o_value_version == 0);
     ALWAYS_ASSERT(record1_test->o_value_a == start_key + i);
     ALWAYS_ASSERT(record1_test->o_value_b == start_key + i);

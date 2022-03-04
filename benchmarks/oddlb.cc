@@ -102,7 +102,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       schema.td->SetPrimaryIndex(schema.old_index, table_name);
 #endif
       schema.index = schema.td->GetPrimaryIndex();
-      ;
 
       txn->set_old_td(schema.old_td);
       txn->add_new_td_map(schema.td);
@@ -175,7 +174,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #elif SIDDL
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(txn, arena);
-    if (rc._val != RC_TRUE) {
+    if (rc._val != RC_TRUE && running) {
       std::cerr << "SI DDL aborts" << std::endl;
       db->Abort(txn);
       goto retry;
@@ -232,26 +231,22 @@ class oddlb_sequential_worker : public oddlb_base_worker {
                              &schema);
       if (rc.IsAbort()) {
         TryCatch(rc);
-      } else if (rc._val == RC_FALSE) {
+      } /*else if (rc._val == RC_FALSE) {
         TryCatch(rc_t{RC_ABORT_USER});
-      }
+      }*/
 
-      oddlb_kv_1::value *record_test = (oddlb_kv_1::value *)v2.data();
+      oddlb_kv_1::value record_temp;
+      const oddlb_kv_1::value *record_test = Decode(v2, record_temp);
 
-#ifdef SIDDL
-      if (record_test->o_value_version != schema_version) {
-        TryCatch(rc_t{RC_ABORT_USER});
-      }
-#endif
-
-      if (schema.ddl_type != ermia::ddl::ddl_type::VERIFICATION_ONLY &&
-          record_test->o_value_version != schema_version) {
-        LOG(FATAL) << "Read: It should get " << schema_version << " ,but get "
-                   << record_test->o_value_version;
-      }
+      LOG_IF(FATAL,
+             schema.ddl_type != ermia::ddl::ddl_type::VERIFICATION_ONLY &&
+                 record_test->o_value_version != schema_version)
+          << "Read: It should get " << schema_version << " ,but get "
+          << record_test->o_value_version;
 
       if (schema_version == 0) {
-        oddlb_kv_1::value *record1_test = (oddlb_kv_1::value *)v2.data();
+        oddlb_kv_1::value record1_temp;
+        const oddlb_kv_1::value *record1_test = Decode(v2, record1_temp);
 
         ALWAYS_ASSERT(record1_test->o_value_a == a);
         ALWAYS_ASSERT(record1_test->o_value_b == a ||
@@ -259,20 +254,23 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       } else {
         if (schema.ddl_type == ermia::ddl::ddl_type::COPY_VERIFICATION ||
             schema.ddl_type == ermia::ddl::ddl_type::COPY_ONLY) {
-          oddlb_kv_2::value *record2_test = (oddlb_kv_2::value *)v2.data();
+          oddlb_kv_2::value record2_temp;
+          const oddlb_kv_2::value *record2_test = Decode(v2, record2_temp);
 
           ALWAYS_ASSERT(record2_test->o_value_a == a);
           ALWAYS_ASSERT(record2_test->o_value_b == schema_version);
           ALWAYS_ASSERT(record2_test->o_value_c == schema_version);
         } else if (schema.ddl_type == ermia::ddl::ddl_type::VERIFICATION_ONLY) {
-          oddlb_kv_1::value *record1_test = (oddlb_kv_1::value *)v2.data();
+          oddlb_kv_1::value record1_temp;
+          const oddlb_kv_1::value *record1_test = Decode(v2, record1_temp);
 
           ALWAYS_ASSERT(record1_test->o_value_a == a);
           ALWAYS_ASSERT(record1_test->o_value_b == a ||
                         record1_test->o_value_b == 20000000);
         } else if (schema.ddl_type ==
                    ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
-          oddlb_kv_6::value *record2_test = (oddlb_kv_6::value *)v2.data();
+          oddlb_kv_6::value record6_temp;
+          const oddlb_kv_6::value *record2_test = Decode(v2, record6_temp);
 
           ALWAYS_ASSERT(record2_test->o_value_a == a);
           ALWAYS_ASSERT(record2_test->o_value_b == schema_version);
@@ -317,9 +315,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       uint64_t a = r.next() %
                    oddlb_initial_table_size;  // 0 ~ oddlb_initial_table_size-1
 
-#ifdef SIDDL
-    retry:
-#endif
 #ifdef COPYDDL
       ermia::ConcurrentMasstreeIndex *table_index =
           (ermia::ConcurrentMasstreeIndex *)schema.index;

@@ -88,10 +88,8 @@ class oddlb_bench_runner : public bench_runner {
     std::cerr << "nloaders: " << nloaders
               << ", records_per_thread: " << records_per_thread << std::endl;
 
-    // if (ermia::config::verbose) {
     std::cerr << "[INFO] requested for " << requested << ", will load "
               << oddlb_initial_table_size << std::endl;
-    //}
 
     std::vector<bench_loader *> ret;
 
@@ -125,22 +123,24 @@ class oddlb_base_worker : public bench_worker {
       spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a,
                      barrier_b),
-        schema_index((ermia::ConcurrentMasstreeIndex *)open_tables.at("SCHEMA"))
-#if defined(SIDDL) || defined(BLOCKDDL)
-        ,
-        table_index(
-            (ermia::ConcurrentMasstreeIndex *)open_tables.at("USERTABLE")),
+        schema_index(
+            (ermia::ConcurrentMasstreeIndex *)open_tables.at("SCHEMA")),
         schema_fid(
             open_tables.at("SCHEMA")->GetTableDescriptor()->GetTupleFid()),
         table_fid(
             open_tables.at("USERTABLE")->GetTableDescriptor()->GetTupleFid())
+#if defined(SIDDL) || defined(BLOCKDDL)
+        ,
+        table_index(
+            (ermia::ConcurrentMasstreeIndex *)open_tables.at("USERTABLE"))
 #endif
   {
-    char str1[] = "USERTABLE";
-    table_key = (ermia::varstr *)ermia::MM::allocate(sizeof(ermia::varstr) +
-                                                     sizeof(str1));
-    new (table_key) ermia::varstr((char *)table_key + sizeof(ermia::varstr), 0);
-    table_key->copy_from(str1, sizeof(str1));
+    const schema_kv::key k(table_fid);
+    table_key =
+        (ermia::varstr *)ermia::MM::allocate(sizeof(ermia::varstr) + sizeof(k));
+    new (table_key)
+        ermia::varstr((char *)table_key + sizeof(ermia::varstr), sizeof(k));
+    Encode(*table_key, k);
   }
 
  protected:
@@ -229,9 +229,9 @@ class oddlb_base_worker : public bench_worker {
 
   ermia::ConcurrentMasstreeIndex *schema_index;
   ermia::varstr *table_key;
-#if defined(SIDDL) || defined(BLOCKDDL)
-  ermia::ConcurrentMasstreeIndex *table_index;
   ermia::FID schema_fid;
   ermia::FID table_fid;
+#if defined(SIDDL) || defined(BLOCKDDL)
+  ermia::ConcurrentMasstreeIndex *table_index;
 #endif
 };

@@ -413,7 +413,10 @@ rc_t transaction::si_commit() {
       log->set_doing_ddl(false);
       return rc_t{RC_TRUE};
     }
-    ddl_exe->scan(this, &(string_allocator()));
+    rc_t rc = ddl_exe->scan(this, &(string_allocator()));
+    if (rc.IsAbort()) {
+      return rc;
+    }
 #endif
 
     for (auto &v : new_td_map) {

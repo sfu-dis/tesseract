@@ -380,12 +380,11 @@ class tpcc_schematable_loader : public ermia::schematable_loader {
       return new_value;
     };
 
-    char str1[] = "order_line", str2[] = "oorder", str3[] = "customer";
-    ermia::varstr &k1 = str(sizeof(str1)), &k2 = str(sizeof(str2)),
-                  &k3 = str(sizeof(str3));
-    k1.copy_from(str1, sizeof(str1));
-    k2.copy_from(str2, sizeof(str2));
-    k3.copy_from(str3, sizeof(str3));
+    const schema_kv::key k1(
+        ermia::Catalog::GetTable("order_line")->GetTupleFid());
+    const schema_kv::key k2(ermia::Catalog::GetTable("oorder")->GetTupleFid());
+    const schema_kv::key k3(
+        ermia::Catalog::GetTable("customer")->GetTupleFid());
 
     struct ermia::schema_record order_line_schema;
     order_line_schema.state = ermia::ddl::schema_state_type::READY;
@@ -409,9 +408,8 @@ class tpcc_schematable_loader : public ermia::schematable_loader {
     ermia::ddl::reformats.push_back(add_column);
     order_line_schema.secondary_index_key_create_idx = -1;
     order_line_schema.constraint_idx = -1;
-    order_line_schema.index =
-        ermia::Catalog::GetTable("order_line")->GetPrimaryIndex();
     order_line_schema.td = ermia::Catalog::GetTable("order_line");
+    order_line_schema.index = order_line_schema.td->GetPrimaryIndex();
     order_line_schema.show_index = ddl_examples[0] == 3 ? false : true;
     order_line_schema.reformats_total = 0;
     order_line_schema.old_tds_total = 0;
@@ -421,8 +419,8 @@ class tpcc_schematable_loader : public ermia::schematable_loader {
     oorder_schema.v = 0;
     oorder_schema.csn = 0;
     oorder_schema.secondary_index_key_create_idx = -1;
-    oorder_schema.index = ermia::Catalog::GetTable("oorder")->GetPrimaryIndex();
     oorder_schema.td = ermia::Catalog::GetTable("oorder");
+    oorder_schema.index = oorder_schema.td->GetPrimaryIndex();
     oorder_schema.show_index = true;
     oorder_schema.reformats_total = 0;
     oorder_schema.old_tds_total = 0;
@@ -434,9 +432,8 @@ class tpcc_schematable_loader : public ermia::schematable_loader {
     customer_schema.reformat_idx = -1;
     customer_schema.constraint_idx = -1;
     customer_schema.secondary_index_key_create_idx = -1;
-    customer_schema.index =
-        ermia::Catalog::GetTable("customer")->GetPrimaryIndex();
     customer_schema.td = ermia::Catalog::GetTable("customer");
+    customer_schema.index = customer_schema.td->GetPrimaryIndex();
     customer_schema.show_index = true;
     customer_schema.reformats_total = 0;
     customer_schema.old_tds_total = 0;
@@ -444,12 +441,13 @@ class tpcc_schematable_loader : public ermia::schematable_loader {
     customer_schema.record_to_value(customer_schema_value);
 
     TryVerifyStrict(tbl->InsertRecord(
-        txn, k1,
+        txn, Encode(str(Size(k1)), k1),
         Encode(str(Size(order_line_schema_value)), order_line_schema_value)));
     TryVerifyStrict(tbl->InsertRecord(
-        txn, k2, Encode(str(Size(oorder_schema_value)), oorder_schema_value)));
+        txn, Encode(str(Size(k2)), k2),
+        Encode(str(Size(oorder_schema_value)), oorder_schema_value)));
     TryVerifyStrict(tbl->InsertRecord(
-        txn, k3,
+        txn, Encode(str(Size(k3)), k3),
         Encode(str(Size(customer_schema_value)), customer_schema_value)));
     TryVerifyStrict(db->Commit(txn));
 
@@ -1400,7 +1398,17 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
                      barrier_b),
         tpcc_worker_mixin(partitions),
         home_warehouse_id(home_warehouse_id),
-        schema_index((ermia::ConcurrentMasstreeIndex *)open_tables.at("SCHEMA"))
+        schema_index(
+            (ermia::ConcurrentMasstreeIndex *)open_tables.at("SCHEMA")),
+        schema_fid(
+            open_tables.at("SCHEMA")->GetTableDescriptor()->GetTupleFid()),
+        order_line_fid(open_tables.at("order_line_0")
+                           ->GetTableDescriptor()
+                           ->GetTupleFid()),
+        oorder_fid(
+            open_tables.at("oorder_0")->GetTableDescriptor()->GetTupleFid()),
+        customer_fid(
+            open_tables.at("customer_0")->GetTableDescriptor()->GetTupleFid())
 #if !defined(COPYDDL)
         ,
         order_line_table_index(
@@ -1415,36 +1423,30 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
             (ermia::ConcurrentMasstreeIndex *)open_tables.at(
                 "customer_name_idx_0"))
 #endif
-#ifdef BLOCKDDL
-        ,
-        schema_fid(
-            open_tables.at("SCHEMA")->GetTableDescriptor()->GetTupleFid()),
-        order_line_fid(
-            open_tables.at("order_line_0")->GetTableDescriptor()->GetTupleFid())
-#endif
   {
     ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
     memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
 
-    char str1[] = "order_line", str2[] = "oorder", str3[] = "customer";
-
+    const schema_kv::key k1(order_line_fid);
     order_line_key = (ermia::varstr *)ermia::MM::allocate(
-        sizeof(ermia::varstr) + sizeof(str1));
-    new (order_line_key)
-        ermia::varstr((char *)order_line_key + sizeof(ermia::varstr), 0);
-    order_line_key->copy_from(str1, sizeof(str1));
+        sizeof(ermia::varstr) + sizeof(k1));
+    new (order_line_key) ermia::varstr(
+        (char *)order_line_key + sizeof(ermia::varstr), sizeof(k1));
+    Encode(*order_line_key, k1);
 
+    const schema_kv::key k2(oorder_fid);
     oorder_key = (ermia::varstr *)ermia::MM::allocate(sizeof(ermia::varstr) +
-                                                      sizeof(str2));
+                                                      sizeof(k2));
     new (oorder_key)
-        ermia::varstr((char *)oorder_key + sizeof(ermia::varstr), 0);
-    oorder_key->copy_from(str2, sizeof(str2));
+        ermia::varstr((char *)oorder_key + sizeof(ermia::varstr), sizeof(k2));
+    Encode(*oorder_key, k2);
 
+    const schema_kv::key k3(customer_fid);
     customer_key = (ermia::varstr *)ermia::MM::allocate(sizeof(ermia::varstr) +
-                                                        sizeof(str3));
+                                                        sizeof(k3));
     new (customer_key)
-        ermia::varstr((char *)customer_key + sizeof(ermia::varstr), 0);
-    customer_key->copy_from(str3, sizeof(str3));
+        ermia::varstr((char *)customer_key + sizeof(ermia::varstr), sizeof(k3));
+    Encode(*customer_key, k3);
   }
 
   // XXX(stephentu): tune this
@@ -1520,6 +1522,13 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   const uint home_warehouse_id;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
   ermia::ConcurrentMasstreeIndex *schema_index;
+  ermia::FID schema_fid;
+  ermia::FID order_line_fid;
+  ermia::FID oorder_fid;
+  ermia::FID customer_fid;
+  ermia::varstr *order_line_key;
+  ermia::varstr *oorder_key;
+  ermia::varstr *customer_key;
 #if !defined(COPYDDL)
   ermia::ConcurrentMasstreeIndex *order_line_table_index;
   ermia::ConcurrentMasstreeIndex *oorder_table_index;
@@ -1527,13 +1536,6 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   ermia::ConcurrentMasstreeIndex *customer_table_index;
   ermia::ConcurrentMasstreeIndex *customer_table_secondary_index;
 #endif
-#ifdef BLOCKDDL
-  ermia::FID schema_fid;
-  ermia::FID order_line_fid;
-#endif
-  ermia::varstr *order_line_key;
-  ermia::varstr *oorder_key;
-  ermia::varstr *customer_key;
 };
 
 /*class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {

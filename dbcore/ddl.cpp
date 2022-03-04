@@ -118,6 +118,10 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   }
   ddl_td_set = false;
   cdc_first_phase = false;
+#else
+  if (ddl_failed) {
+    return rc_t{RC_ABORT_INTERNAL};
+  }
 #endif
 
   return rc_t{RC_TRUE};
@@ -212,11 +216,12 @@ uint32_t ddl_executor::changed_data_capture(transaction *t) {
   } else {
     cdc_threads = config::cdc_threads + config::scan_threads - 1;
   }
+  DLOG(INFO) << "cdc_threads: " << cdc_threads;
   uint32_t logs_per_cdc_thread = (config::worker_threads - 1) / cdc_threads;
-  if (config::worker_threads - 1 - logs_per_cdc_thread * cdc_threads >
-      logs_per_cdc_thread) {
-    logs_per_cdc_thread++;
-  }
+  int rest_logs =
+      config::worker_threads - 1 - logs_per_cdc_thread * cdc_threads;
+  DLOG(INFO) << "logs_per_cdc_thread: " << logs_per_cdc_thread
+             << ", rest_logs: " << rest_logs;
 
   uint32_t normal_workers[config::worker_threads - 1];
   uint32_t j = 0;
@@ -230,14 +235,19 @@ uint32_t ddl_executor::changed_data_capture(transaction *t) {
     }
   }
 
+  int begin = 0, end = -1;
   for (uint32_t i = 0; i < cdc_threads; i++) {
-    uint32_t begin_log = normal_workers[i * logs_per_cdc_thread];
+    begin = end + 1;
+    uint32_t begin_log = normal_workers[begin];
     uint32_t end_log;
+    end = begin - 1 +
+          (rest_logs-- > 0 ? logs_per_cdc_thread + 1 : logs_per_cdc_thread);
     if (i == cdc_threads - 1) {
       end_log = normal_workers[--j];
     } else {
-      end_log = normal_workers[(i + 1) * logs_per_cdc_thread - 1];
+      end_log = normal_workers[end];
     }
+    DLOG(INFO) << i << ", " << begin << ", " << end;
 
     thread::Thread *thread =
         thread::GetThread(config::cdc_physical_workers_only);
@@ -281,7 +291,8 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                                              uint32_t ddl_thread_id,
                                              uint32_t begin_log,
                                              uint32_t end_log, str_arena *arena,
-                                             bool *ddl_end_local, uint32_t count) {
+                                             bool *ddl_end_local,
+                                             uint32_t count) {
   RCU::rcu_enter();
   TXN::xid_context *xc = t->GetXIDContext();
   uint64_t begin_csn = xc->begin;
