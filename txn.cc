@@ -596,9 +596,10 @@ bool transaction::DMLConsistencyHandler() {
   uint64_t begin = xc->begin;
   tmp_xc->begin = xc->end;
 
-  for (auto &v : schema_read_map) {
+  for (std::vector<table_info *>::const_iterator it = table_set.begin();
+       it != table_set.end(); ++it) {
     dbtuple *tuple =
-        oidmgr->oid_get_version(schema_td->GetTupleArray(), v.first, tmp_xc);
+        oidmgr->oid_get_version(schema_td->GetTupleArray(), (*it)->oid, tmp_xc);
     if (!tuple) {
       tmp_xc->begin = begin;
       return true;
@@ -610,7 +611,7 @@ bool transaction::DMLConsistencyHandler() {
       }
       schema_kv::value schema_value_temp;
       const schema_kv::value *schema = Decode(tuple_v, schema_value_temp);
-      if (schema->version != v.second) {
+      if (schema->version != (*it)->version) {
         tmp_xc->begin = begin;
         return true;
       }

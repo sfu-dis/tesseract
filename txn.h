@@ -277,12 +277,12 @@ class transaction {
 
   inline void set_old_td(TableDescriptor *_old_td) { old_td = _old_td; }
 
-  inline std::unordered_map<FID, TableDescriptor *> get_new_td_map() {
-    return new_td_map;
+  inline std::unordered_map<FID, TableDescriptor *> *get_new_td_map() {
+    return &new_td_map;
   }
 
-  inline std::unordered_map<FID, TableDescriptor *> get_old_td_map() {
-    return old_td_map;
+  inline std::unordered_map<FID, TableDescriptor *> *get_old_td_map() {
+    return &old_td_map;
   }
 
   inline void add_new_td_map(TableDescriptor *new_td) {
@@ -299,18 +299,26 @@ class transaction {
 
   inline dlog::tls_log *get_log() { return log; }
 
-#ifdef BLOCKDDL
   enum lock_type { INVALID, SHARED, EXCLUSIVE };
 
-  struct lock_info {
+  struct table_info {
+    OID oid;
     FID fid;
+    uint32_t version;
     lock_type lt;
-    lock_info() : fid(0), lt(lock_type::INVALID) {}
-    lock_info(FID fid, lock_type lt) : fid(fid), lt(lt) {}
+    table_info() : oid(0), fid(0), version(0), lt(lock_type::INVALID) {}
+    table_info(OID oid, FID fid, uint32_t version, lock_type lt)
+        : oid(oid), fid(fid), version(version), lt(lt) {}
   };
 
-  inline std::vector<lock_info *> *get_table_set() { return &table_set; }
+  inline std::vector<table_info *> *get_table_set() { return &table_set; }
 
+  inline void add_to_table_set(OID oid, FID fid, uint32_t version,
+                               lock_type lt) {
+    table_set.push_back(new table_info(oid, fid, version, lt));
+  }
+
+#ifdef BLOCKDDL
   inline void lock_table(FID table_fid, lock_type lt) {
     if (lt == lock_type::SHARED) {
       ReadLock(table_fid);
@@ -325,7 +333,7 @@ class transaction {
     }
     int ret = pthread_rwlock_rdlock(lock_map[table_fid]);
     LOG_IF(FATAL, ret);
-    table_set.push_back(new lock_info(table_fid, lock_type::SHARED));
+    add_to_table_set(0, table_fid, 0, lock_type::SHARED);
   }
 
   inline void ReadUnlock(FID table_fid) {
@@ -334,7 +342,7 @@ class transaction {
   }
 
   inline void WriteLock(FID table_fid) {
-    lock_info *l_info = find(table_fid);
+    table_info *l_info = find(table_fid);
     if (l_info && l_info->lt == lock_type::SHARED) {
       // Upgrade shared lock to exclusive lock
       ReadUnlock(table_fid);
@@ -344,7 +352,7 @@ class transaction {
     }
     int ret = pthread_rwlock_wrlock(lock_map[table_fid]);
     LOG_IF(FATAL, ret);
-    table_set.push_back(new lock_info(table_fid, lock_type::EXCLUSIVE));
+    add_to_table_set(0, table_fid, 0, lock_type::EXCLUSIVE);
   }
 
   inline void WriteUnlock(FID table_fid) {
@@ -352,8 +360,8 @@ class transaction {
     LOG_IF(FATAL, ret);
   }
 
-  inline lock_info *find(FID table_fid) {
-    for (std::vector<lock_info *>::const_iterator it = table_set.begin();
+  inline table_info *find(FID table_fid) {
+    for (std::vector<table_info *>::const_iterator it = table_set.begin();
          it != table_set.end(); ++it) {
       if ((*it)->fid == table_fid) {
         return *it;
@@ -363,7 +371,7 @@ class transaction {
   }
 
   inline void UnlockAll() {
-    for (std::vector<lock_info *>::const_iterator it = table_set.begin();
+    for (std::vector<table_info *>::const_iterator it = table_set.begin();
          it != table_set.end(); ++it) {
       ReadUnlock((*it)->fid);
     }
@@ -372,9 +380,6 @@ class transaction {
  public:
   static std::unordered_map<FID, pthread_rwlock_t *> lock_map;
   static std::mutex map_rw_latch;
-
- protected:
-  std::vector<lock_info *> table_set;
 #endif
 
  protected:
@@ -385,7 +390,7 @@ class transaction {
   uint64_t log_size;
   str_arena *sa;
   uint32_t coro_batch_idx;  // its index in the batch
-  std::unordered_map<OID, uint64_t> schema_read_map;
+  std::vector<table_info *> table_set;
   std::unordered_map<FID, TableDescriptor *> new_td_map;
   TableDescriptor *old_td;
   std::unordered_map<FID, TableDescriptor *> old_td_map;
