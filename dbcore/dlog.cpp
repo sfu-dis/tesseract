@@ -145,9 +145,10 @@ void tls_log::resize_logbuf(uint64_t logbuf_mb) {
 }
 
 void tls_log::enqueue_flush() {
+retry:
   CRITICAL_SECTION(cs, lock);
-  if (is_dirty()) {
-    return;
+  if (is_dirty() && (flushing || logbuf_offset)) {
+    goto retry;
   }
 
   if (flushing) {
@@ -162,9 +163,10 @@ void tls_log::enqueue_flush() {
 }
 
 void tls_log::last_flush() {
+retry:
   CRITICAL_SECTION(cs, lock);
-  if (is_dirty()) {
-    return;
+  if (is_dirty() && (flushing || logbuf_offset)) {
+    goto retry;
   }
 
   if (flushing) {
@@ -314,8 +316,10 @@ log_block *tls_log::allocate_log_block(uint32_t payload_size,
   }
 
   CRITICAL_SECTION(cs, lock);
-  if (normal) tcommitter.set_dirty_flag();
-  set_dirty(true);
+  if (normal) {
+    tcommitter.set_dirty_flag();
+    set_dirty(true);
+  }
 
   uint32_t alloc_size = payload_size + sizeof(log_block);
   LOG_IF(FATAL, alloc_size > logbuf_size) << "Total size too big";

@@ -46,7 +46,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
   uint32_t scan_threads;
-  if (config::enable_parallel_scan_cdc) {
+  if (config::enable_parallel_scan_cdc || config::enable_late_scan_join) {
     scan_threads = config::scan_threads;
   } else {
     scan_threads = config::scan_threads + config::cdc_threads;
@@ -73,6 +73,8 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
       dlog::log_block *lb = nullptr;
       str_arena *arena = new str_arena(config::arena_size_mb);
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
+        // for (uint32_t oid = 0; oid <= himark; oid++) {
+        //  if (oid % scan_threads != i) continue;
         r = scan_impl(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
         if (r._val != RC_TRUE || ddl_failed) {
           break;
@@ -85,6 +87,8 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   dlog::log_block *lb = nullptr;
   OID end = scan_threads == 1 ? himark : total_per_scan_thread;
   for (OID oid = 0; oid <= end; oid++) {
+    // for (uint32_t oid = 0; oid <= himark; oid++) {
+    //  if (oid % scan_threads != 0) continue;
     r = scan_impl(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
     if (r._val != RC_TRUE || ddl_failed) {
       break;
@@ -304,7 +308,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
     dlog::tls_log *tlog = dlog::tlogs[i];
     uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
     if (tlog && csn && tlog != GetLog() && i != ddl_thread_id) {
-      tlog->enqueue_flush();
+      tlog->last_flush();
       std::vector<dlog::segment> *segments = tlog->get_segments();
       bool stop_scan = false;
       uint64_t offset_in_seg = volatile_read(_tls_durable_lsn[i]);

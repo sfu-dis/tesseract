@@ -1094,7 +1094,6 @@ inline PROMISE(bool) mbtree<P>::insert_if_absent(const key_type &k, OID o,
     // data in this chain. If it's the first case, version chain is considered
     // empty, then we retry insert.
     OID oid = lp.value();
-    tuple_array_->ensure_size(oid);
     if (oidmgr->oid_get_latest_version(tuple_array_, oid))
       found = true;
     else

@@ -319,15 +319,15 @@ rc_t transaction::si_commit() {
       ddl::cdc_second_phase = true;
       ddl::cdc_end_total.store(0);
       uint32_t cdc_threads = ddl_exe->changed_data_capture(this);
+      if (config::enable_late_scan_join) {
+        ddl_exe->join_scan_workers();
+      }
       while (ddl::cdc_end_total.load() != cdc_threads && !ddl::ddl_failed) {
       }
       ddl::cdc_running = false;
       ddl_exe->join_cdc_workers();
       ddl::cdc_second_phase = false;
       DLOG(INFO) << "Second CDC ends";
-      if (config::enable_late_scan_join) {
-        ddl_exe->join_scan_workers();
-      }
       if (ddl::ddl_failed) {
         DLOG(INFO) << "DDL failed";
         for (auto &v : new_td_map) {
@@ -366,11 +366,11 @@ rc_t transaction::si_commit() {
 
       // Populate log block and obtain persistent address
       uint32_t off = lb->payload_size;
-      if (w.type == dlog::log_record::logrec_type::INSERT) {
+      if (w.is_insert) {
         auto ret_off =
             dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, w.size);
         ALWAYS_ASSERT(ret_off == off);
-      } else if (w.type == dlog::log_record::logrec_type::UPDATE) {
+      } else {
         auto ret_off =
             dlog::log_update(lb, w.fid, w.oid, (char *)tuple, w.size);
         ALWAYS_ASSERT(ret_off == off);
@@ -415,6 +415,8 @@ rc_t transaction::si_commit() {
     }
     rc_t rc = ddl_exe->scan(this, &(string_allocator()));
     if (rc.IsAbort()) {
+      log->set_dirty(false);
+      log->set_doing_ddl(false);
       return rc;
     }
 #endif
@@ -443,7 +445,7 @@ rc_t transaction::si_commit() {
         auto ddl_log = [=](char *) {
           dlog::tls_log *log = GetLog();
           log->set_normal(false);
-          log->resize_logbuf(50);
+          log->resize_logbuf(1);
           dlog::log_block *lb = nullptr;
           dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
           uint64_t segnum = -1;
@@ -502,6 +504,7 @@ rc_t transaction::si_commit() {
               ptr = tentative_next;
             }
           }
+          // log->last_flush();
         };
         thread->StartTask(ddl_log);
       }
@@ -545,11 +548,11 @@ rc_t transaction::si_commit() {
       }
       off = lb->payload_size;
     }
-    if (w.type == dlog::log_record::logrec_type::INSERT) {
+    if (w.is_insert) {
       auto ret_off =
           dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
       ALWAYS_ASSERT(ret_off == off);
-    } else if (w.type == dlog::log_record::logrec_type::UPDATE) {
+    } else {
       auto ret_off =
           dlog::log_update(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
       ALWAYS_ASSERT(ret_off == off);
@@ -890,7 +893,7 @@ retry:
                                CSN::from_ptr(csn).offset() < tuple_csn)) {
     if (!__sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr,
                                       new_head._ptr)) {
-      // goto retry;
+      goto retry;
     }
   } else {
     MM::deallocate(new_head);

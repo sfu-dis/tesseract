@@ -617,9 +617,6 @@ fat_ptr sm_oid_mgr::UpdateTuple(oid_array *oa, OID o, const varstr *value,
   auto *ptr = oa->get(o);
 start_over:
   fat_ptr head = volatile_read(*ptr);
-  if (head == NULL_PTR) {
-    return NULL_PTR;
-  }
   ASSERT(head.asi_type() == 0);
   Object *old_desc = (Object *)head.offset();
   ASSERT(old_desc);

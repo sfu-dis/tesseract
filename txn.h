@@ -44,16 +44,11 @@ struct write_record_t {
   FID fid;
   OID oid;
   uint64_t size;
-  dlog::log_record::logrec_type type;
-  write_record_t(fat_ptr *entry, FID fid, OID oid, uint64_t size,
-                 dlog::log_record::logrec_type type)
-      : entry(entry), fid(fid), oid(oid), size(size), type(type) {}
+  bool is_insert;
+  write_record_t(fat_ptr *entry, FID fid, OID oid, uint64_t size, bool insert)
+      : entry(entry), fid(fid), oid(oid), size(size), is_insert(insert) {}
   write_record_t()
-      : entry(nullptr),
-        fid(0),
-        oid(0),
-        size(0),
-        type(dlog::log_record::logrec_type::INVALID) {}
+      : entry(nullptr), fid(0), oid(0), size(0), is_insert(false) {}
   inline Object *get_object() { return (Object *)entry->offset(); }
 };
 
@@ -68,17 +63,17 @@ struct write_set_t {
   write_set_t()
       : num_entries(0), max_entries(kMaxEntries), entries(&init_entries[0]) {}
   inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid,
-                           uint32_t size, dlog::log_record::logrec_type type) {
+                           uint32_t size, bool insert) {
 #if defined(SIDDL)
     if (is_ddl) {
       ALWAYS_ASSERT(num_entries < kMaxEntries_);
       if (config::scan_threads) {
         CRITICAL_SECTION(cs, lock);
       }
-      new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, type);
+      new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, insert);
     } else {
       ALWAYS_ASSERT(num_entries < kMaxEntries);
-      new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type);
+      new (&entries[num_entries]) write_record_t(oe, fid, oid, size, insert);
     }
 #else
     if (num_entries >= max_entries) {
@@ -90,7 +85,7 @@ struct write_set_t {
       }
       entries = new_entries;
     }
-    new (&entries[num_entries]) write_record_t(oe, fid, oid, size, type);
+    new (&entries[num_entries]) write_record_t(oe, fid, oid, size, insert);
 #endif
     ++num_entries;
   }
@@ -242,8 +237,7 @@ class transaction {
   inline str_arena &string_allocator() { return *sa; }
 
   inline void add_to_write_set(bool is_allowed, fat_ptr *entry, FID fid,
-                               OID oid, uint64_t size,
-                               dlog::log_record::logrec_type type) {
+                               OID oid, uint64_t size, bool insert) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto &w = write_set.entries_[i];
@@ -261,7 +255,7 @@ class transaction {
       // to be inserted to the log excluding dlog::log_record, which will be
       // prepended by log_insert/update etc.
       write_set.emplace_back(is_ddl(), entry, fid, oid, size + sizeof(dbtuple),
-                             type);
+                             insert);
     }
   }
 
