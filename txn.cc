@@ -504,7 +504,7 @@ rc_t transaction::si_commit() {
               ptr = tentative_next;
             }
           }
-          // log->last_flush();
+          log->last_flush();
         };
         thread->StartTask(ddl_log);
       }
