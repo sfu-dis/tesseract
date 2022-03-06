@@ -61,10 +61,8 @@ void ConcurrentMasstreeIndex::ReadSchemaRecord(transaction *t, rc_t &rc,
 
 retry:
   GetRecord(t, rc, key, value, out_oid);
-#ifndef NDEBUG
-  if (rc._val != RC_TRUE) DLOG(INFO) << "Read schema table failed";
-#endif
   if (rc._val != RC_TRUE) {
+    DLOG(INFO) << "Read schema record failed";
     goto retry;
   }
 
