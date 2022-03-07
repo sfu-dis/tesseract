@@ -251,10 +251,10 @@ rc_t transaction::si_commit() {
   dlog::log_block *lb = nullptr;
   dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
   uint64_t segnum = -1;
-  uint64_t max_logbuf_size = log->get_logbuf_size() - sizeof(dlog::log_block);
+  uint64_t max_log_size = log->get_logbuf_size() - sizeof(dlog::log_block);
   // Generate a log block if not read-only
   if (write_set.size()) {
-    lb = log->allocate_log_block(std::min<uint64_t>(log_size, max_logbuf_size),
+    lb = log->allocate_log_block(std::min<uint64_t>(log_size, max_log_size),
                                  &lb_lsn, &segnum, xc->end);
   }
 
@@ -446,11 +446,10 @@ rc_t transaction::si_commit() {
           dlog::log_block *lb = nullptr;
           dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
           uint64_t segnum = -1;
-          uint64_t max_logbuf_size =
+          uint64_t max_log_size =
               log->get_logbuf_size() - sizeof(dlog::log_block);
 
-          lb = log->allocate_log_block(max_logbuf_size, &lb_lsn, &segnum,
-                                       xc->end);
+          lb = log->allocate_log_block(max_log_size, &lb_lsn, &segnum, xc->end);
           for (uint32_t oid = 0; oid <= himark; ++oid) {
             if (oid % ddl_log_threads != i) continue;
             // for (uint32_t oid = begin; oid <= end; ++oid) {
@@ -476,8 +475,8 @@ rc_t transaction::si_commit() {
                 uint32_t off = lb->payload_size;
                 if (off + align_up(log_tuple_size + sizeof(dlog::log_record)) >
                     lb->capacity) {
-                  lb = log->allocate_log_block(max_logbuf_size, &lb_lsn,
-                                               &segnum, xc->end);
+                  lb = log->allocate_log_block(max_log_size, &lb_lsn, &segnum,
+                                               xc->end);
                   off = lb->payload_size;
                 }
                 auto ret_off = dlog::log_insert(lb, fid, oid, (char *)tuple,
@@ -539,7 +538,7 @@ rc_t transaction::si_commit() {
     if (lb->payload_size + align_up(log_tuple_size + sizeof(dlog::log_record)) >
         lb->capacity) {
       lb = log->allocate_log_block(
-          std::min<uint64_t>(log_size - current_log_size, max_logbuf_size),
+          std::min<uint64_t>(log_size - current_log_size, max_log_size),
           &lb_lsn, &segnum, xc->end);
       off = lb->payload_size;
     }
