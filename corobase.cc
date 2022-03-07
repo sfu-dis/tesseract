@@ -399,8 +399,8 @@ retry:
     if (!n[!sense]) goto retry;
 
     // const ConcurrentMasstree::internode_type* in2 = static_cast<const
-    // ConcurrentMasstree::internode_type*>(n[!sense]); in2->prefetch(); co_await
-    // suspend_always{};
+    // ConcurrentMasstree::internode_type*>(n[!sense]); in2->prefetch();
+    // co_await suspend_always{};
     v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
 
     if (likely(!in->has_changed(v[sense]))) {
@@ -1454,7 +1454,7 @@ ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(
               goto get_version_start_over;
             }
             if (visible) {
-              if (!scanner.visit_value(ka, cur_obj->GetPinnedTuple(), 0, 0)) {
+              if (!scanner.visit_value(ka, cur_obj->GetPinnedTuple(), 0)) {
                 goto done;
               }
               break;

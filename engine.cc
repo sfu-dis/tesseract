@@ -288,11 +288,10 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 #endif
 
     dbtuple *tuple = nullptr;
-    uint64_t version_csn = 0;
     if (found) {
       // Key-OID mapping exists, now try to get the actual tuple to be sure
       tuple = AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(),
-                                            oid, t->xc, &version_csn);
+                                            oid, t->xc);
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
       std::unordered_map<FID, TableDescriptor *> *new_td_map =
@@ -379,7 +378,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
       volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
       if (rc._val == RC_TRUE && schema &&
           schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION &&
-          version_csn <= schema->csn) {
+          tuple->GetCSN(t->xc) <= schema->csn) {
         auto *key_array = table_descriptor->GetKeyArray();
         fat_ptr *entry =
             config::enable_ddl_keys ? key_array->get(oid) : nullptr;
@@ -693,7 +692,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     const ConcurrentMasstree *btr_ptr,
     const typename ConcurrentMasstree::string_type &k, dbtuple *v,
     const typename ConcurrentMasstree::node_opaque_t *n, uint64_t version,
-    OID oid, uint64_t version_csn) {
+    OID oid) {
   MARK_REFERENCED(btr_ptr);
   MARK_REFERENCED(n);
   MARK_REFERENCED(version);
@@ -727,7 +726,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     }
 #endif
     if (schema && schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION &&
-        version_csn < schema->csn) {
+        v->GetCSN(t->xc) < schema->csn) {
       auto *key_array = table_descriptor->GetKeyArray();
       fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
       varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;

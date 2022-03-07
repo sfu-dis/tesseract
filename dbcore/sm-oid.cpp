@@ -803,8 +803,8 @@ sm_oid_mgr::oid_get_version_amac(oid_array *oa,
 
 // For tuple arrays only, i.e., entries are guaranteed to point to Objects.
 PROMISE(dbtuple *)
-sm_oid_mgr::oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc,
-                            uint64_t *version_csn) {
+sm_oid_mgr::oid_get_version(oid_array *oa, OID o,
+                            TXN::xid_context *visitor_xc) {
   fat_ptr *entry = oa->get(o);
 start_over:
   fat_ptr ptr = volatile_read(*entry);
@@ -841,15 +841,6 @@ start_over:
       goto start_over;
     }
     if (visible) {
-      if (version_csn) {
-        fat_ptr csn = cur_obj->GetCSN();
-        uint16_t asi_type = csn.asi_type();
-        if (asi_type == fat_ptr::ASI_XID) {
-          *version_csn = visitor_xc->begin;
-        } else if (asi_type == fat_ptr::ASI_CSN) {
-          *version_csn = CSN::from_ptr(csn).offset();
-        }
-      }
       RETURN AWAIT cur_obj->GetPinnedTuple();
     }
     ptr = tentative_next;

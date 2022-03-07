@@ -150,6 +150,19 @@ struct dbtuple {
     }
   }
 
+  inline uint64_t GetCSN(TXN::xid_context *xc) {
+    Object *obj = GetObject();
+    fat_ptr csn = obj->GetCSN();
+    uint16_t asi_type = csn.asi_type();
+    uint64_t tuple_csn;
+    if (asi_type == fat_ptr::ASI_XID) {
+      tuple_csn = xc->begin;
+    } else if (asi_type == fat_ptr::ASI_CSN) {
+      tuple_csn = CSN::from_ptr(csn).offset();
+    }
+    return tuple_csn;
+  }
+
  public:
   inline rc_t DoRead(varstr *out_v) {
     out_v->p = get_value_start();

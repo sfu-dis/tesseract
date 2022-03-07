@@ -149,7 +149,7 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
                         const typename ConcurrentMasstree::string_type &k,
                         dbtuple *v,
                         const typename ConcurrentMasstree::node_opaque_t *n,
-                        uint64_t version, OID oid, uint64_t version_csn);
+                        uint64_t version, OID oid);
 
    private:
     transaction *const t;

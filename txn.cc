@@ -1107,11 +1107,10 @@ transaction::table_scan_multi(
       if (end_key && end_key->size() == k->size() &&
           memcmp(k->data(), end_key->data(), k->size()) <= 0) {
         uint64_t version_csn = 0;
-        dbtuple *v = AWAIT oidmgr->oid_get_version(td->GetTupleArray(), o, xc,
-                                                   &version_csn);
+        dbtuple *v = AWAIT oidmgr->oid_get_version(td->GetTupleArray(), o, xc);
         if (v) {
           lcdf::Str str_key(k->data(), k->size());
-          callback.invoke(nullptr, str_key, v, nullptr, 0, o, version_csn);
+          callback.invoke(nullptr, str_key, v, nullptr, 0, o);
         }
       }
     }
@@ -1134,12 +1133,10 @@ transaction::table_rscan_multi(
           memcmp(k->data(), end_key->data(), k->size()) < 0) {
         break;
       }
-      uint64_t version_csn = 0;
-      dbtuple *v = AWAIT oidmgr->oid_get_version(td->GetTupleArray(), o, xc,
-                                                 &version_csn);
+      dbtuple *v = AWAIT oidmgr->oid_get_version(td->GetTupleArray(), o, xc);
       if (v) {
         lcdf::Str str_key(k->data(), k->size());
-        callback.invoke(nullptr, str_key, v, nullptr, 0, o, version_csn);
+        callback.invoke(nullptr, str_key, v, nullptr, 0, o);
       }
     }
   }

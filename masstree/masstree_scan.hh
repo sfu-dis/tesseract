@@ -412,15 +412,13 @@ basic_table<P>::scan(H helper, Str firstkey, bool emit_firstkey, F &scanner,
         ++scancount;
         ermia::dbtuple *v = NULL;
         ermia::OID o = entry.value();
-        uint64_t version_csn = 0;
-        v = AWAIT ermia::oidmgr->oid_get_version(tuple_array_, o, xc,
-                                                 &version_csn);
+        v = AWAIT ermia::oidmgr->oid_get_version(tuple_array_, o, xc);
         if (v) {
-          if (!scanner.visit_value(ka, v, o, version_csn)) goto done;
+          if (!scanner.visit_value(ka, v, o)) goto done;
         }
 #ifdef OPTLAZYDDL
         else {
-          if (!scanner.visit_value(ka, v, o, version_csn)) goto done;
+          if (!scanner.visit_value(ka, v, o)) goto done;
         }
 #endif
         stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
