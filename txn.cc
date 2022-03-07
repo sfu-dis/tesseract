@@ -251,14 +251,11 @@ rc_t transaction::si_commit() {
   dlog::log_block *lb = nullptr;
   dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
   uint64_t segnum = -1;
-  uint64_t logbuf_size = log->get_logbuf_size() - sizeof(dlog::log_block);
+  uint64_t max_logbuf_size = log->get_logbuf_size() - sizeof(dlog::log_block);
   // Generate a log block if not read-only
   if (write_set.size()) {
-    if (log_size > logbuf_size) {
-      lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
-    } else {
-      lb = log->allocate_log_block(log_size, &lb_lsn, &segnum, xc->end);
-    }
+    lb = log->allocate_log_block(std::min<uint64_t>(log_size, max_logbuf_size),
+                                 &lb_lsn, &segnum, xc->end);
   }
 
   if (is_ddl()) {
@@ -449,10 +446,11 @@ rc_t transaction::si_commit() {
           dlog::log_block *lb = nullptr;
           dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
           uint64_t segnum = -1;
-          uint64_t logbuf_size =
+          uint64_t max_logbuf_size =
               log->get_logbuf_size() - sizeof(dlog::log_block);
 
-          lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
+          lb = log->allocate_log_block(max_logbuf_size, &lb_lsn, &segnum,
+                                       xc->end);
           for (uint32_t oid = 0; oid <= himark; ++oid) {
             if (oid % ddl_log_threads != i) continue;
             // for (uint32_t oid = begin; oid <= end; ++oid) {
@@ -478,8 +476,8 @@ rc_t transaction::si_commit() {
                 uint32_t off = lb->payload_size;
                 if (off + align_up(log_tuple_size + sizeof(dlog::log_record)) >
                     lb->capacity) {
-                  lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum,
-                                               xc->end);
+                  lb = log->allocate_log_block(max_logbuf_size, &lb_lsn,
+                                               &segnum, xc->end);
                   off = lb->payload_size;
                 }
                 auto ret_off = dlog::log_insert(lb, fid, oid, (char *)tuple,
@@ -540,12 +538,9 @@ rc_t transaction::si_commit() {
     uint32_t off = lb->payload_size;
     if (lb->payload_size + align_up(log_tuple_size + sizeof(dlog::log_record)) >
         lb->capacity) {
-      if (log_size - current_log_size > logbuf_size) {
-        lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
-      } else {
-        lb = log->allocate_log_block(log_size - current_log_size, &lb_lsn,
-                                     &segnum, xc->end);
-      }
+      lb = log->allocate_log_block(
+          std::min<uint64_t>(log_size - current_log_size, max_logbuf_size),
+          &lb_lsn, &segnum, xc->end);
       off = lb->payload_size;
     }
     if (w.is_insert) {
@@ -996,24 +991,6 @@ retry:
     add_to_write_set(tuple_fid == schema_td->GetTupleFid(),
                      tuple_array->get(oid), tuple_fid, oid, new_tuple->size,
                      dlog::log_record::logrec_type::INSERT);
-  }
-
-  if (lb) {
-    dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
-    uint64_t segnum = -1;
-    uint64_t logbuf_size = log->get_logbuf_size() - sizeof(dlog::log_block);
-    expected = *entry_ptr;
-    obj = (Object *)expected.offset();
-    dbtuple *tuple = (dbtuple *)obj->GetPayload();
-    uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
-    uint32_t off = lb->payload_size;
-    if (off + align_up(log_tuple_size + sizeof(dlog::log_record)) >
-        lb->capacity) {
-      lb = log->allocate_log_block(logbuf_size, &lb_lsn, &segnum, xc->end);
-      off = lb->payload_size;
-    }
-    auto ret_off =
-        dlog::log_insert(lb, tuple_fid, oid, (char *)tuple, log_tuple_size);
   }
 
   RETURN rc_t{RC_TRUE};

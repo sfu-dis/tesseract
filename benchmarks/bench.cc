@@ -136,9 +136,7 @@ void bench_worker::MyWork(char *) {
       if (worker_id == ddl_worker_id && ddl_done < ermia::config::ddl_total &&
           ddl_start) {
         util::timer ddl_timer;
-        std::cerr << "DDL starts" << std::endl;
         do_ddl_workload_function(ddl_done);
-        std::cerr << "DDL ends" << std::endl;
         double lap = ddl_timer.lap();
         DLOG(INFO) << "DDL duration: " << lap / 1000000.0 << "s" << std::endl;
         ddl_done++;
