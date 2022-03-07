@@ -150,15 +150,10 @@ struct dbtuple {
     }
   }
 
-  inline uint64_t GetCSN() {
+  inline uint32_t GetCSN() {
     Object *obj = GetObject();
     fat_ptr csn = obj->GetCSN();
-    uint16_t asi_type = csn.asi_type();
-    uint64_t tuple_csn = 0;
-    if (asi_type == fat_ptr::ASI_CSN) {
-      tuple_csn = CSN::from_ptr(csn).offset();
-    }
-    return tuple_csn;
+    return csn.asi_type() == fat_ptr::ASI_CSN ? CSN::from_ptr(csn).offset() : 0;
   }
 
  public:
