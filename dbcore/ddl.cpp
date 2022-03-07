@@ -8,6 +8,7 @@ namespace ermia {
 
 namespace ddl {
 
+volatile bool ddl_start = false;
 volatile bool ddl_running = false;
 volatile bool cdc_first_phase = false;
 volatile bool cdc_second_phase = false;

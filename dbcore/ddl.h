@@ -13,6 +13,7 @@ class OrderedIndex;
 
 namespace ddl {
 
+extern volatile bool ddl_start;
 extern volatile bool ddl_running;
 extern volatile bool cdc_first_phase;
 extern volatile bool cdc_second_phase;

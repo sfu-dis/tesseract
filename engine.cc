@@ -190,10 +190,12 @@ ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
 
   if (!unlikely(end_key && *end_key <= start_key)) {
     XctSearchRangeCallback cb(t, &c, schema, table_descriptor);
-    AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
-                                      cb, t->xc);
-    if (schema && !schema->show_index) {
-      t->table_scan(table_descriptor, end_key, c.max_oid);
+    // TODO: support table scan on secondary keys
+    if (GetIsPrimary() && schema && !schema->show_index) {
+      t->table_scan_multi(table_descriptor, &start_key, end_key, cb);
+    } else {
+      AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
+                                        cb, t->xc);
     }
   }
   RETURN c.return_code;
@@ -215,10 +217,13 @@ ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
     if (end_key) {
       lowervk = *end_key;
     }
-    AWAIT masstree_.rsearch_range_call(start_key, end_key ? &lowervk : nullptr,
-                                       cb, t->xc);
-    if (schema && !schema->show_index) {
-      t->table_scan(table_descriptor, end_key, c.max_oid);
+    // TODO: support table scan on secondary keys
+    if (GetIsPrimary() && schema && !schema->show_index) {
+      t->table_rscan_multi(table_descriptor, &start_key,
+                           end_key ? &lowervk : nullptr, cb);
+    } else {
+      AWAIT masstree_.rsearch_range_call(
+          start_key, end_key ? &lowervk : nullptr, cb, t->xc);
     }
   }
   RETURN c.return_code;
@@ -245,7 +250,13 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
     MM::epoch_exit(0, e);
   } else {
     t->ensure_active();
-    bool found = AWAIT masstree_.search(key, oid, t->xc->begin_epoch, &sinfo);
+    bool found = false;
+    if (schema && !schema->show_index) {
+      t->table_scan_single(table_descriptor, &key, oid);
+      found = oid ? true : false;
+    } else {
+      found = AWAIT masstree_.search(key, oid, t->xc->begin_epoch, &sinfo);
+    }
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
     if (schema && schema->old_index && !found) {
@@ -275,9 +286,6 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
       RETURN;
     }
 #endif
-    if (schema && !schema->show_index) {
-      t->table_scan(table_descriptor, &key, oid);
-    }
 
     dbtuple *tuple = nullptr;
     uint64_t version_csn = 0;
@@ -541,7 +549,11 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   // Search for OID
   OID oid = 0;
   rc_t rc = {RC_INVALID};
-  AWAIT GetOID(key, rc, t->xc, oid);
+  if (schema && !schema->show_index) {
+    rc = AWAIT t->table_scan_single(table_descriptor, &key, oid);
+  } else {
+    AWAIT GetOID(key, rc, t->xc, oid);
+  }
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
   if (schema && schema->old_index && rc._val != RC_TRUE) {
@@ -557,9 +569,6 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
     RETURN rc;
   }
 #endif
-  if (schema && !schema->show_index) {
-    t->table_scan(table_descriptor, &key, oid);
-  }
 
 #ifdef OPTLAZYDDL
   if (rc._val == RC_TRUE && schema &&
@@ -616,16 +625,17 @@ ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key,
   // Search for OID
   OID oid = 0;
   rc_t rc = {RC_INVALID};
-  AWAIT GetOID(key, rc, t->xc, oid);
+  if (schema && !schema->show_index) {
+    rc = AWAIT t->table_scan_single(table_descriptor, &key, oid);
+  } else {
+    AWAIT GetOID(key, rc, t->xc, oid);
+  }
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
   if (schema && schema->old_index && rc._val != RC_TRUE) {
     RETURN rc_t{RC_TRUE};
   }
 #endif
-  if (schema && !schema->show_index) {
-    t->table_scan(table_descriptor, &key, oid);
-  }
 
 #ifdef OPTLAZYDDL
   if (rc._val != RC_TRUE && schema->old_td) {
@@ -693,9 +703,6 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
                     << std::endl
                     << "  " << *((dbtuple *)v) << std::endl);
   varstr vv;
-  if (oid > caller_callback->max_oid) {
-    caller_callback->max_oid = oid;
-  }
 #ifdef OPTLAZYDDL
   caller_callback->return_code =
       v ? t->DoTupleRead(v, &vv) : rc_t{RC_ABORT_INTERNAL};

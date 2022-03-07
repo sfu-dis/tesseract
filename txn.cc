@@ -1098,21 +1098,75 @@ transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
   RETURN false;
 }
 
-OID transaction::table_scan(TableDescriptor *td, const varstr *key, OID oid) {
+PROMISE(rc_t)
+transaction::table_scan_single(TableDescriptor *td, const varstr *key,
+                               OID &oid) {
   auto *key_array = td->GetKeyArray();
-  if (oid == 0) {
-    auto *alloc = oidmgr->get_allocator(td->GetTupleFid());
-    oid = alloc->head.hiwater_mark;
-  }
-  for (OID o = 1; o <= oid; o++) {
+  auto *alloc = oidmgr->get_allocator(td->GetTupleFid());
+  OID himark = alloc->head.hiwater_mark;
+  for (OID o = 1; o <= himark && !ddl::ddl_start; o++) {
     fat_ptr *entry = key_array->get(o);
     varstr *k = entry ? (varstr *)((*entry).offset()) : nullptr;
     if (k && key && key->size() == k->size() &&
-        memcmp(k->data(), key->data(), key->size()) == 0) {
-      return o;
+        memcmp(k->data(), key->data(), k->size()) == 0) {
+      oid = o;
+      RETURN rc_t{RC_TRUE};
     }
   }
-  return 0;
+  RETURN rc_t{RC_FALSE};
+}
+
+PROMISE(void)
+transaction::table_scan_multi(
+    TableDescriptor *td, const varstr *start_key, const varstr *end_key,
+    ConcurrentMasstree::low_level_search_range_callback &callback) {
+  auto *key_array = td->GetKeyArray();
+  auto *alloc = oidmgr->get_allocator(td->GetTupleFid());
+  OID himark = alloc->head.hiwater_mark;
+  for (OID o = 1; o <= himark && !ddl::ddl_start; o++) {
+    fat_ptr *entry = key_array->get(o);
+    varstr *k = entry ? (varstr *)((*entry).offset()) : nullptr;
+    if (k && start_key && start_key->size() == k->size() &&
+        memcmp(k->data(), start_key->data(), k->size()) >= 0) {
+      if (end_key && end_key->size() == k->size() &&
+          memcmp(k->data(), end_key->data(), k->size()) <= 0) {
+        uint64_t version_csn = 0;
+        dbtuple *v = AWAIT oidmgr->oid_get_version(td->GetTupleArray(), o, xc,
+                                                   &version_csn);
+        if (v) {
+          lcdf::Str str_key(k->data(), k->size());
+          callback.invoke(nullptr, str_key, v, nullptr, 0, o, version_csn);
+        }
+      }
+    }
+  }
+}
+
+PROMISE(void)
+transaction::table_rscan_multi(
+    TableDescriptor *td, const varstr *start_key, const varstr *end_key,
+    ConcurrentMasstree::low_level_search_range_callback &callback) {
+  auto *key_array = td->GetKeyArray();
+  auto *alloc = oidmgr->get_allocator(td->GetTupleFid());
+  OID himark = alloc->head.hiwater_mark;
+  for (OID o = himark; o > 0 && !ddl::ddl_start; o--) {
+    fat_ptr *entry = key_array->get(o);
+    varstr *k = entry ? (varstr *)((*entry).offset()) : nullptr;
+    if (k && start_key && start_key->size() == k->size() &&
+        memcmp(k->data(), start_key->data(), k->size()) <= 0) {
+      if (end_key && end_key->size() == k->size() &&
+          memcmp(k->data(), end_key->data(), k->size()) < 0) {
+        break;
+      }
+      uint64_t version_csn = 0;
+      dbtuple *v = AWAIT oidmgr->oid_get_version(td->GetTupleArray(), o, xc,
+                                                 &version_csn);
+      if (v) {
+        lcdf::Str str_key(k->data(), k->size());
+        callback.invoke(nullptr, str_key, v, nullptr, 0, o, version_csn);
+      }
+    }
+  }
 }
 
 void transaction::LogIndexInsert(OrderedIndex *index, OID oid,

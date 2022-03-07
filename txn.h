@@ -225,8 +225,21 @@ class transaction {
 
   void LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key);
 
-  // Table scan to simulate operations without index
-  OID table_scan(TableDescriptor *td, const varstr *key, OID oid);
+  // Table scan for single record
+  PROMISE(rc_t)
+  table_scan_single(TableDescriptor *td, const varstr *key, OID &oid);
+
+  // Table scan for multiple records
+  PROMISE(void)
+  table_scan_multi(
+      TableDescriptor *td, const varstr *start_key, const varstr *end_key,
+      ConcurrentMasstree::low_level_search_range_callback &callback);
+
+  // Table reverse scan for multiple records
+  PROMISE(void)
+  table_rscan_multi(
+      TableDescriptor *td, const varstr *start_key, const varstr *end_key,
+      ConcurrentMasstree::low_level_search_range_callback &callback);
 
  public:
   // Reads the contents of tuple into v within this transaction context

@@ -136,11 +136,14 @@ void bench_worker::MyWork(char *) {
       if (worker_id == ddl_worker_id && ddl_done < ermia::config::ddl_total &&
           ddl_start) {
         util::timer ddl_timer;
+        std::cerr << "DDL starts" << std::endl;
         do_ddl_workload_function(ddl_done);
+        std::cerr << "DDL ends" << std::endl;
         double lap = ddl_timer.lap();
         DLOG(INFO) << "DDL duration: " << lap / 1000000.0 << "s" << std::endl;
         ddl_done++;
         ddl_start = false;
+        ermia::ddl::ddl_start = false;
       } else {
         uint32_t workload_idx = fetch_workload();
         do_workload_function(workload_idx);
@@ -359,6 +362,7 @@ void bench_runner::start_measurement() {
     if (ddl_done < ermia::config::ddl_total &&
         slept == ddl_start_times[ddl_done] * 1000000) {
       ddl_start = true;
+      ermia::ddl::ddl_start = true;
     }
     // sleep(1);
     usleep(sleep_time);

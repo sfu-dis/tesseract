@@ -121,7 +121,7 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
 
   struct SearchRangeCallback {
     SearchRangeCallback(OrderedIndex::ScanCallback &upcall)
-        : upcall(&upcall), return_code(rc_t{RC_FALSE}), max_oid(0) {}
+        : upcall(&upcall), return_code(rc_t{RC_FALSE}) {}
     ~SearchRangeCallback() {}
 
     inline bool Invoke(const ConcurrentMasstree::string_type &k,
@@ -131,7 +131,6 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
 
     OrderedIndex::ScanCallback *upcall;
     rc_t return_code;
-    OID max_oid;
   };
 
   struct XctSearchRangeCallback
@@ -269,6 +268,7 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
   inline oid_array *GetTupleArray() override {
     return masstree_.get_table()->tuple_array_;
   }
+  inline bool GetIsPrimary() override { return masstree_.is_primary_idx(); };
 
   inline PROMISE(void) GetOID(
       const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,

@@ -92,6 +92,7 @@ class OrderedIndex {
   virtual std::map<std::string, uint64_t> Clear() = 0;
   virtual void SetArrays(bool) = 0;
   virtual oid_array *GetTupleArray() = 0;
+  virtual bool GetIsPrimary() = 0;
 
   /**
    * Insert key-oid pair to the underlying actual index structure.
