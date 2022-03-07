@@ -378,7 +378,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
       volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
       if (rc._val == RC_TRUE && schema &&
           schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION &&
-          tuple->GetCSN(t->xc) <= schema->csn) {
+          tuple->GetCSN() <= schema->csn) {
         auto *key_array = table_descriptor->GetKeyArray();
         fat_ptr *entry =
             config::enable_ddl_keys ? key_array->get(oid) : nullptr;
@@ -726,7 +726,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     }
 #endif
     if (schema && schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION &&
-        v->GetCSN(t->xc) < schema->csn) {
+        v->GetCSN() < schema->csn) {
       auto *key_array = table_descriptor->GetKeyArray();
       fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
       varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
