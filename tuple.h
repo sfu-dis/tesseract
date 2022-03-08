@@ -150,7 +150,7 @@ struct dbtuple {
     }
   }
 
-  inline uint32_t GetCSN() {
+  inline uint64_t GetCSN() {
     Object *obj = GetObject();
     fat_ptr csn = obj->GetCSN();
     return csn.asi_type() == fat_ptr::ASI_CSN ? CSN::from_ptr(csn).offset() : 0;
