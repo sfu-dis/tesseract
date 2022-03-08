@@ -201,7 +201,7 @@ class ddl_executor {
                             uint64_t *out_cur_lsn, uint64_t *out_seg_num);
 
   // DDL write set abort
-  void ddl_write_set_abort();
+  void ddl_write_set_abort(transaction *t);
 #endif
 };
 

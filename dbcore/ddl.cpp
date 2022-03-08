@@ -100,7 +100,8 @@ void ddl_executor::ddl_write_set_commit(transaction *t, dlog::log_block *lb,
   }
 }
 
-void ddl_executor::ddl_write_set_abort() {
+void ddl_executor::ddl_write_set_abort(transaction *t) {
+  TXN::xid_context *xc = t->GetXIDContext();
   for (std::vector<write_record_block_info *>::const_iterator it =
            ddl_write_set->write_record_block_info_vec.begin();
        it != ddl_write_set->write_record_block_info_vec.end(); ++it) {

@@ -174,7 +174,7 @@ void transaction::Abort() {
 
 #if defined(SIDDL) || defined(BLOCKDDL)
   if (is_ddl() && ddl_exe) {
-    ddl_exe->ddl_write_set_abort();
+    ddl_exe->ddl_write_set_abort(this);
   }
 #endif
 
