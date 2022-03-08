@@ -348,7 +348,7 @@ struct CSN {
   uint64_t _val;
 
   fat_ptr to_ptr() const { return fat_ptr{_val | INVALID_SIZE_CODE}; }
-  uint32_t offset() const { return _val >> fat_ptr::VALUE_START_BIT; }
+  uint64_t offset() const { return _val >> fat_ptr::VALUE_START_BIT; }
   uint16_t flags() const { return _val & fat_ptr::FLAG_MASK; }
 
   // true comparison operators
