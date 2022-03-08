@@ -356,6 +356,8 @@ class transaction {
     } else if (lt == lock_type::EXCLUSIVE) {
       WriteLock(table_fid);
     }
+    // Refresh begin timestamp after lock is granted
+    xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
   }
 
   inline void ReadLock(FID table_fid) {

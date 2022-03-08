@@ -307,13 +307,7 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
                         !xc->end ? xc->begin : xc->end, lb);
 #endif
 #elif BLOCKDDL
-      retry:
         rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid);
-        if (r._val != RC_TRUE) {
-          // previous updater has a bigger csn, refresh DDL's begin timestamp
-          xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
-          goto retry;
-        }
 #elif SIDDL
         rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid);
         if (r._val != RC_TRUE) {
