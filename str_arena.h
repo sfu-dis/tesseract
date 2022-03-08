@@ -23,8 +23,6 @@ class str_arena {
     reset();
   }
 
-  ~str_arena() { free(str); }
-
   // non-copyable/non-movable for the time being
   str_arena(str_arena &&) = delete;
   str_arena(const str_arena &) = delete;
