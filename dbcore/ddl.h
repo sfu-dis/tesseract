@@ -129,7 +129,7 @@ class ddl_executor {
   ddl_type dt;
 
 #if defined(SIDDL) || defined(BLOCKDDL)
-  // DDL wirte set
+  // DDL write set
   ddl_write_set_t *ddl_write_set;
 #endif
 
