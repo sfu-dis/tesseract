@@ -315,7 +315,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
     }
 
 #ifdef OPTLAZYDDL
-    if (!found && schema && oid) {
+    if (!found && schema && oid != INVALID_OID) {
       int total = schema->v;
       if (!total) {
         volatile_write(rc._val, RC_ABORT_INTERNAL);
@@ -743,7 +743,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     return caller_callback->Invoke(k, vv);
   } else if (caller_callback->return_code.IsAbort()) {
 #ifdef OPTLAZYDDL
-    if (schema && oid) {
+    if (schema && oid != INVALID_OID) {
       int total = schema->v;
       if (!total) {
         return false;
