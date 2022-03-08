@@ -159,15 +159,15 @@ void oddlb_schematable_loader::load() {
   usertable_schema.reformats[i++] = ermia::ddl::reformats.size();
   ermia::ddl::reformats.push_back(add_column_4);
   usertable_schema.reformats_total = 0;
+  usertable_schema.old_tds_total = 0;
   usertable_schema.old_index = nullptr;
   usertable_schema.v = 0;
   usertable_schema.csn = 0;
   usertable_schema.constraint_idx = ermia::ddl::constraints.size();
   usertable_schema.secondary_index_key_create_idx = -1;
   ermia::ddl::constraints.push_back(column_verification);
-  usertable_schema.index =
-      ermia::Catalog::GetTable("USERTABLE")->GetPrimaryIndex();
   usertable_schema.td = ermia::Catalog::GetTable("USERTABLE");
+  usertable_schema.index = usertable_schema.td->GetPrimaryIndex();
   usertable_schema.show_index = true;
 
   schema_kv::value schema_value;
