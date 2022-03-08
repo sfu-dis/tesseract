@@ -10,6 +10,9 @@
 namespace ermia {
 
 class OrderedIndex;
+#if defined(SIDDL) || defined(BLOCKDDL)
+struct ddl_write_set_t;
+#endif
 
 namespace ddl {
 
@@ -125,6 +128,11 @@ class ddl_executor {
   // DDL type
   ddl_type dt;
 
+#if defined(SIDDL) || defined(BLOCKDDL)
+  // DDL wirte set
+  ddl_write_set_t *ddl_write_set;
+#endif
+
  public:
   // Constructor and destructor
   ddl_executor() : dt(ddl_type::INVALID) {}
@@ -170,7 +178,7 @@ class ddl_executor {
   // Scan impl
   rc_t scan_impl(transaction *t, str_arena *arena, OID oid, FID old_fid,
                  TXN::xid_context *xc, oid_array *old_tuple_array,
-                 oid_array *key_array, dlog::log_block *lb);
+                 oid_array *key_array, dlog::log_block *lb, int wid);
 
   // CDC
   uint32_t changed_data_capture(transaction *t);
@@ -180,6 +188,21 @@ class ddl_executor {
                                  uint32_t ddl_thread_id, uint32_t begin_log,
                                  uint32_t end_log, str_arena *arena,
                                  bool *ddl_end, uint32_t count);
+
+#if defined(SIDDL) || defined(BLOCKDDL)
+  // Get DDL write set
+  inline ddl_write_set_t *get_ddl_write_set() { return ddl_write_set; }
+
+  // Init DDl write set
+  void init_ddl_write_set();
+
+  // DDL write set commit
+  void ddl_write_set_commit(transaction *t, dlog::log_block *lb,
+                            uint64_t *out_cur_lsn, uint64_t *out_seg_num);
+
+  // DDL write set abort
+  void ddl_write_set_abort();
+#endif
 };
 
 extern std::vector<Reformat> reformats;

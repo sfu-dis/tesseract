@@ -67,33 +67,31 @@ retry:
   }
 
 #ifdef COPYDDL
-  if (t->is_dml() || t->is_read_only()) {
-    schema_kv::value schema_value_temp;
-    const schema_kv::value *schema = Decode(value, schema_value_temp);
-    if (schema->state == ddl::schema_state_type::NOT_READY) {
+  schema_kv::value schema_value_temp;
+  const schema_kv::value *schema = Decode(value, schema_value_temp);
+  if (schema->state == ddl::schema_state_type::NOT_READY) {
 #if !defined(LAZYDDL)
-      if (schema->ddl_type != ddl::ddl_type::COPY_ONLY ||
-          config::enable_cdc_schema_lock) {
-        goto retry;
-      }
-      if (!ddl::ddl_td_set) {
-        goto retry;
-      } else {
-        t->SetWaitForNewSchema(true);
-        TableDescriptor *old_td = Catalog::GetTable(schema->old_fid);
-        ALWAYS_ASSERT(old_td);
-        t->set_old_td(old_td);
-        t->add_old_td_map(old_td);
-        t->add_new_td_map(Catalog::GetTable(schema->fid));
-      }
-#else
+    if (schema->ddl_type != ddl::ddl_type::COPY_ONLY ||
+        config::enable_cdc_schema_lock) {
       goto retry;
+    }
+    if (!ddl::ddl_td_set) {
+      goto retry;
+    } else {
+      t->SetWaitForNewSchema(true);
+      TableDescriptor *old_td = Catalog::GetTable(schema->old_fid);
+      ALWAYS_ASSERT(old_td);
+      t->set_old_td(old_td);
+      t->add_old_td_map(old_td);
+      t->add_new_td_map(Catalog::GetTable(schema->fid));
+    }
+#else
+    goto retry;
 #endif
-    }
-    if (t->is_dml()) {
-      t->add_to_table_set(*out_oid, schema->fid, schema->version,
-                          transaction::lock_type::INVALID);
-    }
+  }
+  if (t->is_dml()) {
+    t->add_to_table_set(*out_oid, schema->fid, schema->version,
+                        transaction::lock_type::INVALID);
   }
 #endif
 }

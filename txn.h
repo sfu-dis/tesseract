@@ -52,59 +52,65 @@ struct write_record_t {
   inline Object *get_object() { return (Object *)entry->offset(); }
 };
 
-struct write_set_t {
-  static const uint32_t kMaxEntries = 256, kMaxEntries_ = 50000000;
+struct write_record_block {
+  static const uint32_t kMaxEntries = 256;
+  write_record_t entries[kMaxEntries];
   uint32_t num_entries;
-  uint32_t max_entries;
-  write_record_t init_entries[kMaxEntries];
-  write_record_t *entries;
-  write_record_t *entries_;
-  mcs_lock lock;
-  write_set_t()
-      : num_entries(0), max_entries(kMaxEntries), entries(&init_entries[0]) {}
-  inline void emplace_back(bool is_ddl, fat_ptr *oe, FID fid, OID oid,
-                           uint32_t size, bool insert) {
-#if defined(SIDDL)
-    if (is_ddl) {
-      ALWAYS_ASSERT(num_entries < kMaxEntries_);
-      if (config::scan_threads) {
-        CRITICAL_SECTION(cs, lock);
-      }
-      new (&entries_[num_entries]) write_record_t(oe, fid, oid, size, insert);
-    } else {
-      ALWAYS_ASSERT(num_entries < kMaxEntries);
-      new (&entries[num_entries]) write_record_t(oe, fid, oid, size, insert);
-    }
-#else
-    if (num_entries >= max_entries) {
-      write_record_t *new_entries = new write_record_t[max_entries * 2];
-      memcpy(new_entries, entries, sizeof(write_record_t) * max_entries);
-      max_entries *= 2;
-      if (entries != &init_entries[0]) {
-        delete[] entries;
-      }
-      entries = new_entries;
-    }
+  write_record_block *next;
+  write_record_block() : num_entries(0), next(nullptr) {}
+  inline void emplace_back(fat_ptr *oe, FID fid, OID oid, uint32_t size,
+                           bool insert) {
+    ALWAYS_ASSERT(num_entries < kMaxEntries);
     new (&entries[num_entries]) write_record_t(oe, fid, oid, size, insert);
-#endif
     ++num_entries;
+    ASSERT(entries[num_entries - 1].entry == oe);
   }
   inline uint32_t size() { return num_entries; }
   inline void clear() { num_entries = 0; }
-  inline write_record_t &get(bool is_ddl, uint32_t idx) {
-#if defined(SIDDL)
-    if (is_ddl)
-      return entries_[idx];
-    else
-      return entries[idx];
-#else
-    return entries[idx];
-#endif
-  }
-  inline void init_large_write_set() {
-    entries_ = new write_record_t[kMaxEntries_];
+  inline write_record_t &operator[](uint32_t idx) { return entries[idx]; }
+};
+
+#if defined(SIDDL) || defined(BLOCKDDL)
+struct write_record_block_info {
+  write_record_block *first_block;
+  write_record_block *cur_block;
+  uint32_t total_entries;
+  uint64_t log_size;
+  write_record_block_info() : total_entries(0), log_size(0) {
+    first_block = new ermia::write_record_block();
+    cur_block = first_block;
   }
 };
+
+struct ddl_write_set_t {
+  std::vector<write_record_block_info *> write_record_block_info_vec;
+  inline void init() {
+    for (uint32_t i = 0; i < config::scan_threads + config::cdc_threads; i++) {
+      write_record_block_info_vec.push_back(new write_record_block_info());
+    }
+  }
+  inline void emplace_back(fat_ptr *oe, FID fid, OID oid, uint32_t size,
+                           bool insert, uint64_t logrec_size, int wid) {
+    write_record_block_info *tmp = write_record_block_info_vec[wid];
+    if (tmp->cur_block->size() == write_record_block::kMaxEntries) {
+      tmp->cur_block->next = new write_record_block();
+      tmp->cur_block = tmp->cur_block->next;
+    }
+    tmp->cur_block->emplace_back(oe, fid, oid, size, insert);
+    tmp->total_entries++;
+    tmp->log_size += logrec_size;
+  }
+  inline uint32_t size() {
+    uint32_t total = 0;
+    for (std::vector<write_record_block_info *>::const_iterator it =
+             write_record_block_info_vec.begin();
+         it != write_record_block_info_vec.end(); ++it) {
+      total += (*it)->total_entries;
+    }
+    return total;
+  }
+};
+#endif
 
 class transaction {
   friend class ConcurrentMasstreeIndex;
@@ -194,7 +200,7 @@ class transaction {
 
   // DDL scan update
   void DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value,
-                     dlog::log_block *block = nullptr);
+                     dlog::log_block *block = nullptr, int wid = -1);
 
   // DDL CDC insert
   PROMISE(rc_t)
@@ -215,11 +221,13 @@ class transaction {
   OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td, OID oid);
 
   PROMISE(rc_t)
-  Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
+  Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
+         int wid = -1);
 
   // Same as Update but without support for logging key
-  inline PROMISE(rc_t) Update(TableDescriptor *td, OID oid, varstr *v) {
-    auto rc = AWAIT Update(td, oid, nullptr, v);
+  inline PROMISE(rc_t)
+      Update(TableDescriptor *td, OID oid, varstr *v, int wid = -1) {
+    auto rc = AWAIT Update(td, oid, nullptr, v, wid);
     RETURN rc;
   }
 
@@ -250,10 +258,11 @@ class transaction {
   inline str_arena &string_allocator() { return *sa; }
 
   inline void add_to_write_set(bool is_allowed, fat_ptr *entry, FID fid,
-                               OID oid, uint64_t size, bool insert) {
+                               OID oid, uint64_t size, bool insert,
+                               int wid = -1) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set.size(); ++i) {
-      auto &w = write_set.entries_[i];
+      auto &w = write_set.entries[i];
       ASSERT(w.entry);
       ASSERT(w.entry != entry);
     }
@@ -263,12 +272,24 @@ class transaction {
       // Work out the encoded size to be added to the log block later
       auto logrec_size =
           align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
+#if defined(SIDDL) || defined(BLOCKDDL)
+      if (wid >= 0 && is_ddl()) {
+        auto *ddl_write_set = ddl_exe->get_ddl_write_set();
+        ddl_write_set->emplace_back(entry, fid, oid, size + sizeof(dbtuple),
+                                    insert, logrec_size, wid);
+        return;
+      }
+#endif
       log_size += logrec_size;
       // Each write set entry still just records the size of the actual "data"
       // to be inserted to the log excluding dlog::log_record, which will be
       // prepended by log_insert/update etc.
-      write_set.emplace_back(is_ddl(), entry, fid, oid, size + sizeof(dbtuple),
-                             insert);
+      if (cur_write_record_block->size() == write_record_block::kMaxEntries) {
+        cur_write_record_block->next = new write_record_block();
+        cur_write_record_block = cur_write_record_block->next;
+      }
+      cur_write_record_block->emplace_back(entry, fid, oid,
+                                           size + sizeof(dbtuple), insert);
     }
   }
 
@@ -302,6 +323,9 @@ class transaction {
 
   inline void set_ddl_executor(ddl::ddl_executor *_ddl_exe) {
     ddl_exe = _ddl_exe;
+#if defined(SIDDL) || defined(BLOCKDDL)
+    ddl_exe->init_ddl_write_set();
+#endif
   }
 
   inline dlog::tls_log *get_log() { return log; }
@@ -404,7 +428,8 @@ class transaction {
   bool wait_for_new_schema;
   ddl::ddl_executor *ddl_exe;
   util::timer timer;
-  write_set_t write_set;
+  write_record_block *cur_write_record_block;
+  write_record_block write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t read_set;
 #endif

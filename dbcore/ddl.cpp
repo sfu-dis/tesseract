@@ -3,6 +3,7 @@
 #include "../benchmarks/oddlb-schemas.h"
 #include "../benchmarks/tpcc.h"
 #include "../schema.h"
+#include "../txn.h"
 
 namespace ermia {
 
@@ -22,6 +23,115 @@ uint64_t *_tls_durable_lsn =
 
 std::vector<Reformat> reformats;
 std::vector<Constraint> constraints;
+
+#if defined(SIDDL) || defined(BLOCKDDL)
+void ddl_executor::init_ddl_write_set() {
+  ddl_write_set = new ddl_write_set_t();
+  ddl_write_set->init();
+}
+
+void ddl_executor::ddl_write_set_commit(transaction *t, dlog::log_block *lb,
+                                        uint64_t *lb_lsn, uint64_t *segnum) {
+  TXN::xid_context *xc = t->GetXIDContext();
+  dlog::tls_log *log = t->get_log();
+  uint64_t max_log_size = log->get_logbuf_size() - sizeof(dlog::log_block);
+  for (std::vector<write_record_block_info *>::const_iterator it =
+           ddl_write_set->write_record_block_info_vec.begin();
+       it != ddl_write_set->write_record_block_info_vec.end(); ++it) {
+    write_record_block *cur = (*it)->first_block;
+    while (cur) {
+      uint32_t current_log_size = 0;
+      for (uint32_t i = 0; i < cur->size(); ++i) {
+        auto &w = (*cur)[i];
+        Object *object = w.get_object();
+        dbtuple *tuple = (dbtuple *)object->GetPayload();
+
+        uint64_t log_tuple_size = w.size;
+
+        // Populate log block and obtain persistent address
+        uint32_t off = lb->payload_size;
+        if (lb->payload_size +
+                align_up(log_tuple_size + sizeof(dlog::log_record)) >
+            lb->capacity) {
+          lb = log->allocate_log_block(
+              std::min<uint64_t>((*it)->log_size - current_log_size,
+                                 max_log_size),
+              lb_lsn, segnum, xc->end);
+          off = lb->payload_size;
+        }
+        if (w.is_insert) {
+          auto ret_off =
+              dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+          ALWAYS_ASSERT(ret_off == off);
+        } else {
+          auto ret_off =
+              dlog::log_update(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+          ALWAYS_ASSERT(ret_off == off);
+        }
+        ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
+        current_log_size += align_up(log_tuple_size + sizeof(dlog::log_record));
+
+        // This aligned_size should match what was calculated during
+        // add_to_write_set, and the size_code calculated based on this aligned
+        // size will be part of the persistent address, which a read can
+        // directly use to load the log record from the log (i.e., knowing how
+        // many bytes to read to obtain the log record header + dbtuple header +
+        // record data).
+        auto aligned_size = align_up(w.size + sizeof(dlog::log_record));
+        auto size_code = encode_size_aligned(aligned_size);
+
+        // lb_lsn points to the start of the log block which has a header,
+        // followed by individual log records, so the log record's direct
+        // address would be lb_lsn + sizeof(log_block) + off
+        fat_ptr pdest =
+            LSN::make(log->get_id(), *lb_lsn + sizeof(dlog::log_block) + off,
+                      *segnum, size_code)
+                .to_ptr();
+        object->SetPersistentAddress(pdest);
+        ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
+
+        // Set CSN
+        fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
+        object->SetCSN(csn_ptr);
+        ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
+      }
+      cur = cur->next;
+    }
+  }
+}
+
+void ddl_executor::ddl_write_set_abort() {
+  for (std::vector<write_record_block_info *>::const_iterator it =
+           ddl_write_set->write_record_block_info_vec.begin();
+       it != ddl_write_set->write_record_block_info_vec.end(); ++it) {
+    write_record_block *cur = (*it)->first_block;
+    while (cur) {
+      for (uint32_t i = 0; i < cur->size(); ++i) {
+        auto &w = (*cur)[i];
+        dbtuple *tuple = (dbtuple *)w.get_object()->GetPayload();
+        ASSERT(tuple);
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+        ASSERT(XID::from_ptr(tuple->GetObject()->GetClsn()) == xid);
+        if (tuple->NextVolatile()) {
+          volatile_write(tuple->NextVolatile()->sstamp, NULL_PTR);
+#ifdef SSN
+          tuple->NextVolatile()->welcome_read_mostly_tx();
+#endif
+        }
+#endif
+
+        Object *obj = w.get_object();
+        fat_ptr entry = *w.entry;
+        obj->SetCSN(NULL_PTR);
+        oidmgr->UnlinkTuple(w.entry);
+        ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
+        MM::deallocate(entry);
+      }
+      cur = cur->next;
+    }
+  }
+}
+#endif
 
 rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
@@ -76,7 +186,8 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
         // for (uint32_t oid = 0; oid <= himark; oid++) {
         //  if (oid % scan_threads != i) continue;
-        r = scan_impl(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
+        r = scan_impl(t, arena, oid, fid, xc, old_tuple_array, key_array, lb,
+                      i);
         if (r._val != RC_TRUE || ddl_failed) {
           break;
         }
@@ -90,7 +201,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   for (OID oid = 0; oid <= end; oid++) {
     // for (uint32_t oid = 0; oid <= himark; oid++) {
     //  if (oid % scan_threads != 0) continue;
-    r = scan_impl(t, arena, oid, fid, xc, old_tuple_array, key_array, lb);
+    r = scan_impl(t, arena, oid, fid, xc, old_tuple_array, key_array, lb, 0);
     if (r._val != RC_TRUE || ddl_failed) {
       break;
     }
@@ -135,7 +246,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
 rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
                              FID old_fid, TXN::xid_context *xc,
                              oid_array *old_tuple_array, oid_array *key_array,
-                             dlog::log_block *lb) {
+                             dlog::log_block *lb, int wid) {
   dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
   varstr tuple_value;
   fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
@@ -196,9 +307,15 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
                         !xc->end ? xc->begin : xc->end, lb);
 #endif
 #elif BLOCKDDL
-        t->DDLScanUpdate((*it)->new_td, oid, new_tuple_value, lb);
+      retry:
+        rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid);
+        if (r._val != RC_TRUE) {
+          // previous updater has a bigger csn, refresh DDL's begin timestamp
+          xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
+          goto retry;
+        }
 #elif SIDDL
-        rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value);
+        rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid);
         if (r._val != RC_TRUE) {
           ddl_failed = true;
           return rc_t{RC_ABORT_INTERNAL};
