@@ -421,6 +421,8 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
     dlog::tls_log *tlog = dlog::tlogs[i];
     uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
     if (tlog && csn && tlog != GetLog() && i != ddl_thread_id) {
+      bool re_check = false;
+    double_check:
       tlog->last_flush();
       std::vector<dlog::segment> *segments = tlog->get_segments();
       bool stop_scan = false;
@@ -554,6 +556,10 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
         RCU::rcu_free(data_buf);
         if (stop_scan ||
             (cdc_second_phase && insert_total == 0 && update_total == 0)) {
+          if (!re_check) {
+            re_check = true;
+            goto double_check;
+          }
           count--;
         }
       }

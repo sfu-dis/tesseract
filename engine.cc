@@ -258,6 +258,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
     if (schema && schema->old_index && !found) {
+    lazy_retry:
       varstr old_value;
       ((ConcurrentMasstreeIndex *)(schema->old_index))
           ->GetRecord(t, rc, key, old_value, &oid);
@@ -311,6 +312,9 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 
       if (!tuple) {
         found = false;
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+        goto lazy_retry;
+#endif
       }
     }
 
