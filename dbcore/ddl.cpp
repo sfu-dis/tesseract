@@ -215,6 +215,7 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
 #endif
 #elif BLOCKDDL
         rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid);
+        ASSERT(r._val == RC_TRUE);
 #elif SIDDL
         rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid);
         if (r._val != RC_TRUE) {
