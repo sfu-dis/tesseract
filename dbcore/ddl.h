@@ -18,6 +18,9 @@ namespace ddl {
 
 // In case table scan is too slow, stop it when a DDL starts
 extern volatile bool ddl_start;
+// For verification related DDL, if true, make some violations for 2nd round of
+// CDC
+extern volatile bool cdc_test;
 
 // Schema reformation function
 typedef std::function<varstr *(varstr *key, varstr &value, str_arena *arena,
@@ -26,6 +29,16 @@ typedef std::function<varstr *(varstr *key, varstr &value, str_arena *arena,
 
 // Schema constraint function
 typedef std::function<bool(varstr &value, uint64_t schema_version)> Constraint;
+
+// Schema progress information
+struct schema_progress {
+  OID oid;
+  bool ddl_td_set;
+  schema_progress(OID oid) : oid(oid), ddl_td_set(false) {}
+  inline void set_ddl_td_set(bool val) { ddl_td_set = val; }
+};
+
+schema_progress *get_schema_progress(OID o);
 
 // DDL type
 enum ddl_type {
@@ -114,8 +127,6 @@ class ddl_executor {
   volatile bool cdc_second_phase = false;
   volatile bool ddl_failed = false;
   volatile bool cdc_running = false;
-  volatile bool ddl_td_set = false;
-  volatile bool cdc_test = false;
   std::atomic<uint64_t> cdc_end_total;
   uint64_t *_tls_durable_lsn CACHE_ALIGNED;
 
@@ -132,6 +143,12 @@ class ddl_executor {
   // DDL type
   ddl_type dt;
 
+  // Schema progress
+  schema_progress *sp;
+
+  // Lock
+  mcs_lock lock;
+
 #if defined(SIDDL) || defined(BLOCKDDL)
   // DDL write set
   ddl_write_set_t *ddl_write_set;
@@ -139,7 +156,7 @@ class ddl_executor {
 
  public:
   // Constructor and destructor
-  ddl_executor() : dt(ddl_type::INVALID) {
+  ddl_executor() : dt(ddl_type::INVALID), sp(nullptr) {
     ddl_running = true;
     cdc_end_total = 0;
     _tls_durable_lsn =
@@ -182,6 +199,13 @@ class ddl_executor {
     cdc_workers.clear();
   }
 
+  inline void set_schema_progress(bool ddl_td_set) {
+    sp->ddl_td_set = ddl_td_set;
+  }
+
+  // Add a schema progress to schema_progress_set
+  void add_schema_progress(OID oid);
+
   // Scan and do operations (copy, verification)
   rc_t scan(transaction *t, str_arena *arena);
 
@@ -217,6 +241,7 @@ class ddl_executor {
 
 extern std::vector<Reformat> reformats;
 extern std::vector<Constraint> constraints;
+extern std::vector<schema_progress *> schema_progress_set;
 
 }  // namespace ddl
 

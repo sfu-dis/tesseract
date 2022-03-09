@@ -84,7 +84,7 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
   rc = rc_t{RC_INVALID};
   schema_index->WriteSchemaTable(
       txn, rc, *order_line_key,
-      Encode(str(Size(new_schema_value)), new_schema_value));
+      Encode(str(Size(new_schema_value)), new_schema_value), oid);
   TryCatch(rc);
 
   ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
@@ -111,7 +111,7 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
 
   TryCatch(schema_index->WriteSchemaTable(
       txn, rc, *order_line_key,
-      Encode(str(Size(new_schema_value)), new_schema_value)));
+      Encode(str(Size(new_schema_value)), new_schema_value), oid));
 
   ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
   ddl_exe->set_ddl_type(schema.ddl_type);
@@ -274,7 +274,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
   rc = rc_t{RC_INVALID};
   schema_index->WriteSchemaTable(
       txn, rc, *customer_key,
-      Encode(str(Size(new_schema_value)), new_schema_value));
+      Encode(str(Size(new_schema_value)), new_schema_value), oid);
   TryCatch(rc);
 
   ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
@@ -302,7 +302,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
 
   TryCatch(schema_index->WriteSchemaTable(
       txn, rc, *customer_key,
-      Encode(str(Size(new_schema_value)), new_schema_value)));
+      Encode(str(Size(new_schema_value)), new_schema_value), oid));
 
   ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
   ddl_exe->set_ddl_type(customer_schema.ddl_type);
@@ -395,7 +395,7 @@ rc_t tpcc_worker::create_index(ermia::transaction *txn, uint32_t ddl_example) {
   rc = rc_t{RC_INVALID};
   schema_index->WriteSchemaTable(
       txn, rc, *order_line_key,
-      Encode(str(Size(new_schema_value)), new_schema_value));
+      Encode(str(Size(new_schema_value)), new_schema_value), oid);
   TryCatch(rc);
 
   ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
@@ -508,7 +508,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, uint32_t ddl_example) {
   rc = rc_t{RC_INVALID};
   schema_index->WriteSchemaTable(
       txn, rc, *order_line_key,
-      Encode(str(Size(new_schema_value)), new_schema_value));
+      Encode(str(Size(new_schema_value)), new_schema_value), oid);
   TryCatch(rc);
 
   ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
@@ -535,7 +535,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, uint32_t ddl_example) {
 
   TryCatch(schema_index->WriteSchemaTable(
       txn, rc, *order_line_key,
-      Encode(str(Size(new_schema_value)), new_schema_value)));
+      Encode(str(Size(new_schema_value)), new_schema_value), oid));
 
   ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
   ddl_exe->set_ddl_type(schema.ddl_type);

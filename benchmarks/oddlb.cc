@@ -125,7 +125,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     rc = rc_t{RC_INVALID};
     schema_index->WriteSchemaTable(
         txn, rc, *table_key,
-        Encode(str(Size(new_schema_value)), new_schema_value));
+        Encode(str(Size(new_schema_value)), new_schema_value), oid);
     TryCatch(rc);
 
     ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
@@ -152,7 +152,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
     TryCatch(schema_index->WriteSchemaTable(
         txn, rc, *table_key,
-        Encode(str(Size(new_schema_value)), new_schema_value)));
+        Encode(str(Size(new_schema_value)), new_schema_value), oid));
 
     ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
     ddl_exe->set_ddl_type(schema.ddl_type);

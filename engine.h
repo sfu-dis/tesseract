@@ -232,7 +232,7 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
 
   PROMISE(rc_t)
   WriteSchemaTable(transaction *t, rc_t &rc, const varstr &key,
-                   varstr &value) override;
+                   varstr &value, OID oid) override;
 
   PROMISE(void)
   ReadSchemaRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,

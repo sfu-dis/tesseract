@@ -33,15 +33,15 @@ dlog::tls_log *GetLog() {
 }
 
 rc_t ConcurrentMasstreeIndex::WriteSchemaTable(transaction *t, rc_t &rc,
-                                               const varstr &key,
-                                               varstr &value) {
+                                               const varstr &key, varstr &value,
+                                               OID oid) {
+  // For DDL txn only
+  ALWAYS_ASSERT(t->is_ddl());
+
   rc = UpdateRecord(t, key, value);
-#ifndef NDEBUG
-  if (rc._val != RC_TRUE) {
-    DLOG(INFO) << "DDL schema update false";
-    return rc;
+  if (rc._val == RC_TRUE) {
+    t->get_ddl_executor()->add_schema_progress(oid);
   }
-#endif
 
   return rc;
 }
@@ -72,10 +72,10 @@ retry:
   if (schema->state == ddl::schema_state_type::NOT_READY) {
 #if !defined(LAZYDDL)
     if (schema->ddl_type != ddl::ddl_type::COPY_ONLY ||
-        config::enable_cdc_schema_lock) {
+        config::enable_cdc_schema_lock || !out_oid) {
       goto retry;
     }
-    if (!ddl::ddl_td_set) {
+    if (!ddl::get_schema_progress(*out_oid)->ddl_td_set) {
       goto retry;
     } else {
       t->SetWaitForNewSchema(true);

@@ -10,9 +10,22 @@ namespace ermia {
 namespace ddl {
 
 volatile bool ddl_start = false;
+volatile bool cdc_test = false;
 
 std::vector<Reformat> reformats;
 std::vector<Constraint> constraints;
+std::vector<schema_progress *> schema_progress_set;
+
+schema_progress *get_schema_progress(OID o) {
+  for (std::vector<schema_progress *>::const_iterator it =
+           schema_progress_set.begin();
+       it != schema_progress_set.end(); ++it) {
+    if ((*it)->oid == o) {
+      return *it;
+    }
+  }
+  return nullptr;
+}
 
 #if defined(SIDDL) || defined(BLOCKDDL)
 void ddl_executor::init_ddl_write_set() {
@@ -124,6 +137,12 @@ void ddl_executor::ddl_write_set_abort(transaction *t) {
 }
 #endif
 
+void ddl_executor::add_schema_progress(OID oid) {
+  CRITICAL_SECTION(cs, lock);
+  sp = new schema_progress(oid);
+  schema_progress_set.push_back(sp);
+}
+
 rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
   if (config::enable_parallel_scan_cdc) {
@@ -223,7 +242,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   if (config::enable_cdc_verification_test) {
     cdc_test = true;
   }
-  ddl_td_set = false;
+  sp->ddl_td_set = false;
   cdc_first_phase = false;
 #else
   if (ddl_failed) {

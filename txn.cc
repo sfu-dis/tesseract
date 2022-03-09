@@ -310,7 +310,7 @@ rc_t transaction::si_commit() {
           (*it)->SetArrays(false);
         }
       }
-      ddl_exe->ddl_td_set = true;
+      ddl_exe->set_schema_progress(true);
     }
 #endif
   }
@@ -326,7 +326,8 @@ rc_t transaction::si_commit() {
       if (config::enable_late_scan_join) {
         ddl_exe->join_scan_workers();
       }
-      while (ddl_exe->cdc_end_total.load() != cdc_threads && !ddl_exe->ddl_failed) {
+      while (ddl_exe->cdc_end_total.load() != cdc_threads &&
+             !ddl_exe->ddl_failed) {
       }
       ddl_exe->cdc_running = false;
       ddl_exe->join_cdc_workers();
