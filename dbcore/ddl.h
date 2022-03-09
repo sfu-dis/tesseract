@@ -158,6 +158,9 @@ class ddl_executor {
     cdc_end_total = 0;
     _tls_durable_lsn =
         (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
+#if defined(SIDDL) || defined(BLOCKDDL)
+    init_ddl_write_set();
+#endif  
   }
   ~ddl_executor() {}
 

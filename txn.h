@@ -323,9 +323,6 @@ class transaction {
 
   inline void set_ddl_executor(ddl::ddl_executor *_ddl_exe) {
     ddl_exe = _ddl_exe;
-#if defined(SIDDL) || defined(BLOCKDDL)
-    ddl_exe->init_ddl_write_set();
-#endif
   }
 
   inline ddl::ddl_executor *get_ddl_executor() {
