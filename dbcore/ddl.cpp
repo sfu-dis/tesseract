@@ -211,7 +211,7 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
         t->DDLInsert((*it)->new_td, oid, new_tuple_value, xc->end, lb);
 #else
         t->DDLInsert((*it)->new_td, oid, new_tuple_value,
-                        !xc->end ? xc->begin : xc->end, lb);
+                     !xc->end ? xc->begin : xc->end, lb);
 #endif
 #elif BLOCKDDL
         rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid);
@@ -492,7 +492,7 @@ void ddl_executor::ddl_write_set_commit(transaction *t, dlog::log_block *lb,
   dlog::tls_log *log = t->get_log();
   uint64_t max_log_size = log->get_logbuf_size() - sizeof(dlog::log_block);
   for (std::vector<write_record_block_info *>::const_iterator it =
-      ddl_write_set->write_record_block_info_vec.begin();
+           ddl_write_set->write_record_block_info_vec.begin();
        it != ddl_write_set->write_record_block_info_vec.end(); ++it) {
     write_record_block *cur = (*it)->first_block;
     while (cur) {
@@ -507,7 +507,7 @@ void ddl_executor::ddl_write_set_commit(transaction *t, dlog::log_block *lb,
         // Populate log block and obtain persistent address
         uint32_t off = lb->payload_size;
         if (lb->payload_size +
-            align_up(log_tuple_size + sizeof(dlog::log_record)) >
+                align_up(log_tuple_size + sizeof(dlog::log_record)) >
             lb->capacity) {
           lb = log->allocate_log_block(
               std::min<uint64_t>((*it)->log_size - current_log_size,
@@ -559,7 +559,7 @@ void ddl_executor::ddl_write_set_commit(transaction *t, dlog::log_block *lb,
 void ddl_executor::ddl_write_set_abort(transaction *t) {
   TXN::xid_context *xc = t->GetXIDContext();
   for (std::vector<write_record_block_info *>::const_iterator it =
-      ddl_write_set->write_record_block_info_vec.begin();
+           ddl_write_set->write_record_block_info_vec.begin();
        it != ddl_write_set->write_record_block_info_vec.end(); ++it) {
     write_record_block *cur = (*it)->first_block;
     while (cur) {

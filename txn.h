@@ -201,12 +201,12 @@ class transaction {
   // DDL CDC insert
   PROMISE(rc_t)
   DDLInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
-               dlog::log_block *block = nullptr);
+            dlog::log_block *block = nullptr);
 
   // DDL CDC update
   PROMISE(rc_t)
   DDLUpdate(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
-               dlog::log_block *block = nullptr);
+            dlog::log_block *block = nullptr);
 #endif
 
   // Set DDL schema state to be Ready
@@ -323,9 +323,7 @@ class transaction {
     ddl_exe = _ddl_exe;
   }
 
-  inline ddl::ddl_executor *get_ddl_executor() {
-    return ddl_exe;
-  }
+  inline ddl::ddl_executor *get_ddl_executor() { return ddl_exe; }
 
   inline dlog::tls_log *get_log() { return log; }
 

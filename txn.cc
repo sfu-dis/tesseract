@@ -826,6 +826,7 @@ OID transaction::Insert(TableDescriptor *td, varstr *value,
   return oid;
 }
 
+#ifdef DDL
 #ifdef COPYDDL
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
 OID transaction::LazyDDLInsert(TableDescriptor *td, varstr *value,
@@ -978,6 +979,7 @@ retry:
 
   RETURN rc_t{RC_TRUE};
 }
+#endif
 
 PROMISE(rc_t)
 transaction::DDLSchemaReady(TableDescriptor *td, OID oid, varstr *value) {

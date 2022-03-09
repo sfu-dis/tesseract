@@ -160,7 +160,7 @@ class ddl_executor {
         (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
 #if defined(SIDDL) || defined(BLOCKDDL)
     init_ddl_write_set();
-#endif  
+#endif
   }
   ~ddl_executor() {}
 
