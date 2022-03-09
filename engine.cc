@@ -75,7 +75,8 @@ retry:
         config::enable_cdc_schema_lock || !out_oid) {
       goto retry;
     }
-    if (!ddl::get_schema_progress(*out_oid)->ddl_td_set) {
+    ddl::schema_progress *sp = ddl::get_schema_progress(*out_oid);
+    if (!sp || !sp->ddl_td_set) {
       goto retry;
     } else {
       t->SetWaitForNewSchema(true);
