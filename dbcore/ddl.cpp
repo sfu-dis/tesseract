@@ -140,8 +140,14 @@ void ddl_executor::ddl_write_set_abort(transaction *t) {
 
 void ddl_executor::add_schema_progress(OID oid) {
   CRITICAL_SECTION(cs, lock);
-  sp = new schema_progress(oid);
-  schema_progress_set.push_back(sp);
+  // We can reuse existing schema progress struct
+  sp = get_schema_progress(oid);
+  if (!sp) {
+    sp = new schema_progress(oid);
+    schema_progress_set.push_back(sp);
+  } else {
+    sp->ddl_td_set = false;
+  }
 }
 
 rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
