@@ -360,7 +360,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
           volatile_write(rc._val, RC_ABORT_INTERNAL);
           RETURN;
         }
-        rc_t r = AWAIT t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
+        rc_t r = AWAIT t->DDLInsert(schema->td, oid, new_tuple_value, 0);
         if (r._val != RC_TRUE || table_descriptor != schema->td) {
           volatile_write(rc._val, RC_ABORT_INTERNAL);
           RETURN;
@@ -598,7 +598,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
     rc_t rc = rc_t{RC_INVALID};
-    rc = AWAIT t->DDLCDCInsert(schema->td, oid, &value, 0);
+    rc = AWAIT t->DDLInsert(schema->td, oid, &value, 0);
     if (table_descriptor != schema->td) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
@@ -781,7 +781,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
         varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
             key, vv, &(t->string_allocator()), schema->v,
             old_table_descriptor->GetTupleFid(), oid);
-        rc_t rc = AWAIT t->DDLCDCInsert(schema->td, oid, new_tuple_value, 0);
+        rc_t rc = AWAIT t->DDLInsert(schema->td, oid, new_tuple_value, 0);
         if (rc._val != RC_TRUE) {
           return false;
         }

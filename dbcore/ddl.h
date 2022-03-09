@@ -214,6 +214,7 @@ class ddl_executor {
                  TXN::xid_context *xc, oid_array *old_tuple_array,
                  oid_array *key_array, dlog::log_block *lb, int wid);
 
+#if defined(COPYDDL) && !defined(LAZYDDL)
   // CDC
   uint32_t changed_data_capture(transaction *t);
 
@@ -222,6 +223,7 @@ class ddl_executor {
                                  uint32_t ddl_thread_id, uint32_t begin_log,
                                  uint32_t end_log, str_arena *arena,
                                  bool *ddl_end, uint32_t count);
+#endif
 
 #if defined(SIDDL) || defined(BLOCKDDL)
   // Get DDL write set

@@ -316,6 +316,7 @@ rc_t transaction::si_commit() {
   }
 
   if (is_ddl()) {
+#ifdef DDL
 #if defined(COPYDDL) && !defined(LAZYDDL)
     if (ddl_exe->get_ddl_type() != ddl::ddl_type::NO_COPY_VERIFICATION) {
       // Start the second round of CDC
@@ -413,6 +414,7 @@ rc_t transaction::si_commit() {
 
 #if defined(SIDDL) || defined(BLOCKDDL)
     ddl_exe->ddl_write_set_commit(this, lb, &lb_lsn, &segnum);
+#endif
 #endif
   }
 
@@ -824,8 +826,10 @@ OID transaction::Insert(TableDescriptor *td, varstr *value,
   return oid;
 }
 
-OID transaction::DDLInsert(TableDescriptor *td, varstr *value,
-                           fat_ptr **out_entry) {
+#ifdef COPYDDL
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+OID transaction::LazyDDLInsert(TableDescriptor *td, varstr *value,
+                               fat_ptr **out_entry) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
 
@@ -870,10 +874,11 @@ retry:
   }
   return oid;
 }
+#endif
 
 PROMISE(rc_t)
-transaction::DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value,
-                          uint64_t tuple_csn, dlog::log_block *block) {
+transaction::DDLUpdate(TableDescriptor *td, OID oid, varstr *value,
+                       uint64_t tuple_csn, dlog::log_block *block) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
@@ -931,55 +936,9 @@ retry:
   RETURN rc_t{RC_TRUE};
 }
 
-void transaction::DDLScanInsert(TableDescriptor *td, OID oid, varstr *value,
-                                dlog::log_block *block) {
-  auto *tuple_array = td->GetTupleArray();
-  FID tuple_fid = td->GetTupleFid();
-  tuple_array->ensure_size(oid);
-
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
-  ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
-  ASSERT(new_head.asi_type() == 0);
-  auto *new_tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
-  // new_tuple->GetObject()->SetCSN(xid.to_ptr());
-  new_tuple->GetObject()->SetCSN(
-      new_tuple->GetObject()->GenerateCsnPtr(xc->begin));
-  oidmgr->oid_put_new(tuple_array, oid, new_head);
-
-  ASSERT(new_tuple->size == value->size());
-  add_to_write_set(tuple_fid == schema_td->GetTupleFid(), tuple_array->get(oid),
-                   tuple_fid, oid, new_tuple->size,
-                   dlog::log_record::logrec_type::INSERT);
-}
-
-void transaction::DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value,
-                                dlog::log_block *block, int wid) {
-  auto *tuple_array = td->GetTupleArray();
-  FID tuple_fid = td->GetTupleFid();
-  tuple_array->ensure_size(oid);
-
-  fat_ptr new_head = Object::Create(value, xc->begin_epoch);
-  ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
-  ASSERT(new_head.asi_type() == 0);
-  auto *new_tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
-  Object *new_object = (Object *)new_head.offset();
-  new_object->SetCSN(new_object->GenerateCsnPtr(xc->begin));
-
-  fat_ptr *entry_ptr = tuple_array->get(oid);
-  fat_ptr expected = *entry_ptr;
-  new_object->SetNextVolatile(expected);
-
-  oidmgr->oid_put_new(tuple_array, oid, new_head);
-
-  ASSERT(new_tuple->size == value->size());
-  add_to_write_set(tuple_fid == schema_td->GetTupleFid(), tuple_array->get(oid),
-                   tuple_fid, oid, new_tuple->size,
-                   dlog::log_record::logrec_type::UPDATE, wid);
-}
-
 PROMISE(rc_t)
-transaction::DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value,
-                          uint64_t tuple_csn, dlog::log_block *lb) {
+transaction::DDLInsert(TableDescriptor *td, OID oid, varstr *value,
+                       uint64_t tuple_csn, dlog::log_block *block) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
@@ -1098,6 +1057,7 @@ transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
 
   RETURN false;
 }
+#endif
 
 PROMISE(rc_t)
 transaction::table_scan_single(TableDescriptor *td, const varstr *key,

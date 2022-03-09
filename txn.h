@@ -190,27 +190,24 @@ class transaction {
   // Insert a record to the underlying table
   OID Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple = nullptr);
 
+#ifdef DDL
+#ifdef COPYDDL
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
   // DDL insert used for unoptimized lazy DDL
-  OID DDLInsert(TableDescriptor *td, varstr *value,
-                fat_ptr **out_entry = nullptr);
-
-  // DDL scan insert
-  void DDLScanInsert(TableDescriptor *td, OID oid, varstr *value,
-                     dlog::log_block *block = nullptr);
-
-  // DDL scan update
-  void DDLScanUpdate(TableDescriptor *td, OID oid, varstr *value,
-                     dlog::log_block *block = nullptr, int wid = -1);
+  OID LazyDDLInsert(TableDescriptor *td, varstr *value,
+                    fat_ptr **out_entry = nullptr);
+#endif
 
   // DDL CDC insert
   PROMISE(rc_t)
-  DDLCDCInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
+  DDLInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
                dlog::log_block *block = nullptr);
 
   // DDL CDC update
   PROMISE(rc_t)
-  DDLCDCUpdate(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
+  DDLUpdate(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
                dlog::log_block *block = nullptr);
+#endif
 
   // Set DDL schema state to be Ready
   PROMISE(rc_t)
@@ -219,6 +216,7 @@ class transaction {
   // DML & DDL overlap check
   PROMISE(bool)
   OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td, OID oid);
+#endif
 
   PROMISE(rc_t)
   Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,

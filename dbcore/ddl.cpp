@@ -183,7 +183,7 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
 #ifdef COPYDDL
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
         fat_ptr *out_entry = nullptr;
-        OID o = t->DDLInsert((*it)->new_td, new_tuple_value, &out_entry);
+        OID o = t->LazyDDLInsert((*it)->new_td, new_tuple_value, &out_entry);
         if (!o) {
           continue;
         }
@@ -208,9 +208,9 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
           }
         }
 #elif OPTLAZYDDL
-        t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value, xc->end, lb);
+        t->DDLInsert((*it)->new_td, oid, new_tuple_value, xc->end, lb);
 #else
-        t->DDLCDCInsert((*it)->new_td, oid, new_tuple_value,
+        t->DDLInsert((*it)->new_td, oid, new_tuple_value,
                         !xc->end ? xc->begin : xc->end, lb);
 #endif
 #elif BLOCKDDL
@@ -229,6 +229,7 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
   return rc_t{RC_TRUE};
 }
 
+#if defined(COPYDDL) && !defined(LAZYDDL)
 uint32_t ddl_executor::changed_data_capture(transaction *t) {
   ddl_failed = false;
   cdc_running = true;
@@ -404,8 +405,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                     if (!new_value) {
                       continue;
                     }
-                    if (t->DDLCDCInsert((*it)->new_td, o, new_value,
-                                        logrec->csn)
+                    if (t->DDLInsert((*it)->new_td, o, new_value, logrec->csn)
                             ._val != RC_TRUE) {
                       insert_fail++;
                     }
@@ -440,8 +440,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                     if (!new_value) {
                       continue;
                     }
-                    if (t->DDLCDCUpdate((*it)->new_td, o, new_value,
-                                        logrec->csn)
+                    if (t->DDLUpdate((*it)->new_td, o, new_value, logrec->csn)
                             ._val != RC_TRUE) {
                       update_fail++;
                     }
@@ -479,6 +478,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
   *ddl_end_local = (count == 0);
   return rc_t{RC_TRUE};
 }
+#endif
 
 #if defined(SIDDL) || defined(BLOCKDDL)
 void ddl_executor::init_ddl_write_set() {
