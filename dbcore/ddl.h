@@ -146,9 +146,6 @@ class ddl_executor {
   // Schema progress
   schema_progress *sp;
 
-  // Lock
-  mcs_lock lock;
-
 #if defined(SIDDL) || defined(BLOCKDDL)
   // DDL write set
   ddl_write_set_t *ddl_write_set;
@@ -242,6 +239,7 @@ class ddl_executor {
 extern std::vector<Reformat> reformats;
 extern std::vector<Constraint> constraints;
 extern std::vector<schema_progress *> schema_progress_set;
+extern mcs_lock lock;
 
 }  // namespace ddl
 

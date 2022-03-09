@@ -15,6 +15,7 @@ volatile bool cdc_test = false;
 std::vector<Reformat> reformats;
 std::vector<Constraint> constraints;
 std::vector<schema_progress *> schema_progress_set;
+mcs_lock lock;
 
 schema_progress *get_schema_progress(OID o) {
   for (std::vector<schema_progress *>::const_iterator it =
