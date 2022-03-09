@@ -328,6 +328,10 @@ class transaction {
 #endif
   }
 
+  inline ddl::ddl_executor *get_ddl_executor() {
+    return ddl_exe;
+  }
+
   inline dlog::tls_log *get_log() { return log; }
 
   enum lock_type { INVALID, SHARED, EXCLUSIVE };

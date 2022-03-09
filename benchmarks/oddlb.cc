@@ -128,14 +128,12 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         Encode(str(Size(new_schema_value)), new_schema_value));
     TryCatch(rc);
 
-    // New a ddl executor
-    ermia::ddl::ddl_executor *ddl_exe =
-        new ermia::ddl::ddl_executor(schema.ddl_type);
+    ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
+    ddl_exe->set_ddl_type(schema.ddl_type);
     ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
                                     schema.reformat_idx, schema.constraint_idx,
                                     schema.td, schema.old_td, schema.index,
                                     schema.state);
-    txn->set_ddl_executor(ddl_exe);
 
     if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
 #if !defined(LAZYDDL)
@@ -156,15 +154,13 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         txn, rc, *table_key,
         Encode(str(Size(new_schema_value)), new_schema_value)));
 
-    // New a ddl executor
-    ermia::ddl::ddl_executor *ddl_exe =
-        new ermia::ddl::ddl_executor(schema.ddl_type);
+    ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
+    ddl_exe->set_ddl_type(schema.ddl_type);
     ddl_exe->add_ddl_executor_paras(schema.v, -1, schema.ddl_type,
                                     schema.reformat_idx, schema.constraint_idx,
                                     schema.td, schema.td, schema.index,
                                     ermia::ddl::schema_state_type::READY);
 
-    txn->set_ddl_executor(ddl_exe);
     txn->set_old_td(schema.td);
     txn->add_old_td_map(schema.td);
     txn->add_new_td_map(schema.td);

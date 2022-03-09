@@ -16,16 +16,8 @@ struct ddl_write_set_t;
 
 namespace ddl {
 
+// In case table scan is too slow, stop it when a DDL starts
 extern volatile bool ddl_start;
-extern volatile bool ddl_running;
-extern volatile bool cdc_first_phase;
-extern volatile bool cdc_second_phase;
-extern volatile bool ddl_failed;
-extern volatile bool cdc_running;
-extern volatile bool ddl_td_set;
-extern volatile bool cdc_test;
-extern std::atomic<uint64_t> cdc_end_total;
-extern uint64_t *_tls_durable_lsn CACHE_ALIGNED;
 
 // Schema reformation function
 typedef std::function<varstr *(varstr *key, varstr &value, str_arena *arena,
@@ -115,6 +107,18 @@ struct ddl_executor_paras {
 class ddl_executor {
   friend class transaction;
 
+  // DDL flags
+ public:
+  volatile bool ddl_running = false;
+  volatile bool cdc_first_phase = false;
+  volatile bool cdc_second_phase = false;
+  volatile bool ddl_failed = false;
+  volatile bool cdc_running = false;
+  volatile bool ddl_td_set = false;
+  volatile bool cdc_test = false;
+  std::atomic<uint64_t> cdc_end_total;
+  uint64_t *_tls_durable_lsn CACHE_ALIGNED;
+
  private:
   // List of DDL executor parameters
   std::vector<struct ddl_executor_paras *> ddl_executor_paras_list;
@@ -135,8 +139,12 @@ class ddl_executor {
 
  public:
   // Constructor and destructor
-  ddl_executor() : dt(ddl_type::INVALID) {}
-  ddl_executor(ddl_type dt) : dt(dt) {}
+  ddl_executor() : dt(ddl_type::INVALID) {
+    ddl_running = true;
+    cdc_end_total = 0;
+    _tls_durable_lsn =
+        (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
+  }
   ~ddl_executor() {}
 
   inline void add_ddl_executor_paras(
@@ -152,6 +160,8 @@ class ddl_executor {
   }
 
   inline ddl_type get_ddl_type() { return dt; }
+
+  inline void set_ddl_type(ddl_type _dt) { dt = _dt; }
 
   inline void join_scan_workers() {
     for (std::vector<thread::Thread *>::const_iterator it =

@@ -26,8 +26,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   }
   wait_for_new_schema = false;
   if (is_ddl()) {
-    ddl::ddl_running = true;
-    ddl::ddl_td_set = false;
+    ddl_exe = new ddl::ddl_executor();
   }
   write_set.clear();
   cur_write_record_block = &write_set;
@@ -90,7 +89,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
         dlog::tls_log *tlog = dlog::tlogs[i];
         if (tlog && tlog != log &&
             volatile_read(pcommit::_tls_durable_csn[i])) {
-          ddl::_tls_durable_lsn[i] = tlog->get_durable_lsn();
+          ddl_exe->_tls_durable_lsn[i] = tlog->get_durable_lsn();
         }
       }
 #endif
@@ -98,7 +97,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   }
 
   xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
-  if (config::enable_dml_slow_down && ddl::ddl_running && is_dml()) {
+  if (config::enable_dml_slow_down && ddl_exe->ddl_running && is_dml()) {
     util::fast_random r(xc->begin);
     if (r.next_uniform() >= config::dml_slow_down_prob) {
       usleep(1);
@@ -311,7 +310,7 @@ rc_t transaction::si_commit() {
           (*it)->SetArrays(false);
         }
       }
-      ddl::ddl_td_set = true;
+      ddl_exe->ddl_td_set = true;
     }
 #endif
   }
@@ -321,19 +320,19 @@ rc_t transaction::si_commit() {
     if (ddl_exe->get_ddl_type() != ddl::ddl_type::NO_COPY_VERIFICATION) {
       // Start the second round of CDC
       DLOG(INFO) << "Second CDC begins";
-      ddl::cdc_second_phase = true;
-      ddl::cdc_end_total.store(0);
+      ddl_exe->cdc_second_phase = true;
+      ddl_exe->cdc_end_total.store(0);
       uint32_t cdc_threads = ddl_exe->changed_data_capture(this);
       if (config::enable_late_scan_join) {
         ddl_exe->join_scan_workers();
       }
-      while (ddl::cdc_end_total.load() != cdc_threads && !ddl::ddl_failed) {
+      while (ddl_exe->cdc_end_total.load() != cdc_threads && !ddl_exe->ddl_failed) {
       }
-      ddl::cdc_running = false;
+      ddl_exe->cdc_running = false;
       ddl_exe->join_cdc_workers();
-      ddl::cdc_second_phase = false;
+      ddl_exe->cdc_second_phase = false;
       DLOG(INFO) << "Second CDC ends";
-      if (ddl::ddl_failed) {
+      if (ddl_exe->ddl_failed) {
         DLOG(INFO) << "DDL failed";
         for (auto &v : new_td_map) {
           OrderedIndex *index = v.second->GetPrimaryIndex();
@@ -417,7 +416,7 @@ rc_t transaction::si_commit() {
   }
 
   if (is_ddl()) {
-    ddl::ddl_running = false;
+    ddl_exe->ddl_running = false;
     volatile_write(xc->state, TXN::TXN_CMMTD);
 #ifdef COPYDDL
 #ifdef LAZYDDL

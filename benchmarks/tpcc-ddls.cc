@@ -87,14 +87,12 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
       Encode(str(Size(new_schema_value)), new_schema_value));
   TryCatch(rc);
 
-  // New a ddl executor
-  ermia::ddl::ddl_executor *ddl_exe =
-      new ermia::ddl::ddl_executor(schema.ddl_type);
+  ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
+  ddl_exe->set_ddl_type(schema.ddl_type);
   ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
                                   schema.reformat_idx, schema.constraint_idx,
                                   schema.td, schema.old_td, schema.index,
                                   schema.state);
-  txn->set_ddl_executor(ddl_exe);
 
   if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
 #if !defined(LAZYDDL)
@@ -115,14 +113,12 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
       txn, rc, *order_line_key,
       Encode(str(Size(new_schema_value)), new_schema_value)));
 
-  // New a ddl executor
-  ermia::ddl::ddl_executor *ddl_exe =
-      new ermia::ddl::ddl_executor(schema.ddl_type);
+  ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
+  ddl_exe->set_ddl_type(schema.ddl_type);
   ddl_exe->add_ddl_executor_paras(
       schema.v, -1, schema.ddl_type, schema.reformat_idx, schema.constraint_idx,
       schema.td, schema.td, schema.index, ermia::ddl::schema_state_type::READY);
 
-  txn->set_ddl_executor(ddl_exe);
   txn->set_old_td(schema.td);
   txn->add_old_td_map(schema.td);
   txn->add_new_td_map(schema.td);
@@ -281,15 +277,13 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
       Encode(str(Size(new_schema_value)), new_schema_value));
   TryCatch(rc);
 
-  // New a ddl executor
-  ermia::ddl::ddl_executor *ddl_exe =
-      new ermia::ddl::ddl_executor(customer_schema.ddl_type);
+  ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
+  ddl_exe->set_ddl_type(customer_schema.ddl_type);
   ddl_exe->add_ddl_executor_paras(
       customer_schema.v, customer_schema.old_v, customer_schema.ddl_type,
       customer_schema.reformat_idx, customer_schema.constraint_idx,
       customer_schema.td, customer_schema.old_td, customer_schema.index,
       customer_schema.state, customer_schema.secondary_index_key_create_idx);
-  txn->set_ddl_executor(ddl_exe);
 
   if (customer_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
 #if !defined(LAZYDDL)
@@ -310,16 +304,14 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
       txn, rc, *customer_key,
       Encode(str(Size(new_schema_value)), new_schema_value)));
 
-  // New a ddl executor
-  ermia::ddl::ddl_executor *ddl_exe =
-      new ermia::ddl::ddl_executor(customer_schema.ddl_type);
+  ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
+  ddl_exe->set_ddl_type(customer_schema.ddl_type);
   ddl_exe->add_ddl_executor_paras(
       customer_schema.v, -1, customer_schema.ddl_type,
       customer_schema.reformat_idx, customer_schema.constraint_idx,
       customer_schema.td, customer_schema.td, customer_schema.index,
       ermia::ddl::schema_state_type::READY);
 
-  txn->set_ddl_executor(ddl_exe);
   txn->set_old_td(customer_schema.td);
   txn->add_old_td_map(customer_schema.td);
   txn->add_new_td_map(customer_schema.td);
@@ -406,14 +398,12 @@ rc_t tpcc_worker::create_index(ermia::transaction *txn, uint32_t ddl_example) {
       Encode(str(Size(new_schema_value)), new_schema_value));
   TryCatch(rc);
 
-  // New a ddl executor
-  ermia::ddl::ddl_executor *ddl_exe =
-      new ermia::ddl::ddl_executor(schema.ddl_type);
+  ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
+  ddl_exe->set_ddl_type(schema.ddl_type);
   ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
                                   schema.reformat_idx, schema.constraint_idx,
                                   schema.td, schema.old_td, schema.index,
                                   schema.state, -1, true, false, -1);
-  txn->set_ddl_executor(ddl_exe);
 
   txn->set_old_td(schema.td);
   txn->add_old_td_map(schema.td);
@@ -521,14 +511,12 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, uint32_t ddl_example) {
       Encode(str(Size(new_schema_value)), new_schema_value));
   TryCatch(rc);
 
-  // New a ddl executor
-  ermia::ddl::ddl_executor *ddl_exe =
-      new ermia::ddl::ddl_executor(schema.ddl_type);
+  ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
+  ddl_exe->set_ddl_type(schema.ddl_type);
   ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
                                   schema.reformat_idx, schema.constraint_idx,
                                   schema.td, schema.old_td, schema.index,
                                   schema.state);
-  txn->set_ddl_executor(ddl_exe);
 
   if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
 #if !defined(LAZYDDL)
@@ -549,14 +537,12 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, uint32_t ddl_example) {
       txn, rc, *order_line_key,
       Encode(str(Size(new_schema_value)), new_schema_value)));
 
-  // New a ddl executor
-  ermia::ddl::ddl_executor *ddl_exe =
-      new ermia::ddl::ddl_executor(schema.ddl_type);
+  ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
+  ddl_exe->set_ddl_type(schema.ddl_type);
   ddl_exe->add_ddl_executor_paras(
       schema.v, -1, schema.ddl_type, schema.reformat_idx, schema.constraint_idx,
       schema.td, schema.td, schema.index, ermia::ddl::schema_state_type::READY);
 
-  txn->set_ddl_executor(ddl_exe);
   txn->set_old_td(schema.td);
   txn->add_old_td_map(schema.td);
   txn->add_new_td_map(schema.td);
