@@ -89,7 +89,8 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
         dlog::tls_log *tlog = dlog::tlogs[i];
         if (tlog && tlog != log &&
             volatile_read(pcommit::_tls_durable_csn[i])) {
-          ddl_exe->_tls_durable_lsn[i] = tlog->get_durable_lsn();
+          ddl_exe->get_ddl_flags()->_tls_durable_lsn[i] =
+              tlog->get_durable_lsn();
         }
       }
 #endif
@@ -97,12 +98,6 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
   }
 
   xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
-  if (config::enable_dml_slow_down && ddl_exe->ddl_running && is_dml()) {
-    util::fast_random r(xc->begin);
-    if (r.next_uniform() >= config::dml_slow_down_prob) {
-      usleep(1);
-    }
-  }
 #endif
 }
 
@@ -265,6 +260,7 @@ rc_t transaction::si_commit() {
                                  &lb_lsn, &segnum, xc->end);
   }
 
+  ddl::ddl_flags *flags = ddl_exe ? ddl_exe->get_ddl_flags() : nullptr;
   if (is_ddl()) {
     DLOG(INFO) << "DDL txn end: " << xc->end;
     // If txn is DDL, commit schema record(s) first before CDC
@@ -310,7 +306,7 @@ rc_t transaction::si_commit() {
           (*it)->SetArrays(false);
         }
       }
-      ddl_exe->set_schema_progress(true);
+      flags->ddl_td_set = true;
     }
 #endif
   }
@@ -321,20 +317,19 @@ rc_t transaction::si_commit() {
     if (ddl_exe->get_ddl_type() != ddl::ddl_type::NO_COPY_VERIFICATION) {
       // Start the second round of CDC
       DLOG(INFO) << "Second CDC begins";
-      ddl_exe->cdc_second_phase = true;
-      ddl_exe->cdc_end_total.store(0);
+      flags->cdc_second_phase = true;
+      flags->cdc_end_total.store(0);
       uint32_t cdc_threads = ddl_exe->changed_data_capture(this);
       if (config::enable_late_scan_join) {
         ddl_exe->join_scan_workers();
       }
-      while (ddl_exe->cdc_end_total.load() != cdc_threads &&
-             !ddl_exe->ddl_failed) {
+      while (flags->cdc_end_total.load() != cdc_threads && !flags->ddl_failed) {
       }
-      ddl_exe->cdc_running = false;
+      flags->cdc_running = false;
       ddl_exe->join_cdc_workers();
-      ddl_exe->cdc_second_phase = false;
+      flags->cdc_second_phase = false;
       DLOG(INFO) << "Second CDC ends";
-      if (ddl_exe->ddl_failed) {
+      if (flags->ddl_failed) {
         DLOG(INFO) << "DDL failed";
         for (auto &v : new_td_map) {
           OrderedIndex *index = v.second->GetPrimaryIndex();
@@ -419,7 +414,7 @@ rc_t transaction::si_commit() {
   }
 
   if (is_ddl()) {
-    ddl_exe->ddl_running = false;
+    flags->ddl_running = false;
     volatile_write(xc->state, TXN::TXN_CMMTD);
 #ifdef COPYDDL
 #ifdef LAZYDDL
@@ -461,7 +456,7 @@ rc_t transaction::si_commit() {
         auto ddl_log = [=](char *) {
           dlog::tls_log *log = GetLog();
           log->set_normal(false);
-          log->resize_logbuf(1);
+          log->resize_logbuf(2);
           dlog::log_block *lb = nullptr;
           dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
           uint64_t segnum = -1;

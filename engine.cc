@@ -34,13 +34,16 @@ dlog::tls_log *GetLog() {
 
 rc_t ConcurrentMasstreeIndex::WriteSchemaTable(transaction *t, rc_t &rc,
                                                const varstr &key, varstr &value,
-                                               OID oid) {
+                                               OID oid, bool is_insert) {
   // For DDL txn only
   ALWAYS_ASSERT(t->is_ddl());
 
-  rc = UpdateRecord(t, key, value);
+  rc = is_insert ? InsertRecord(t, key, value, &oid)
+                 : UpdateRecord(t, key, value);
   if (rc._val == RC_TRUE) {
-    t->get_ddl_executor()->add_schema_progress(oid);
+    schema_kv::value schema_value_temp;
+    const schema_kv::value *schema = Decode(value, schema_value_temp);
+    t->get_ddl_executor()->add_ddl_flags(oid, schema->version);
   }
 
   return rc;
@@ -75,8 +78,8 @@ retry:
         config::enable_cdc_schema_lock || !out_oid) {
       goto retry;
     }
-    ddl::schema_progress *sp = ddl::get_schema_progress(*out_oid);
-    if (!sp || !sp->ddl_td_set) {
+    ddl::ddl_flags *flags = ddl::get_ddl_flags(*out_oid, schema->version);
+    if (!flags || !flags->ddl_td_set) {
       goto retry;
     } else {
       t->SetWaitForNewSchema(true);

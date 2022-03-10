@@ -37,7 +37,7 @@ class OrderedIndex {
 
   virtual PROMISE(rc_t) WriteSchemaTable(transaction *t, rc_t &rc,
                                          const varstr &key, varstr &value,
-					 OID oid) = 0;
+					 OID oid, bool is_insert = false) = 0;
 
   virtual PROMISE(void)
       ReadSchemaRecord(transaction *t, rc_t &rc, const varstr &key,

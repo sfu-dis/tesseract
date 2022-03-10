@@ -30,15 +30,34 @@ typedef std::function<varstr *(varstr *key, varstr &value, str_arena *arena,
 // Schema constraint function
 typedef std::function<bool(varstr &value, uint64_t schema_version)> Constraint;
 
-// Schema progress information
-struct schema_progress {
-  OID oid;
-  bool ddl_td_set;
-  schema_progress(OID oid) : oid(oid), ddl_td_set(false) {}
-  inline void set_ddl_td_set(bool val) { ddl_td_set = val; }
+// DDL flags
+struct ddl_flags {
+  volatile bool ddl_running = false;
+  volatile bool cdc_first_phase = false;
+  volatile bool cdc_second_phase = false;
+  volatile bool ddl_failed = false;
+  volatile bool cdc_running = false;
+  volatile bool ddl_td_set = false;
+  std::atomic<uint64_t> cdc_end_total;
+  uint64_t *_tls_durable_lsn CACHE_ALIGNED;
+  ddl_flags() {
+    ddl_running = true;
+    cdc_end_total = 0;
+    _tls_durable_lsn =
+        (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
+  }
 };
 
-schema_progress *get_schema_progress(OID o);
+// DDL flags wrapper for each new table
+struct ddl_flags_wrapper {
+  OID oid;
+  uint32_t version;
+  ddl_flags *flags;
+  ddl_flags_wrapper(OID oid, uint32_t version, ddl_flags *flags)
+      : oid(oid), version(version), flags(flags) {}
+};
+
+ddl_flags *get_ddl_flags(OID oid, uint32_t version);
 
 // DDL type
 enum ddl_type {
@@ -120,16 +139,6 @@ struct ddl_executor_paras {
 class ddl_executor {
   friend class transaction;
 
-  // DDL flags
- public:
-  volatile bool ddl_running = false;
-  volatile bool cdc_first_phase = false;
-  volatile bool cdc_second_phase = false;
-  volatile bool ddl_failed = false;
-  volatile bool cdc_running = false;
-  std::atomic<uint64_t> cdc_end_total;
-  uint64_t *_tls_durable_lsn CACHE_ALIGNED;
-
  private:
   // List of DDL executor parameters
   std::vector<struct ddl_executor_paras *> ddl_executor_paras_list;
@@ -143,8 +152,8 @@ class ddl_executor {
   // DDL type
   ddl_type dt;
 
-  // Schema progress
-  schema_progress *sp;
+  // DDL flags
+  ddl_flags *flags;
 
 #if defined(SIDDL) || defined(BLOCKDDL)
   // DDL write set
@@ -153,11 +162,8 @@ class ddl_executor {
 
  public:
   // Constructor and destructor
-  ddl_executor() : dt(ddl_type::INVALID), sp(nullptr) {
-    ddl_running = true;
-    cdc_end_total = 0;
-    _tls_durable_lsn =
-        (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
+  ddl_executor() : dt(ddl_type::INVALID) {
+    flags = new ddl_flags();
 #if defined(SIDDL) || defined(BLOCKDDL)
     init_ddl_write_set();
 #endif
@@ -199,12 +205,10 @@ class ddl_executor {
     cdc_workers.clear();
   }
 
-  inline void set_schema_progress(bool ddl_td_set) {
-    sp->ddl_td_set = ddl_td_set;
-  }
+  inline ddl_flags *get_ddl_flags() { return flags; }
 
-  // Add a schema progress to schema_progress_set
-  void add_schema_progress(OID oid);
+  // Add a ddl_flags to ddl_flags_set
+  void add_ddl_flags(OID oid, uint32_t version);
 
   // Scan and do operations (copy, verification)
   rc_t scan(transaction *t, str_arena *arena);
@@ -243,7 +247,7 @@ class ddl_executor {
 
 extern std::vector<Reformat> reformats;
 extern std::vector<Constraint> constraints;
-extern std::vector<schema_progress *> schema_progress_set;
+extern std::vector<ddl_flags_wrapper *> ddl_flags_set;
 extern mcs_lock lock;
 
 }  // namespace ddl
