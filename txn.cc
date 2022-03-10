@@ -1026,19 +1026,21 @@ PROMISE(bool)
 transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
                           OID oid) {
   auto *new_tuple_array = new_td->GetTupleArray();
+  ASSERT(new_tuple_array);
   auto *old_tuple_array = old_td->GetTupleArray();
+  ASSERT(old_tuple_array);
   new_tuple_array->ensure_size(oid);
   old_tuple_array->ensure_size(oid);
 
   fat_ptr *new_entry_ptr = new_tuple_array->get(oid);
   fat_ptr new_expected = *new_entry_ptr;
   Object *new_obj = (Object *)new_expected.offset();
-  fat_ptr new_csn = new_obj->GetCSN();
+  fat_ptr new_csn = new_obj ? new_obj->GetCSN() : NULL_PTR;
 
   fat_ptr *old_entry_ptr = old_tuple_array->get(oid);
   fat_ptr old_expected = *old_entry_ptr;
   Object *old_obj = (Object *)old_expected.offset();
-  fat_ptr old_csn = old_obj->GetCSN();
+  fat_ptr old_csn = old_obj ? old_obj->GetCSN() : NULL_PTR;
 
   if (new_expected == NULL_PTR && old_expected != NULL_PTR) {
     RETURN true;
