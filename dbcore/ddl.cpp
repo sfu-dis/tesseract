@@ -212,6 +212,8 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
 #elif SIDDL
         rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid);
         if (r._val != RC_TRUE) {
+          DLOG(INFO) << "DDL failed";
+          flags->ddl_failed = true;
           return rc_t{RC_ABORT_INTERNAL};
         }
 #endif

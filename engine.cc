@@ -260,6 +260,8 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
       found = AWAIT masstree_.search(key, oid, t->xc->begin_epoch, &sinfo);
     }
 
+    dbtuple *tuple = nullptr;
+
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
     if (schema && schema->old_index && !found) {
     lazy_retry:
@@ -280,17 +282,19 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
         }
         rc = AWAIT InsertRecord(t, key, *new_tuple_value, &oid, schema);
         if (rc._val == RC_TRUE) {
-          value.p = new_tuple_value->p;
-          value.l = new_tuple_value->l;
+          tuple = AWAIT oidmgr->oid_get_version(schema->td->GetTupleArray(),
+                                                oid, t->xc);
+          if (tuple && t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
+            volatile_write(rc._val, RC_TRUE);
+            RETURN;
+          }
         }
-      } else {
-        volatile_write(rc._val, RC_ABORT_INTERNAL);
       }
+      volatile_write(rc._val, RC_ABORT_INTERNAL);
       RETURN;
     }
 #endif
 
-    dbtuple *tuple = nullptr;
     if (found) {
       // Key-OID mapping exists, now try to get the actual tuple to be sure
       tuple = AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(),
