@@ -617,7 +617,7 @@ fat_ptr sm_oid_mgr::UpdateTuple(oid_array *oa, OID o, const varstr *value,
   auto *ptr = oa->get(o);
 start_over:
   fat_ptr head = volatile_read(*ptr);
-#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+#ifdef COPYDDL
   if (head == NULL_PTR) {
     return NULL_PTR;
   }

@@ -902,12 +902,8 @@ retry:
     csn = obj->GetCSN();
   }
   if (csn != NULL_PTR && csn.asi_type() == fat_ptr::ASI_XID) {
-    auto holder_xid = XID::from_ptr(csn);
-    TXN::xid_context *holder = TXN::xid_get_context(holder_xid);
-    if (holder && volatile_read(holder->begin) >= tuple_csn) {
-      MM::deallocate(new_head);
-      RETURN rc_t{RC_ABORT_SI_CONFLICT};
-    }
+    MM::deallocate(new_head);
+    RETURN rc_t{RC_ABORT_SI_CONFLICT};
   }
   if (expected == NULL_PTR || (csn.asi_type() == fat_ptr::ASI_CSN &&
                                CSN::from_ptr(csn).offset() < tuple_csn)) {
