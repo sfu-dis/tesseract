@@ -84,6 +84,10 @@ retry:
     } else {
       t->SetWaitForNewSchema(true);
       TableDescriptor *old_td = Catalog::GetTable(schema->old_fid);
+      // TODO: sometimes old_td is nullptr, but old_fid is valid
+      if (!old_td) {
+        goto retry;
+      }
       ALWAYS_ASSERT(old_td);
       t->set_old_td(old_td);
       t->add_old_td_map(old_td);

@@ -225,7 +225,13 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
       table_index->GetRecord(txn, rc, Encode(str(Size(k2)), k2), v2, &oid,
                              &schema);
-      TryCatch(rc);
+      if (likely(rc._val != RC_FALSE)) {
+        TryCatch(rc);
+      } else {
+        // May happen when enable_late_scan_join is set to true,
+        // some new tuple have not been filled with values
+        TryCatch(rc_t{RC_ABORT_USER});
+      }
 
       oddlb_kv_1::value record_temp;
       const oddlb_kv_1::value *record_test = Decode(v2, record_temp);
