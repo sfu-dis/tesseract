@@ -155,6 +155,12 @@ class ddl_executor {
   // DDL flags
   ddl_flags *flags;
 
+  // New table descriptors
+  std::unordered_map<FID, TableDescriptor *> new_td_map;
+
+  // Old table descriptors
+  std::unordered_map<FID, TableDescriptor *> old_td_map;
+
 #if defined(SIDDL) || defined(BLOCKDDL)
   // DDL write set
   ddl_write_set_t *ddl_write_set;
@@ -206,6 +212,22 @@ class ddl_executor {
   }
 
   inline ddl_flags *get_ddl_flags() { return flags; }
+
+  inline std::unordered_map<FID, TableDescriptor *> *get_new_td_map() {
+    return &new_td_map;
+  }
+
+  inline std::unordered_map<FID, TableDescriptor *> *get_old_td_map() {
+    return &old_td_map;
+  }
+
+  inline void add_new_td_map(TableDescriptor *new_td) {
+    new_td_map[new_td->GetTupleFid()] = new_td;
+  }
+
+  inline void add_old_td_map(TableDescriptor *old_td) {
+    old_td_map[old_td->GetTupleFid()] = old_td;
+  }
 
   // Add a ddl_flags to ddl_flags_set
   void add_ddl_flags(OID oid, uint32_t version);

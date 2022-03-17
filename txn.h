@@ -123,6 +123,23 @@ class transaction {
   typedef std::vector<dbtuple *> read_set_t;
 #endif
 
+  enum lock_type { INVALID, SHARED, EXCLUSIVE };
+
+  struct table_info {
+    OID oid;
+    FID fid;
+    uint32_t version;
+    TableDescriptor *td;
+    lock_type lt;
+    table_info()
+        : oid(0), fid(0), version(0), td(nullptr), lt(lock_type::INVALID) {}
+    table_info(OID oid, FID fid, uint32_t version, TableDescriptor *td,
+               lock_type lt)
+        : oid(oid), fid(fid), version(version), td(td), lt(lt) {}
+  };
+
+  typedef std::vector<table_info *> table_set_t;
+
   enum {
     // use the low-level scan protocol for checking scan consistency,
     // instead of keeping track of absent ranges
@@ -303,22 +320,6 @@ class transaction {
 
   inline void set_old_td(TableDescriptor *_old_td) { old_td = _old_td; }
 
-  inline std::unordered_map<FID, TableDescriptor *> *get_new_td_map() {
-    return &new_td_map;
-  }
-
-  inline std::unordered_map<FID, TableDescriptor *> *get_old_td_map() {
-    return &old_td_map;
-  }
-
-  inline void add_new_td_map(TableDescriptor *new_td) {
-    new_td_map[new_td->GetTupleFid()] = new_td;
-  }
-
-  inline void add_old_td_map(TableDescriptor *old_td) {
-    old_td_map[old_td->GetTupleFid()] = old_td;
-  }
-
   inline void set_ddl_executor(ddl::ddl_executor *_ddl_exe) {
     ddl_exe = _ddl_exe;
   }
@@ -327,23 +328,21 @@ class transaction {
 
   inline dlog::tls_log *get_log() { return log; }
 
-  enum lock_type { INVALID, SHARED, EXCLUSIVE };
-
-  struct table_info {
-    OID oid;
-    FID fid;
-    uint32_t version;
-    lock_type lt;
-    table_info() : oid(0), fid(0), version(0), lt(lock_type::INVALID) {}
-    table_info(OID oid, FID fid, uint32_t version, lock_type lt)
-        : oid(oid), fid(fid), version(version), lt(lt) {}
-  };
-
-  inline std::vector<table_info *> *get_table_set() { return &table_set; }
+  inline table_set_t *get_table_set() { return &table_set; }
 
   inline void add_to_table_set(OID oid, FID fid, uint32_t version,
-                               lock_type lt) {
-    table_set.push_back(new table_info(oid, fid, version, lt));
+                               TableDescriptor *td, lock_type lt) {
+    table_set.push_back(new table_info(oid, fid, version, td, lt));
+  }
+
+  inline table_info *find_in_table_set(FID table_fid) {
+    for (table_set_t::const_iterator it = table_set.begin();
+         it != table_set.end(); ++it) {
+      if ((*it)->fid == table_fid) {
+        return *it;
+      }
+    }
+    return nullptr;
   }
 
 #ifdef BLOCKDDL
@@ -358,12 +357,12 @@ class transaction {
   }
 
   inline void ReadLock(FID table_fid) {
-    if (find(table_fid)) {
+    if (find_in_table_set(table_fid)) {
       return;
     }
     int ret = pthread_rwlock_rdlock(lock_map[table_fid]);
     LOG_IF(FATAL, ret);
-    add_to_table_set(0, table_fid, 0, lock_type::SHARED);
+    add_to_table_set(0, table_fid, 0, nullptr, lock_type::SHARED);
   }
 
   inline void ReadUnlock(FID table_fid) {
@@ -372,7 +371,7 @@ class transaction {
   }
 
   inline void WriteLock(FID table_fid) {
-    table_info *l_info = find(table_fid);
+    table_info *l_info = find_in_table_set(table_fid);
     if (l_info && l_info->lt == lock_type::SHARED) {
       // Upgrade shared lock to exclusive lock
       ReadUnlock(table_fid);
@@ -382,7 +381,7 @@ class transaction {
     }
     int ret = pthread_rwlock_wrlock(lock_map[table_fid]);
     LOG_IF(FATAL, ret);
-    add_to_table_set(0, table_fid, 0, lock_type::EXCLUSIVE);
+    add_to_table_set(0, table_fid, 0, nullptr, lock_type::EXCLUSIVE);
   }
 
   inline void WriteUnlock(FID table_fid) {
@@ -390,18 +389,8 @@ class transaction {
     LOG_IF(FATAL, ret);
   }
 
-  inline table_info *find(FID table_fid) {
-    for (std::vector<table_info *>::const_iterator it = table_set.begin();
-         it != table_set.end(); ++it) {
-      if ((*it)->fid == table_fid) {
-        return *it;
-      }
-    }
-    return nullptr;
-  }
-
   inline void UnlockAll() {
-    for (std::vector<table_info *>::const_iterator it = table_set.begin();
+    for (table_set_t::const_iterator it = table_set.begin();
          it != table_set.end(); ++it) {
       ReadUnlock((*it)->fid);
     }
@@ -420,10 +409,8 @@ class transaction {
   uint64_t log_size;
   str_arena *sa;
   uint32_t coro_batch_idx;  // its index in the batch
-  std::vector<table_info *> table_set;
-  std::unordered_map<FID, TableDescriptor *> new_td_map;
+  table_set_t table_set;
   TableDescriptor *old_td;
-  std::unordered_map<FID, TableDescriptor *> old_td_map;
   bool wait_for_new_schema;
   ddl::ddl_executor *ddl_exe;
   util::timer timer;

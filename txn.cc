@@ -282,7 +282,7 @@ rc_t transaction::si_commit() {
 
 #ifdef COPYDDL
     if (ddl_exe->get_ddl_type() != ddl::ddl_type::NO_COPY_VERIFICATION) {
-      for (auto &v : new_td_map) {
+      for (auto &v : *(ddl_exe->get_new_td_map())) {
         // Fix new table file's marks
         auto *alloc = oidmgr->get_allocator(this->old_td->GetTupleFid());
         uint32_t himark = alloc->head.hiwater_mark;
@@ -331,7 +331,7 @@ rc_t transaction::si_commit() {
       DLOG(INFO) << "Second CDC ends";
       if (flags->ddl_failed) {
         DLOG(INFO) << "DDL failed";
-        for (auto &v : new_td_map) {
+        for (auto &v : *(ddl_exe->get_new_td_map())) {
           OrderedIndex *index = v.second->GetPrimaryIndex();
           index->SetTableDescriptor(this->old_td);
           index->SetArrays(true);
@@ -432,7 +432,7 @@ rc_t transaction::si_commit() {
     }
 #endif
 
-    for (auto &v : new_td_map) {
+    for (auto &v : *(ddl_exe->get_new_td_map())) {
       // FID fid = v.second->GetTupleFid();
       FID fid = old_td->GetTupleFid();
       auto *new_alloc = oidmgr->get_allocator(fid);
@@ -614,7 +614,7 @@ bool transaction::DMLConsistencyHandler() {
   uint64_t begin = xc->begin;
   tmp_xc->begin = xc->end;
 
-  for (std::vector<table_info *>::const_iterator it = table_set.begin();
+  for (table_set_t::const_iterator it = table_set.begin();
        it != table_set.end(); ++it) {
     dbtuple *tuple =
         oidmgr->oid_get_version(schema_td->GetTupleArray(), (*it)->oid, tmp_xc);

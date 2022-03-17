@@ -71,6 +71,9 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     schema.value_to_record(old_schema_value);
     schema.ddl_type = get_example_ddl_type(ddl_example);
 
+    ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
+    ddl_exe->set_ddl_type(schema.ddl_type);
+
 #ifdef COPYDDL
     schema.old_v = schema.v;
     uint64_t schema_version = schema.old_v + 1;
@@ -104,8 +107,8 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       schema.index = schema.td->GetPrimaryIndex();
 
       txn->set_old_td(schema.old_td);
-      txn->add_new_td_map(schema.td);
-      txn->add_old_td_map(schema.old_td);
+      ddl_exe->add_new_td_map(schema.td);
+      ddl_exe->add_old_td_map(schema.old_td);
     } else {
       if (schema.ddl_type == ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
         schema_version =
@@ -116,7 +119,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       }
 
       txn->set_old_td(schema.td);
-      txn->add_old_td_map(schema.td);
+      ddl_exe->add_old_td_map(schema.td);
     }
 
     schema_kv::value new_schema_value;
@@ -128,8 +131,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         Encode(str(Size(new_schema_value)), new_schema_value), oid);
     TryCatch(rc);
 
-    ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
-    ddl_exe->set_ddl_type(schema.ddl_type);
     ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
                                     schema.reformat_idx, schema.constraint_idx,
                                     schema.td, schema.old_td, schema.index,
@@ -154,16 +155,14 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         txn, rc, *table_key,
         Encode(str(Size(new_schema_value)), new_schema_value), oid));
 
-    ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
-    ddl_exe->set_ddl_type(schema.ddl_type);
     ddl_exe->add_ddl_executor_paras(schema.v, -1, schema.ddl_type,
                                     schema.reformat_idx, schema.constraint_idx,
                                     schema.td, schema.td, schema.index,
                                     ermia::ddl::schema_state_type::READY);
 
     txn->set_old_td(schema.td);
-    txn->add_old_td_map(schema.td);
-    txn->add_new_td_map(schema.td);
+    ddl_exe->add_old_td_map(schema.td);
+    ddl_exe->add_new_td_map(schema.td);
 
 #ifdef BLOCKDDL
     TryCatch(ddl_exe->scan(txn, arena));

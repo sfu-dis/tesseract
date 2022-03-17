@@ -316,7 +316,6 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
   TXN::xid_context *xc = t->GetXIDContext();
   uint64_t begin_csn = xc->begin;
   uint64_t end_csn = xc->end;
-  std::unordered_map<FID, TableDescriptor *> *old_td_map = t->get_old_td_map();
   uint64_t block_sz = sizeof(dlog::log_block),
            logrec_sz = sizeof(dlog::log_record), tuple_sc = sizeof(dbtuple);
   for (uint32_t i = begin_log; i <= end_log; i++) {
@@ -361,14 +360,12 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
               FID f = logrec->fid;
               OID o = logrec->oid;
 
-              std::unordered_map<FID, TableDescriptor *>::const_iterator got =
-                  old_td_map->find(f);
-              if (got == old_td_map->end()) {
+              if (!old_td_map[f]) {
                 offset_in_block += logrec->rec_size;
                 continue;
               }
 
-              auto *key_array = got->second->GetKeyArray();
+              auto *key_array = old_td_map[f]->GetKeyArray();
               fat_ptr *entry =
                   config::enable_ddl_keys ? key_array->get(o) : nullptr;
               varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;

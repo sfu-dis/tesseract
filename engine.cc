@@ -90,17 +90,14 @@ retry:
       }
       ALWAYS_ASSERT(old_td);
       t->set_old_td(old_td);
-      t->add_old_td_map(old_td);
-      t->add_new_td_map(Catalog::GetTable(schema->fid));
     }
 #else
     goto retry;
 #endif
   }
-  if (t->is_dml()) {
-    t->add_to_table_set(*out_oid, schema->fid, schema->version,
-                        transaction::lock_type::INVALID);
-  }
+  t->add_to_table_set(*out_oid, schema->fid, schema->version,
+                      Catalog::GetTable(schema->fid),
+                      transaction::lock_type::INVALID);
 #endif
 }
 
@@ -305,11 +302,8 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
                                             oid, t->xc);
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
-      std::unordered_map<FID, TableDescriptor *> *new_td_map =
-          t->get_new_td_map();
       if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
-          (new_td_map->find(table_descriptor->GetTupleFid()) !=
-           new_td_map->end())) {
+          t->find_in_table_set(table_descriptor->GetTupleFid())) {
         if (AWAIT t->OverlapCheck(table_descriptor, t->old_td, oid)) {
           volatile_write(rc._val, RC_ABORT_INTERNAL);
           RETURN;
@@ -728,11 +722,8 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
   }
   if (caller_callback->return_code._val == RC_TRUE) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
-    std::unordered_map<FID, TableDescriptor *> *new_td_map =
-        t->get_new_td_map();
     if (t->IsWaitForNewSchema() && schema &&
-        (new_td_map->find(table_descriptor->GetTupleFid()) !=
-         new_td_map->end())) {
+        !t->find_in_table_set(table_descriptor->GetTupleFid())) {
       if (AWAIT t->OverlapCheck(table_descriptor, t->old_td, oid)) {
         caller_callback->return_code = rc_t{RC_ABORT_SI_CONFLICT};
         return false;
