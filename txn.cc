@@ -284,7 +284,8 @@ rc_t transaction::si_commit() {
     if (ddl_exe->get_ddl_type() != ddl::ddl_type::NO_COPY_VERIFICATION) {
       for (auto &v : *(ddl_exe->get_new_td_map())) {
         // Fix new table file's marks
-        auto *alloc = oidmgr->get_allocator(this->old_td->GetTupleFid());
+        auto *alloc =
+            oidmgr->get_allocator(ddl_exe->get_old_td()->GetTupleFid());
         uint32_t himark = alloc->head.hiwater_mark;
         auto *new_tuple_array = v.second->GetTupleArray();
         new_tuple_array->ensure_size(himark - 64);
@@ -333,7 +334,7 @@ rc_t transaction::si_commit() {
         DLOG(INFO) << "DDL failed";
         for (auto &v : *(ddl_exe->get_new_td_map())) {
           OrderedIndex *index = v.second->GetPrimaryIndex();
-          index->SetTableDescriptor(this->old_td);
+          index->SetTableDescriptor(ddl_exe->get_old_td());
           index->SetArrays(true);
           v.second->GetTupleArray()->destroy(v.second->GetTupleArray());
         }
@@ -433,8 +434,7 @@ rc_t transaction::si_commit() {
 #endif
 
     for (auto &v : *(ddl_exe->get_new_td_map())) {
-      // FID fid = v.second->GetTupleFid();
-      FID fid = old_td->GetTupleFid();
+      FID fid = v.second->GetTupleFid();
       auto *new_alloc = oidmgr->get_allocator(fid);
       uint32_t himark = new_alloc->head.hiwater_mark;
       auto *new_tuple_array = v.second->GetTupleArray();
@@ -1021,10 +1021,10 @@ retry:
 PROMISE(bool)
 transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
                           OID oid) {
+  ASSERT(new_td);
   auto *new_tuple_array = new_td->GetTupleArray();
-  ASSERT(new_tuple_array);
+  ASSERT(old_td);
   auto *old_tuple_array = old_td->GetTupleArray();
-  ASSERT(old_tuple_array);
   new_tuple_array->ensure_size(oid);
   old_tuple_array->ensure_size(oid);
 

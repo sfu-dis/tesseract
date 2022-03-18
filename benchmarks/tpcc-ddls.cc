@@ -74,7 +74,7 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
 #endif
     schema.index = schema.td->GetPrimaryIndex();
 
-    txn->set_old_td(schema.old_td);
+    ddl_exe->set_old_td(schema.old_td);
     ddl_exe->add_new_td_map(schema.td);
     ddl_exe->add_old_td_map(schema.old_td);
   } else {
@@ -118,7 +118,7 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
       schema.v, -1, schema.ddl_type, schema.reformat_idx, schema.constraint_idx,
       schema.td, schema.td, schema.index, ermia::ddl::schema_state_type::READY);
 
-  txn->set_old_td(schema.td);
+  ddl_exe->set_old_td(schema.td);
   ddl_exe->add_old_td_map(schema.td);
   ddl_exe->add_new_td_map(schema.td);
 
@@ -261,7 +261,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
 #endif
     customer_schema.index = customer_schema.td->GetPrimaryIndex();
 
-    txn->set_old_td(customer_schema.old_td);
+    ddl_exe->set_old_td(customer_schema.old_td);
     ddl_exe->add_new_td_map(customer_schema.td);
     ddl_exe->add_old_td_map(customer_schema.old_td);
   } else {
@@ -310,7 +310,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
       customer_schema.td, customer_schema.td, customer_schema.index,
       ermia::ddl::schema_state_type::READY);
 
-  txn->set_old_td(customer_schema.td);
+  ddl_exe->set_old_td(customer_schema.td);
   ddl_exe->add_old_td_map(customer_schema.td);
   ddl_exe->add_new_td_map(customer_schema.td);
 
@@ -404,7 +404,7 @@ rc_t tpcc_worker::create_index(ermia::transaction *txn, uint32_t ddl_example) {
                                   schema.td, schema.old_td, schema.index,
                                   schema.state, -1, true, false, -1);
 
-  txn->set_old_td(schema.td);
+  ddl_exe->set_old_td(schema.td);
   ddl_exe->add_old_td_map(schema.td);
 
 #if !defined(LAZYDDL)
@@ -497,7 +497,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, uint32_t ddl_example) {
 #endif
     schema.index = schema.td->GetPrimaryIndex();
 
-    txn->set_old_td(schema.old_td);
+    ddl_exe->set_old_td(schema.old_td);
     ddl_exe->add_new_td_map(schema.td);
     ddl_exe->add_old_td_map(schema.old_td);
   } else {
@@ -541,7 +541,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, uint32_t ddl_example) {
       schema.v, -1, schema.ddl_type, schema.reformat_idx, schema.constraint_idx,
       schema.td, schema.td, schema.index, ermia::ddl::schema_state_type::READY);
 
-  txn->set_old_td(schema.td);
+  ddl_exe->set_old_td(schema.td);
   ddl_exe->add_old_td_map(schema.td);
   ddl_exe->add_new_td_map(schema.td);
 

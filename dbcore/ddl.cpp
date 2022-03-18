@@ -47,7 +47,6 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
 
   DLOG(INFO) << "DDL scan begins";
   uint64_t count = 0;
-  TableDescriptor *old_td = t->get_old_td();
   FID fid = old_td->GetTupleFid();
   auto *alloc = oidmgr->get_allocator(fid);
   uint32_t himark = alloc->head.hiwater_mark;

@@ -62,6 +62,7 @@ void ConcurrentMasstreeIndex::ReadSchemaRecord(transaction *t, rc_t &rc,
   }
 #endif
 
+  bool schema_not_ready = false;
 retry:
   GetRecord(t, rc, key, value, out_oid);
   if (rc._val != RC_TRUE) {
@@ -72,6 +73,8 @@ retry:
 #ifdef COPYDDL
   schema_kv::value schema_value_temp;
   const schema_kv::value *schema = Decode(value, schema_value_temp);
+  TableDescriptor *old_td =
+      schema->old_fid ? Catalog::GetTable(schema->old_fid) : nullptr;
   if (schema->state == ddl::schema_state_type::NOT_READY) {
 #if !defined(LAZYDDL)
     if (schema->ddl_type != ddl::ddl_type::COPY_ONLY ||
@@ -83,20 +86,14 @@ retry:
       goto retry;
     } else {
       t->SetWaitForNewSchema(true);
-      TableDescriptor *old_td = Catalog::GetTable(schema->old_fid);
-      // TODO: sometimes old_td is nullptr, but old_fid is valid
-      if (!old_td) {
-        goto retry;
-      }
-      ALWAYS_ASSERT(old_td);
-      t->set_old_td(old_td);
+      schema_not_ready = true;
     }
 #else
     goto retry;
 #endif
   }
-  t->add_to_table_set(*out_oid, schema->fid, schema->version,
-                      Catalog::GetTable(schema->fid),
+  t->add_to_table_set(schema_not_ready, *out_oid, schema->fid, schema->version,
+                      Catalog::GetTable(schema->fid), old_td,
                       transaction::lock_type::INVALID);
 #endif
 }
@@ -302,9 +299,11 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
                                             oid, t->xc);
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
-      if (t->IsWaitForNewSchema() && rc._val == RC_TRUE &&
-          t->find_in_table_set(table_descriptor->GetTupleFid())) {
-        if (AWAIT t->OverlapCheck(table_descriptor, t->old_td, oid)) {
+      transaction::table_info *ti =
+          t->find_in_table_set(table_descriptor->GetTupleFid());
+      if (t->IsWaitForNewSchema() && rc._val == RC_TRUE && ti &&
+          ti->schema_not_ready) {
+        if (AWAIT t->OverlapCheck(table_descriptor, ti->old_td, oid)) {
           volatile_write(rc._val, RC_ABORT_INTERNAL);
           RETURN;
         }
@@ -722,9 +721,10 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
   }
   if (caller_callback->return_code._val == RC_TRUE) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
-    if (t->IsWaitForNewSchema() && schema &&
-        !t->find_in_table_set(table_descriptor->GetTupleFid())) {
-      if (AWAIT t->OverlapCheck(table_descriptor, t->old_td, oid)) {
+    transaction::table_info *ti =
+        t->find_in_table_set(table_descriptor->GetTupleFid());
+    if (t->IsWaitForNewSchema() && schema && ti && ti->schema_not_ready) {
+      if (AWAIT t->OverlapCheck(table_descriptor, ti->old_td, oid)) {
         caller_callback->return_code = rc_t{RC_ABORT_SI_CONFLICT};
         return false;
       }

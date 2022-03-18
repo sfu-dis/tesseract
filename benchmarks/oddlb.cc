@@ -106,7 +106,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #endif
       schema.index = schema.td->GetPrimaryIndex();
 
-      txn->set_old_td(schema.old_td);
+      ddl_exe->set_old_td(schema.old_td);
       ddl_exe->add_new_td_map(schema.td);
       ddl_exe->add_old_td_map(schema.old_td);
     } else {
@@ -118,7 +118,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
             ermia::config::no_copy_verification_version_add;
       }
 
-      txn->set_old_td(schema.td);
+      ddl_exe->set_old_td(schema.td);
       ddl_exe->add_old_td_map(schema.td);
     }
 
@@ -160,7 +160,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
                                     schema.td, schema.td, schema.index,
                                     ermia::ddl::schema_state_type::READY);
 
-    txn->set_old_td(schema.td);
+    ddl_exe->set_old_td(schema.td);
     ddl_exe->add_old_td_map(schema.td);
     ddl_exe->add_new_td_map(schema.td);
 

@@ -155,6 +155,9 @@ class ddl_executor {
   // DDL flags
   ddl_flags *flags;
 
+  // Old table descriptor
+  TableDescriptor *old_td;
+
   // New table descriptors
   std::unordered_map<FID, TableDescriptor *> new_td_map;
 
@@ -212,6 +215,10 @@ class ddl_executor {
   }
 
   inline ddl_flags *get_ddl_flags() { return flags; }
+
+  inline TableDescriptor *get_old_td() { return old_td; }
+
+  inline void set_old_td(TableDescriptor *_old_td) { old_td = _old_td; }
 
   inline std::unordered_map<FID, TableDescriptor *> *get_new_td_map() {
     return &new_td_map;

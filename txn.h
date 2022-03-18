@@ -126,16 +126,30 @@ class transaction {
   enum lock_type { INVALID, SHARED, EXCLUSIVE };
 
   struct table_info {
+    bool schema_not_ready;
     OID oid;
     FID fid;
     uint32_t version;
     TableDescriptor *td;
+    TableDescriptor *old_td;
     lock_type lt;
     table_info()
-        : oid(0), fid(0), version(0), td(nullptr), lt(lock_type::INVALID) {}
-    table_info(OID oid, FID fid, uint32_t version, TableDescriptor *td,
-               lock_type lt)
-        : oid(oid), fid(fid), version(version), td(td), lt(lt) {}
+        : schema_not_ready(false),
+          oid(0),
+          fid(0),
+          version(0),
+          td(nullptr),
+          old_td(nullptr),
+          lt(lock_type::INVALID) {}
+    table_info(bool schema_not_ready, OID oid, FID fid, uint32_t version,
+               TableDescriptor *td, TableDescriptor *old_td, lock_type lt)
+        : schema_not_ready(schema_not_ready),
+          oid(oid),
+          fid(fid),
+          version(version),
+          td(td),
+          old_td(old_td),
+          lt(lt) {}
   };
 
   typedef std::vector<table_info *> table_set_t;
@@ -316,10 +330,6 @@ class transaction {
 
   inline bool IsWaitForNewSchema() { return wait_for_new_schema; }
 
-  inline TableDescriptor *get_old_td() { return old_td; }
-
-  inline void set_old_td(TableDescriptor *_old_td) { old_td = _old_td; }
-
   inline void set_ddl_executor(ddl::ddl_executor *_ddl_exe) {
     ddl_exe = _ddl_exe;
   }
@@ -330,9 +340,11 @@ class transaction {
 
   inline table_set_t *get_table_set() { return &table_set; }
 
-  inline void add_to_table_set(OID oid, FID fid, uint32_t version,
-                               TableDescriptor *td, lock_type lt) {
-    table_set.push_back(new table_info(oid, fid, version, td, lt));
+  inline void add_to_table_set(bool schema_not_ready, OID oid, FID fid,
+                               uint32_t version, TableDescriptor *td,
+                               TableDescriptor *old_td, lock_type lt) {
+    table_set.push_back(
+        new table_info(schema_not_ready, oid, fid, version, td, old_td, lt));
   }
 
   inline table_info *find_in_table_set(FID table_fid) {
@@ -362,7 +374,8 @@ class transaction {
     }
     int ret = pthread_rwlock_rdlock(lock_map[table_fid]);
     LOG_IF(FATAL, ret);
-    add_to_table_set(0, table_fid, 0, nullptr, lock_type::SHARED);
+    add_to_table_set(false, 0, table_fid, 0, nullptr, nullptr,
+                     lock_type::SHARED);
   }
 
   inline void ReadUnlock(FID table_fid) {
@@ -381,7 +394,8 @@ class transaction {
     }
     int ret = pthread_rwlock_wrlock(lock_map[table_fid]);
     LOG_IF(FATAL, ret);
-    add_to_table_set(0, table_fid, 0, nullptr, lock_type::EXCLUSIVE);
+    add_to_table_set(false, 0, table_fid, 0, nullptr, nullptr,
+                     lock_type::EXCLUSIVE);
   }
 
   inline void WriteUnlock(FID table_fid) {
@@ -410,7 +424,6 @@ class transaction {
   str_arena *sa;
   uint32_t coro_batch_idx;  // its index in the batch
   table_set_t table_set;
-  TableDescriptor *old_td;
   bool wait_for_new_schema;
   ddl::ddl_executor *ddl_exe;
   util::timer timer;
