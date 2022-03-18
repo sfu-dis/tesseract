@@ -106,11 +106,10 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
     }
   }
 
+#if defined(COPYDDL) && !defined(LAZYDDL)
   if (!config::enable_late_scan_join || flags->ddl_failed) {
     join_scan_workers();
   }
-
-#if defined(COPYDDL) && !defined(LAZYDDL)
   if (config::enable_parallel_scan_cdc) {
     flags->cdc_running = false;
     join_cdc_workers();
@@ -134,6 +133,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   flags->ddl_td_set = false;
   flags->cdc_first_phase = false;
 #else
+  join_scan_workers();
   if (flags->ddl_failed) {
     return rc_t{RC_ABORT_INTERNAL};
   }
