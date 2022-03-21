@@ -383,6 +383,17 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 
     if (found) {
       volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
+#ifdef SIDDL
+      // Normally, SI DDL would fail, however, when there is no writes during
+      // DDL, SI DDL can proceed. After post-commit, there is an issue: A
+      // transaction with a begin timestamp (which is equal to DDL csn) can read
+      // an old schema record, but it also can read a latest normal table
+      // record, causing inconsistency. Thus, when it happens, just abort.
+      if (rc._val == RC_TRUE && schema && tuple->GetCSN() == t->xc->begin) {
+        volatile_write(rc._val, RC_ABORT_INTERNAL);
+        RETURN;
+      }
+#endif
       if (rc._val == RC_TRUE && schema &&
           schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION &&
           tuple->GetCSN() <= schema->csn) {
