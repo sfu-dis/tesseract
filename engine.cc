@@ -389,7 +389,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
       // transaction with a begin timestamp (which is equal to DDL csn) can read
       // an old schema record, but it also can read a latest normal table
       // record, causing inconsistency. Thus, when it happens, just abort.
-      if (rc._val == RC_TRUE && schema && tuple->GetCSN() == t->xc->begin) {
+      if (rc._val == RC_TRUE && tuple->GetCSN() == t->xc->begin) {
         volatile_write(rc._val, RC_ABORT_INTERNAL);
         RETURN;
       }
