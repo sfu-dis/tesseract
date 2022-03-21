@@ -260,7 +260,7 @@ rc_t transaction::si_commit() {
                                  &lb_lsn, &segnum, xc->end);
   }
 
-  ddl::ddl_flags *flags = ddl_exe ? ddl_exe->get_ddl_flags() : nullptr;
+  ddl::ddl_flags *ddl_flags = ddl_exe ? ddl_exe->get_ddl_flags() : nullptr;
   if (is_ddl()) {
     DLOG(INFO) << "DDL txn end: " << xc->end;
     // If txn is DDL, commit schema record(s) first before CDC
@@ -307,7 +307,7 @@ rc_t transaction::si_commit() {
           (*it)->SetArrays(false);
         }
       }
-      flags->ddl_td_set = true;
+      ddl_flags->ddl_td_set = true;
     }
 #endif
   }
@@ -318,19 +318,19 @@ rc_t transaction::si_commit() {
     if (ddl_exe->get_ddl_type() != ddl::ddl_type::NO_COPY_VERIFICATION) {
       // Start the second round of CDC
       DLOG(INFO) << "Second CDC begins";
-      flags->cdc_second_phase = true;
-      flags->cdc_end_total.store(0);
+      ddl_flags->cdc_second_phase = true;
+      ddl_flags->cdc_end_total.store(0);
       uint32_t cdc_threads = ddl_exe->changed_data_capture(this);
       if (config::enable_late_scan_join) {
         ddl_exe->join_scan_workers();
       }
-      while (flags->cdc_end_total.load() != cdc_threads && !flags->ddl_failed) {
+      while (ddl_flags->cdc_end_total.load() != cdc_threads && !ddl_flags->ddl_failed) {
       }
-      flags->cdc_running = false;
+      ddl_flags->cdc_running = false;
       ddl_exe->join_cdc_workers();
-      flags->cdc_second_phase = false;
+      ddl_flags->cdc_second_phase = false;
       DLOG(INFO) << "Second CDC ends";
-      if (flags->ddl_failed) {
+      if (ddl_flags->ddl_failed) {
         DLOG(INFO) << "DDL failed";
         for (auto &v : *(ddl_exe->get_new_td_map())) {
           OrderedIndex *index = v.second->GetPrimaryIndex();
@@ -415,7 +415,7 @@ rc_t transaction::si_commit() {
   }
 
   if (is_ddl()) {
-    flags->ddl_running = false;
+    ddl_flags->ddl_running = false;
     volatile_write(xc->state, TXN::TXN_CMMTD);
 #ifdef COPYDDL
 #ifdef LAZYDDL
