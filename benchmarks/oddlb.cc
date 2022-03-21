@@ -183,9 +183,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
   }
 
   rc_t txn_read() {
-#ifdef SIDDL
-  retry:
-#endif
 #ifdef LAZYDDL
     ermia::transaction *txn =
         db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
