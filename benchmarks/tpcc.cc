@@ -324,9 +324,13 @@ rc_t tpcc_worker::txn_new_order() {
 
     const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID,
                                         k_no.no_o_id);
-    TryCatch(
-        tbl_oorder_c_id_idx(warehouse_id)
-            ->InsertOID(txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid));
+#ifdef COPYDDL
+    ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index =
+        (ermia::ConcurrentMasstreeIndex *)(*(
+            (oorder_schema.td)->GetSecIndexes().begin()));
+#endif
+    TryCatch(oorder_table_secondary_index->InsertOID(
+        txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid));
   }
 
   TryCatch(db->Commit(txn));
@@ -1687,6 +1691,9 @@ rc_t tpcc_worker::txn_ddl(uint32_t ddl_example) {
       break;
     case 6:
       table_split(txn, ddl_example);
+      break;
+    case 7:
+      preaggregation(txn, ddl_example);
       break;
     default:
       break;

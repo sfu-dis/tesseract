@@ -280,6 +280,9 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
         }
         rc = AWAIT InsertRecord(t, key, *new_tuple_value, &oid, schema);
         if (rc._val == RC_TRUE) {
+          rc = AWAIT LazyBuildSecondaryIndex(t, key, oid, schema);
+        }
+        if (rc._val == RC_TRUE) {
           tuple = AWAIT oidmgr->oid_get_version(schema->td->GetTupleArray(),
                                                 oid, t->xc);
           if (tuple && t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
@@ -485,6 +488,36 @@ ConcurrentMasstreeIndex::InsertOID(transaction *t, const varstr &key, OID oid) {
   RETURN inserted;
 }
 
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+PROMISE(rc_t)
+ConcurrentMasstreeIndex::LazyBuildSecondaryIndex(transaction *t,
+                                                 const varstr &key, OID oid,
+                                                 schema_record *schema) {
+  if (table_descriptor->GetSecIndexes().size() && schema &&
+      schema->secondary_index_key_create_idx != -1 && schema->old_index) {
+    rc_t rc = {RC_INVALID};
+    varstr old_value;
+    ((ConcurrentMasstreeIndex *)(schema->old_index))
+        ->GetRecord(t, rc, key, old_value);
+    if (rc._val == RC_TRUE) {
+      ConcurrentMasstreeIndex *secondary_index =
+          (ConcurrentMasstreeIndex *)(table_descriptor->GetSecIndexes()
+                                          .front());
+      varstr *k = new varstr(key.data(), key.size());
+      varstr *new_secondary_index_key =
+          ddl::reformats[schema->secondary_index_key_create_idx](
+              k, old_value, &(t->string_allocator()), schema->v, 0, oid);
+      if (!AWAIT secondary_index->InsertOID(t, *new_secondary_index_key, oid)) {
+        RETURN rc_t{RC_ABORT_INTERNAL};
+      }
+    } else {
+      RETURN rc_t{RC_ABORT_INTERNAL};
+    }
+  }
+  RETURN rc_t{RC_TRUE};
+}
+#endif
+
 PROMISE(rc_t)
 ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
                                       varstr &value, OID *out_oid,
@@ -526,30 +559,6 @@ ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key,
     RETURN rc_t{RC_ABORT_INTERNAL};
   }
 
-#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
-  if (table_descriptor->GetSecIndexes().size() && schema &&
-      schema->secondary_index_key_create_idx != -1 && schema->old_index) {
-    rc_t rc = {RC_INVALID};
-    varstr old_value;
-    ((ConcurrentMasstreeIndex *)(schema->old_index))
-        ->GetRecord(t, rc, key, old_value, nullptr);
-    if (rc._val == RC_TRUE) {
-      ConcurrentMasstreeIndex *secondary_index =
-          (ConcurrentMasstreeIndex *)(table_descriptor->GetSecIndexes()
-                                          .front());
-      varstr *k = new varstr(key.data(), key.size());
-      varstr *new_secondary_index_key =
-          ddl::reformats[schema->secondary_index_key_create_idx](
-              k, old_value, &(t->string_allocator()), schema->v, 0, oid);
-      if (!AWAIT secondary_index->InsertOID(t, *new_secondary_index_key, oid)) {
-        RETURN rc_t{RC_ABORT_INTERNAL};
-      }
-    } else {
-      RETURN rc_t{RC_ABORT_INTERNAL};
-    }
-  }
-#endif
-
   if (out_oid) {
     *out_oid = oid;
   }
@@ -580,6 +589,9 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
         ->GetRecord(t, rc, key, old_value, &out_oid);
     if (rc._val == RC_TRUE) {
       rc = AWAIT InsertRecord(t, key, value, &out_oid, schema);
+      if (rc._val == RC_TRUE) {
+        rc = AWAIT LazyBuildSecondaryIndex(t, key, out_oid, schema);
+      }
     } else {
       rc = rc_t{RC_ABORT_INTERNAL};
     }

@@ -260,6 +260,12 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
   ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
               ScanCallback &callback, schema_record *schema = nullptr) override;
 
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+  PROMISE(rc_t)
+  LazyBuildSecondaryIndex(transaction *t, const varstr &key,
+                          OID oid, schema_record *schema = nullptr) override;
+#endif
+
   inline size_t Size() override { return masstree_.size(); }
   std::map<std::string, uint64_t> Clear() override;
   inline void SetArrays(bool primary) override {

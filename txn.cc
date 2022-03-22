@@ -288,8 +288,8 @@ rc_t transaction::si_commit() {
             oidmgr->get_allocator(ddl_exe->get_old_td()->GetTupleFid());
         uint32_t himark = alloc->head.hiwater_mark;
         auto *new_tuple_array = v.second->GetTupleArray();
-        new_tuple_array->ensure_size(himark - 64);
-        oidmgr->recreate_allocator(v.second->GetTupleFid(), himark - 64);
+        new_tuple_array->ensure_size(himark);
+        oidmgr->recreate_allocator(v.second->GetTupleFid(), himark);
         auto *new_alloc = oidmgr->get_allocator(v.second->GetTupleFid());
         himark = new_alloc->head.hiwater_mark;
 
@@ -324,7 +324,8 @@ rc_t transaction::si_commit() {
       if (config::enable_late_scan_join) {
         ddl_exe->join_scan_workers();
       }
-      while (ddl_flags->cdc_end_total.load() != cdc_threads && !ddl_flags->ddl_failed) {
+      while (ddl_flags->cdc_end_total.load() != cdc_threads &&
+             !ddl_flags->ddl_failed) {
       }
       ddl_flags->cdc_running = false;
       ddl_exe->join_cdc_workers();

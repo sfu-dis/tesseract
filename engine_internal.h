@@ -35,13 +35,13 @@ class OrderedIndex {
                         const varstr &value) = 0;
   };
 
-  virtual PROMISE(rc_t) WriteSchemaTable(transaction *t, rc_t &rc,
-                                         const varstr &key, varstr &value,
-					 OID oid, bool is_insert = false) = 0;
+  virtual PROMISE(rc_t)
+      WriteSchemaTable(transaction *t, rc_t &rc, const varstr &key,
+                       varstr &value, OID oid, bool is_insert = false) = 0;
 
   virtual PROMISE(void)
       ReadSchemaRecord(transaction *t, rc_t &rc, const varstr &key,
-                      varstr &value, OID *out_oid = nullptr) = 0;
+                       varstr &value, OID *out_oid = nullptr) = 0;
 
   // Get a record with a key of length keylen. The underlying DB does not manage
   // the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
@@ -88,6 +88,12 @@ class OrderedIndex {
   // Default implementation calls put() with NULL (zero-length) value
   virtual PROMISE(rc_t) RemoveRecord(transaction *t, const varstr &key,
                                      schema_record *schema = nullptr) = 0;
+
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+  virtual PROMISE(rc_t)
+      LazyBuildSecondaryIndex(transaction *t, const varstr &key, OID oid,
+                              schema_record *schema = nullptr) = 0;
+#endif
 
   virtual size_t Size() = 0;
   virtual std::map<std::string, uint64_t> Clear() = 0;
