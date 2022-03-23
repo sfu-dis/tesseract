@@ -150,6 +150,12 @@ struct dbtuple {
     }
   }
 
+  inline uint64_t GetCSN() {
+    Object *obj = GetObject();
+    fat_ptr csn = obj->GetCSN();
+    return csn.asi_type() == fat_ptr::ASI_CSN ? CSN::from_ptr(csn).offset() : 0;
+  }
+
  public:
   inline rc_t DoRead(varstr *out_v) {
     out_v->p = get_value_start();

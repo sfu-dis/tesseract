@@ -3,6 +3,7 @@
 #include "txn.h"
 #include "varstr.h"
 #include "engine_internal.h"
+#include "schema.h"
 #include "../benchmarks/record/encoder.h"
 
 #if __clang__
@@ -21,8 +22,6 @@ using std::suspend_never;
 
 namespace ermia {
 
-extern bool is_loading;
-
 extern std::mutex tlog_lock;
 
 // Get "my" own log
@@ -32,6 +31,8 @@ dlog::tls_log *GetLog();
 dlog::tls_log *GetLog(uint32_t logid);
 
 class Table;
+
+extern TableDescriptor *schema_td;
 
 class Engine {
  private:
@@ -80,6 +81,22 @@ class Engine {
     t->Abort();
     t->uninitialize();
   }
+
+#ifdef BLOCKDDL
+  inline void BuildLockMap(FID table_fid) {
+    std::unique_lock<std::mutex> lock(transaction::map_rw_latch);
+    if (transaction::lock_map.find(table_fid) == transaction::lock_map.end()) {
+      pthread_rwlockattr_t attr;
+      transaction::lock_map[table_fid] = new pthread_rwlock_t;
+      pthread_rwlockattr_init(&attr);
+      int ret = pthread_rwlockattr_setkind_np(
+          &attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+      LOG_IF(FATAL, ret);
+      ret = pthread_rwlock_init(transaction::lock_map[table_fid], &attr);
+      LOG_IF(FATAL, ret);
+    }
+  }
+#endif
 };
 
 // User-facing table abstraction, operates on OIDs only
@@ -118,8 +135,13 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
 
   struct XctSearchRangeCallback
       : public ConcurrentMasstree::low_level_search_range_callback {
-    XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback)
-        : t(t), caller_callback(caller_callback) {}
+    XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback,
+                           schema_record *schema,
+                           TableDescriptor *table_descriptor)
+        : t(t),
+          caller_callback(caller_callback),
+          schema(schema),
+          table_descriptor(table_descriptor) {}
 
     virtual void on_resp_node(
         const typename ConcurrentMasstree::node_opaque_t *n, uint64_t version);
@@ -127,11 +149,13 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
                         const typename ConcurrentMasstree::string_type &k,
                         dbtuple *v,
                         const typename ConcurrentMasstree::node_opaque_t *n,
-                        uint64_t version);
+                        uint64_t version, OID oid);
 
    private:
     transaction *const t;
     SearchRangeCallback *const caller_callback;
+    schema_record *schema;
+    TableDescriptor *table_descriptor;
   };
 
   struct PurgeTreeWalker : public ConcurrentMasstree::tree_walk_callback {
@@ -152,6 +176,8 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
  public:
   ConcurrentMasstreeIndex(const char *table_name, bool primary)
       : OrderedIndex(table_name, primary) {}
+  ConcurrentMasstreeIndex(const char *table_name, bool primary, FID self_fid)
+      : OrderedIndex(table_name, primary, self_fid) {}
 
   ConcurrentMasstree &GetMasstree() { return masstree_; }
 
@@ -204,29 +230,51 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
                                          ScanCallback &callback,
                                          uint32_t max_keys = ~uint32_t{0});
 
+  PROMISE(rc_t)
+  WriteSchemaTable(transaction *t, rc_t &rc, const varstr &key,
+                   varstr &value, OID oid, bool is_insert = false) override;
+
+  PROMISE(void)
+  ReadSchemaRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+                   OID *out_oid = nullptr) override;
+
   PROMISE(void)
   GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-            OID *out_oid = nullptr) override;
+            OID *out_oid = nullptr, schema_record *schema = nullptr) override;
   PROMISE(rc_t)
-  UpdateRecord(transaction *t, const varstr &key, varstr &value) override;
+  UpdateRecord(transaction *t, const varstr &key, varstr &value,
+               schema_record *schema = nullptr) override;
   PROMISE(rc_t)
   InsertRecord(transaction *t, const varstr &key, varstr &value,
-               OID *out_oid = nullptr) override;
-  PROMISE(rc_t) RemoveRecord(transaction *t, const varstr &key) override;
+               OID *out_oid = nullptr,
+               schema_record *schema = nullptr) override;
+  PROMISE(rc_t)
+  RemoveRecord(transaction *t, const varstr &key,
+               schema_record *schema = nullptr) override;
   PROMISE(bool) InsertOID(transaction *t, const varstr &key, OID oid) override;
 
   PROMISE(rc_t)
   Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-       ScanCallback &callback) override;
+       ScanCallback &callback, schema_record *schema = nullptr) override;
   PROMISE(rc_t)
   ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
-              ScanCallback &callback) override;
+              ScanCallback &callback, schema_record *schema = nullptr) override;
+
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+  PROMISE(rc_t)
+  LazyBuildSecondaryIndex(transaction *t, const varstr &key,
+                          OID oid, schema_record *schema = nullptr) override;
+#endif
 
   inline size_t Size() override { return masstree_.size(); }
   std::map<std::string, uint64_t> Clear() override;
   inline void SetArrays(bool primary) override {
     masstree_.set_arrays(table_descriptor, primary);
   }
+  inline oid_array *GetTupleArray() override {
+    return masstree_.get_table()->tuple_array_;
+  }
+  inline bool GetIsPrimary() override { return masstree_.is_primary_idx(); };
 
   inline PROMISE(void) GetOID(
       const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,

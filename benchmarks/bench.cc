@@ -19,6 +19,11 @@
 
 volatile bool running = true;
 std::vector<bench_worker *> bench_runner::workers;
+volatile int ddl_done = 0;
+volatile int ddl_worker_id = -1;
+volatile bool ddl_start = false;
+volatile unsigned ddl_start_times[8];
+volatile unsigned ddl_examples[8];
 
 thread_local ermia::epoch_num coroutine_batch_end_epoch = 0;
 
@@ -28,6 +33,18 @@ retry:
   util::timer t;
   const unsigned long old_seed = r.get_seed();
   const auto ret = workload[i].fn(this);
+  if (finish_workload(ret, i, t)) {
+    r.set_seed(old_seed);
+    goto retry;
+  }
+}
+
+void bench_worker::do_ddl_workload_function(uint32_t i) {
+  ASSERT(ddl_workload.size());
+retry:
+  util::timer t;
+  const unsigned long old_seed = r.get_seed();
+  const auto ret = ddl_workload[i].ddl_fn(this, ddl_workload[i].ddl_example);
   if (finish_workload(ret, i, t)) {
     r.set_seed(old_seed);
     goto retry;
@@ -106,14 +123,29 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx,
 void bench_worker::MyWork(char *) {
   if (is_worker) {
     tlog = ermia::GetLog();
+    // Set _tls_durable_csn to be current global_durable_csn to
+    // mark logs as active for cdc use
+    tlog->reset_committer(false);
     workload = get_workload();
+    ddl_workload = get_ddl_workload();
     txn_counts.resize(workload.size());
     barrier_a->count_down();
     barrier_b->wait_for();
 
     while (running) {
-      uint32_t workload_idx = fetch_workload();
-      do_workload_function(workload_idx);
+      if (worker_id == ddl_worker_id && ddl_done < ermia::config::ddl_total &&
+          ddl_start) {
+        util::timer ddl_timer;
+        do_ddl_workload_function(ddl_done);
+        double lap = ddl_timer.lap();
+        DLOG(INFO) << "DDL duration: " << lap / 1000000.0 << "s" << std::endl;
+        ddl_done++;
+        ddl_start = false;
+        ermia::ddl::ddl_start = false;
+      } else {
+        uint32_t workload_idx = fetch_workload();
+        do_workload_function(workload_idx);
+      }
     }
   }
 }
@@ -190,6 +222,11 @@ void bench_runner::run() {
     for (auto &tlog : ermia::dlog::tlogs) {
       LOG_IF(FATAL, tlog->get_commit_queue_size() > 0);
     }
+
+    // Set all _tls_durable_csn to be zero first,
+    // later running threads will set its corresponding _tls_durable_csn
+    // to be current global_durable_csn to mark logs as active for cdc use
+    ermia::dlog::tlogs[0]->reset_committer(true);
   }
 
   // if (ermia::config::enable_chkpt) {
@@ -214,6 +251,11 @@ void bench_runner::run() {
 void bench_runner::start_measurement() {
   workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
+#ifdef DDL
+  util::fast_random r(2343352);
+  ddl_worker_id = r.next() % workers.size();
+  DLOG(INFO) << "ddl_worker_id: " << ddl_worker_id;
+#endif
   for (std::vector<bench_worker *>::const_iterator it = workers.begin();
        it != workers.end(); ++it) {
     while (!(*it)->IsImpersonated()) {
@@ -312,8 +354,16 @@ void bench_runner::start_measurement() {
 
   double total_util = 0;
   double sec_util = 0;
+  // uint32_t sleep_time = 1;
+  uint32_t sleep_time = 1000 * 1000;
   auto gather_stats = [&]() {
-    sleep(1);
+    if (ddl_done < ermia::config::ddl_total &&
+        slept == ddl_start_times[ddl_done] * 1000000) {
+      ddl_start = true;
+      ermia::ddl::ddl_start = true;
+    }
+    // sleep(1);
+    usleep(sleep_time);
     uint64_t sec_commits = 0, sec_aborts = 0;
     for (size_t i = 0; i < ermia::config::worker_threads; i++) {
       sec_commits += workers[i]->get_ntxn_commits();
@@ -327,16 +377,17 @@ void bench_runner::start_measurement() {
     if (ermia::config::print_cpu_util) {
       sec_util = get_cpu_util();
       total_util += sec_util;
-      printf("%lu,%lu,%lu,%.2f%%\n", slept + 1, sec_commits, sec_aborts,
-             sec_util);
+      printf("%.1f,%lu,%lu,%.2f%%\n", double(slept + sleep_time) / 1000000,
+             sec_commits, sec_aborts, sec_util);
     } else {
-      printf("%lu,%lu,%lu\n", slept + 1, sec_commits, sec_aborts);
+      printf("%.1f,%lu,%lu\n", double(slept + sleep_time) / 1000000,
+             sec_commits, sec_aborts);
     }
-    slept++;
+    slept += sleep_time;
   };
 
   // Backups run forever until told to stop.
-  while (slept < ermia::config::benchmark_seconds) {
+  while (slept < ermia::config::benchmark_seconds * 1000000) {
     gather_stats();
   }
   running = false;
@@ -365,6 +416,11 @@ void bench_runner::start_measurement() {
   size_t n_query_commits = 0;
   uint64_t latency_numer_us = 0;
   for (size_t i = 0; i < ermia::config::worker_threads; i++) {
+#ifdef COPYDDL
+    if (i == ddl_worker_id) {
+      continue;
+    }
+#endif
     n_commits += workers[i]->get_ntxn_commits();
     n_aborts += workers[i]->get_ntxn_aborts();
     n_int_aborts += workers[i]->get_ntxn_int_aborts();
@@ -381,20 +437,24 @@ void bench_runner::start_measurement() {
     }
   }
 
+#ifdef COPYDDL
+  double workers_size = workers.size() - 1;
+#else
+  double workers_size = workers.size();
+#endif
+
   const unsigned long elapsed = t.lap();
   const double elapsed_nosync_sec = double(elapsed_nosync) / 1000000.0;
   const double agg_nosync_throughput = double(n_commits) / elapsed_nosync_sec;
   const double avg_nosync_per_core_throughput =
-      agg_nosync_throughput / double(workers.size());
+      agg_nosync_throughput / workers_size;
 
   const double elapsed_sec = double(elapsed) / 1000000.0;
   const double agg_throughput = double(n_commits) / elapsed_sec;
-  const double avg_per_core_throughput =
-      agg_throughput / double(workers.size());
+  const double avg_per_core_throughput = agg_throughput / workers_size;
 
   const double agg_abort_rate = double(n_aborts) / elapsed_sec;
-  const double avg_per_core_abort_rate =
-      agg_abort_rate / double(workers.size());
+  const double avg_per_core_abort_rate = agg_abort_rate / workers_size;
 
   const double agg_system_abort_rate =
       double(n_aborts - n_user_aborts) / elapsed_sec;
@@ -416,6 +476,11 @@ void bench_runner::start_measurement() {
 
   tx_stat_map agg_txn_counts = workers[0]->get_txn_counts();
   for (size_t i = 1; i < workers.size(); i++) {
+#ifdef COPYDDL
+    if (i == ddl_worker_id) {
+      continue;
+    }
+#endif
     auto &c = workers[i]->get_txn_counts();
     for (auto &t : c) {
       std::get<0>(agg_txn_counts[t.first]) += std::get<0>(t.second);

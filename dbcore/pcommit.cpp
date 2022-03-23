@@ -15,7 +15,7 @@ namespace pcommit {
 uint64_t *_tls_durable_csn =
     (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
 
-// Up to which CSN are we sure all transcations are durable
+// Up to which CSN are we sure all transactions are durable
 std::atomic<uint64_t> global_durable_csn(0);
 
 void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush,
@@ -36,6 +36,7 @@ void commit_queue::push_back(uint64_t csn, uint64_t start_time, bool *flush,
 }
 
 void commit_queue::extend() {
+  CRITICAL_SECTION(cs, lock);
   Entry *new_queue = new Entry[length * 2];
   memcpy(new_queue, queue, sizeof(Entry) * length);
   length *= 2;
@@ -48,11 +49,24 @@ void tls_committer::initialize(uint32_t id) {
   _commit_queue = new commit_queue();
 }
 
+void tls_committer::reset(bool set_zero) {
+  delete _commit_queue;
+  _commit_queue = new commit_queue();
+  if (set_zero) {
+    DLOG(INFO) << id << " set all 0";
+    memset(_tls_durable_csn, 0, sizeof(uint64_t) * config::MAX_THREADS);
+  } else {
+    DLOG(INFO) << id << " set lowest csn";
+    _tls_durable_csn[id] = global_durable_csn.load(std::memory_order_relaxed);
+  }
+}
+
 uint64_t tls_committer::get_global_durable_csn() {
   bool found = false;
   uint64_t min_dirty = std::numeric_limits<uint64_t>::max();
   uint64_t max_clean = 0;
   for (uint32_t i = 0; i < ermia::dlog::tlogs.size(); i++) {
+    if (!ermia::dlog::tlogs.at(i)->is_normal()) continue;
     uint64_t csn = volatile_read(_tls_durable_csn[i]);
     if (csn) {
       if (csn & DIRTY_FLAG) {

@@ -106,8 +106,7 @@ class tpcc_bench_runner : public bench_runner {
     if (g_enable_separate_tree_per_partition && !is_read_only) {
       if (NumWarehouses() <= ermia::config::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++) {
-          ret[i] = ermia::TableDescriptor::GetIndex(s_name + "_" +
-                                                    std::to_string(i));
+          ret[i] = ermia::Catalog::GetIndex(s_name + "_" + std::to_string(i));
           ALWAYS_ASSERT(ret[i]);
         }
       } else {
@@ -119,8 +118,8 @@ class tpcc_bench_runner : public bench_runner {
           const unsigned wend = (partid + 1 == ermia::config::worker_threads)
                                     ? NumWarehouses()
                                     : (partid + 1) * nwhse_per_partition;
-          ermia::OrderedIndex *idx = ermia::TableDescriptor::GetIndex(
-              s_name + "_" + std::to_string(partid));
+          ermia::OrderedIndex *idx =
+              ermia::Catalog::GetIndex(s_name + "_" + std::to_string(partid));
           ALWAYS_ASSERT(idx);
           for (size_t i = wstart; i < wend; i++) {
             ret[i] = idx;
@@ -128,7 +127,7 @@ class tpcc_bench_runner : public bench_runner {
         }
       }
     } else {
-      ermia::OrderedIndex *idx = ermia::TableDescriptor::GetIndex(s_name);
+      ermia::OrderedIndex *idx = ermia::Catalog::GetIndex(s_name);
       ALWAYS_ASSERT(idx);
       for (size_t i = 0; i < NumWarehouses(); i++) {
         ret[i] = idx;
@@ -214,6 +213,7 @@ class tpcc_bench_runner : public bench_runner {
     RegisterIndex(db, "region", "region", true);
     RegisterIndex(db, "supplier", "supplier", true);
     RegisterIndex(db, "warehouse", "warehouse", true);
+    ermia::create_schema_table(db, "SCHEMA");
   }
 
   virtual void prepare(char *) {
@@ -228,6 +228,8 @@ class tpcc_bench_runner : public bench_runner {
       for (size_t i = 0; i < v.size(); i++)
         open_tables[t.first + "_" + std::to_string(i)] = v[i];
     }
+
+    open_tables["SCHEMA"] = ermia::Catalog::GetPrimaryIndex("SCHEMA");
 
     if (g_new_order_fast_id_gen) {
       void *const px =
@@ -245,6 +247,7 @@ class tpcc_bench_runner : public bench_runner {
  protected:
   virtual std::vector<bench_loader *> make_loaders() {
     std::vector<bench_loader *> ret;
+    ret.push_back(new tpcc_schematable_loader(0, db, open_tables));
     ret.push_back(new tpcc_warehouse_loader(9324, db, open_tables, partitions));
     ret.push_back(new tpcc_nation_loader(1512, db, open_tables, partitions));
     ret.push_back(new tpcc_region_loader(789121, db, open_tables, partitions));
@@ -326,10 +329,12 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
         {"microbench-wr-rows", required_argument, 0, 'q'},
         {"suppliers", required_argument, 0, 'z'},
         {"hybrid", no_argument, &g_hybrid, 1},
+        {"ddl-start-times", required_argument, 0, 'd'},
+        {"ddl-examples", required_argument, 0, 'e'},
         {0, 0, 0, 0}};
     int option_index = 0;
-    int c =
-        getopt_long(argc, argv, "r:w:s:t:n:p:q:z", long_options, &option_index);
+    int c = getopt_long(argc, argv, "r:w:s:t:n:p:q:z:d:e:", long_options,
+                        &option_index);
     if (c == -1) break;
     switch (c) {
       case 0:
@@ -369,13 +374,38 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
         }
         ALWAYS_ASSERT(s == 100);
       } break;
+
       case 'z':
         g_nr_suppliers = strtoul(optarg, NULL, 10);
         ALWAYS_ASSERT(g_nr_suppliers > 0);
         break;
 
+      case 'd': {
+        const std::vector<std::string> toks = util::split(optarg, ',');
+        unsigned s = 0;
+        for (size_t i = 0; i < toks.size(); i++) {
+          unsigned t = strtoul(toks[i].c_str(), nullptr, 10);
+          ALWAYS_ASSERT(t >= 0);
+          ddl_start_times[i] = t;
+          s++;
+        }
+        ALWAYS_ASSERT(s == ermia::config::ddl_total);
+      } break;
+
+      case 'e': {
+        const std::vector<std::string> toks = util::split(optarg, ',');
+        unsigned s = 0;
+        for (size_t i = 0; i < toks.size(); i++) {
+          unsigned e = strtoul(toks[i].c_str(), nullptr, 10);
+          ALWAYS_ASSERT(e >= 0);
+          ddl_examples[i] = e;
+          s++;
+        }
+        ALWAYS_ASSERT(s == ermia::config::ddl_total);
+      } break;
+
       case '?':
-        /* getopt_long already printed an error message. */
+        // getopt_long already printed an error message.
         exit(1);
 
       default:
@@ -454,8 +484,9 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
   }
 
   if (ermia::config::coro_tx) {
-    tpcc_bench_runner<tpcc_cs_worker> r(db);
-    r.run();
+    // tpcc_bench_runner<tpcc_cs_worker> r(db);
+    // r.run();
+    LOG(FATAL) << "Not supported";
   } else {
     tpcc_bench_runner<tpcc_worker> r(db);
     r.run();

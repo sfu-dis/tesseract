@@ -47,7 +47,7 @@ DEFINE_bool(numa_spread, false,
 DEFINE_string(tmpfs_dir, "/dev/shm",
               "Path to a tmpfs location. Used by log buffer.");
 DEFINE_string(log_data_dir, "/tmpfs/ermia-log", "Log directory.");
-DEFINE_uint64(log_buffer_mb, 16, "Log buffer size in MB.");
+DEFINE_uint64(log_buffer_kb, 256, "Log buffer size in KB");
 DEFINE_uint64(log_segment_mb, 16384, "Log segment size in MB.");
 DEFINE_bool(phantom_prot, false, "Whether to enable phantom protection.");
 DEFINE_bool(print_cpu_util, false, "Whether to print CPU utilization.");
@@ -110,6 +110,33 @@ DEFINE_bool(kStateRunning, false,
 DEFINE_bool(iouring_read_log, false,
             "Whether to use iouring to load versions from logs.");
 
+// DDL & CDC settings
+DEFINE_uint64(cdc_threads, 3, "Number of CDC threads");
+DEFINE_bool(cdc_physical_workers_only, true,
+            "Whether to use physical workers for CDC");
+DEFINE_uint64(scan_threads, 3, "Number of scan threads");
+DEFINE_bool(scan_physical_workers_only, true,
+            "Whether to use physical workers for scan");
+DEFINE_bool(enable_cdc_schema_lock, true,
+            "Whether to lock schema records when CDC");
+DEFINE_bool(enable_cdc_verification_test, false,
+            "Whether enable CDC test for verification related DDL");
+DEFINE_bool(enable_dml_slow_down, true, "Whether make DMLs slow down when DDL");
+DEFINE_uint64(ddl_total, 1, "Number of DDL txns");
+DEFINE_uint64(no_copy_verification_version_add, 1,
+              "To which version we want to add to version when doing no copy "
+              "verification");
+DEFINE_uint64(ddl_example, 0, "DDL example");
+DEFINE_bool(enable_ddl_keys, false, "Whether need maintain key arrays");
+DEFINE_bool(enable_lazy_background, false,
+            "Whether enable background migration for lazy DDL");
+DEFINE_bool(enable_late_scan_join, false,
+            "Whether enable join scan workers after commit");
+DEFINE_bool(enable_parallel_scan_cdc, true,
+            "Whether enable doing scan and CDC together");
+DEFINE_uint64(dml_slow_down_prob, 50,
+              "Probability of a DML should slow down when DDL");
+
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
   std::istringstream iss(s);
@@ -137,17 +164,49 @@ int main(int argc, char **argv) {
   ermia::config::enable_perf = FLAGS_enable_perf;
   ermia::config::perf_record_event = FLAGS_perf_record_event;
   ermia::config::physical_workers_only = FLAGS_physical_workers_only;
-  if (ermia::config::physical_workers_only)
+  ermia::config::cdc_physical_workers_only = FLAGS_cdc_physical_workers_only;
+  ermia::config::scan_physical_workers_only = FLAGS_scan_physical_workers_only;
+
+  ermia::config::replay_threads = 0;
+  ermia::config::worker_threads = FLAGS_threads;
+  ermia::config::cdc_threads = FLAGS_cdc_threads;
+  ermia::config::scan_threads = FLAGS_scan_threads;
+  ermia::config::enable_cdc_schema_lock = FLAGS_enable_cdc_schema_lock;
+  ermia::config::enable_cdc_verification_test =
+      FLAGS_enable_cdc_verification_test;
+  ermia::config::enable_dml_slow_down = FLAGS_enable_dml_slow_down;
+  ermia::config::ddl_total = FLAGS_ddl_total;
+  ermia::config::no_copy_verification_version_add =
+      FLAGS_no_copy_verification_version_add;
+  ermia::config::ddl_example = FLAGS_ddl_example;
+  ermia::config::enable_ddl_keys = FLAGS_enable_ddl_keys;
+  ermia::config::enable_lazy_background = FLAGS_enable_lazy_background;
+  ermia::config::enable_late_scan_join = FLAGS_enable_late_scan_join;
+  ermia::config::enable_parallel_scan_cdc = FLAGS_enable_parallel_scan_cdc;
+  ermia::config::dml_slow_down_prob = 1 - (float)FLAGS_dml_slow_down_prob / 100;
+
+  if (ermia::config::physical_workers_only) {
+#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+    ermia::config::threads = ermia::config::worker_threads;
+    if (ermia::config::cdc_physical_workers_only) {
+      ermia::config::threads += ermia::config::cdc_threads;
+    }
+    if (ermia::config::scan_physical_workers_only) {
+      ermia::config::threads += ermia::config::scan_threads - 1;
+    }
+#else
     ermia::config::threads = FLAGS_threads;
-  else
+#endif
+  } else {
     ermia::config::threads = (FLAGS_threads + 1) / 2;
+  }
   ermia::config::index_probe_only = FLAGS_index_probe_only;
   ermia::config::verbose = FLAGS_verbose;
   ermia::config::node_memory_gb = FLAGS_node_memory_gb;
   ermia::config::numa_spread = FLAGS_numa_spread;
   ermia::config::tmpfs_dir = FLAGS_tmpfs_dir;
   ermia::config::log_dir = FLAGS_log_data_dir;
-  ermia::config::log_buffer_mb = FLAGS_log_buffer_mb;
+  ermia::config::log_buffer_kb = FLAGS_log_buffer_kb;
   ermia::config::log_segment_mb = FLAGS_log_segment_mb;
   ermia::config::phantom_prot = FLAGS_phantom_prot;
   // ermia::config::recover_functor = new
@@ -181,9 +240,6 @@ int main(int argc, char **argv) {
       FLAGS_backoff_aborted_transactions;
   ermia::config::null_log_device = FLAGS_null_log_device;
   ermia::config::truncate_at_bench_start = FLAGS_truncate_at_bench_start;
-
-  ermia::config::replay_threads = 0;
-  ermia::config::worker_threads = FLAGS_threads;
 
   ermia::config::pcommit = FLAGS_pcommit;
   ermia::config::pcommit_queue_length = FLAGS_pcommit_queue_length;
@@ -263,7 +319,7 @@ int main(int argc, char **argv) {
             << std::endl;
   std::cerr << "  index-probe-only  : " << FLAGS_index_probe_only << std::endl;
   std::cerr << "  iouring-read-log  : " << FLAGS_iouring_read_log << std::endl;
-  std::cerr << "  log-buffer-mb     : " << ermia::config::log_buffer_mb
+  std::cerr << "  log_buffer_kb     : " << ermia::config::log_buffer_kb
             << std::endl;
   std::cerr << "  log-dir           : " << ermia::config::log_dir << std::endl;
   std::cerr << "  log-segment-mb    : " << ermia::config::log_segment_mb
@@ -300,6 +356,41 @@ int main(int argc, char **argv) {
 #endif
   std::cerr << "  worker-threads    : " << ermia::config::worker_threads
             << std::endl;
+#ifdef DDL
+  std::cerr << "DDL settings" << std::endl;
+  std::cerr << "  scan-threads				: "
+            << ermia::config::scan_threads << std::endl;
+  std::cerr << "  scan_physical_workers_only		: "
+            << ermia::config::scan_physical_workers_only << std::endl;
+  std::cerr << "  cdc-threads				: "
+            << ermia::config::cdc_threads << std::endl;
+  std::cerr << "  cdc_physical_workers_only		: "
+            << ermia::config::cdc_physical_workers_only << std::endl;
+  std::cerr << "  enable_cdc_schema_lock		: "
+            << ermia::config::enable_cdc_schema_lock << std::endl;
+  std::cerr << "  enable_cdc_verification_test		: "
+            << ermia::config::enable_cdc_verification_test << std::endl;
+  std::cerr << "  enable_dml_slow_down    		: "
+            << ermia::config::enable_dml_slow_down << std::endl;
+  if (ermia::config::enable_dml_slow_down) {
+    std::cerr << "  dml_slow_down_prob                    : "
+              << 1 - ermia::config::dml_slow_down_prob << std::endl;
+  }
+  std::cerr << "  ddl_total				: "
+            << ermia::config::ddl_total << std::endl;
+  std::cerr << "  no_copy_verification_version_add	: "
+            << ermia::config::no_copy_verification_version_add << std::endl;
+  std::cerr << "  ddl_example			        : "
+            << ermia::config::ddl_example << std::endl;
+  std::cerr << "  enable_ddl_keys			: "
+            << ermia::config::enable_ddl_keys << std::endl;
+  std::cerr << "  enable_lazy_background		: "
+            << ermia::config::enable_lazy_background << std::endl;
+  std::cerr << "  enable_late_scan_join			: "
+            << ermia::config::enable_late_scan_join << std::endl;
+  std::cerr << "  enable_parallel_scan_cdc              : "
+            << ermia::config::enable_parallel_scan_cdc << std::endl;
+#endif
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");
   ermia::MM::prepare_node_memory();
@@ -333,6 +424,8 @@ int main(int argc, char **argv) {
 #endif
   } else if (FLAGS_benchmark == "tpce") {
     LOG(FATAL) << "Not supported in this build";
+  } else if (FLAGS_benchmark == "oddl") {
+    test_fn = oddlb_do_test;
   } else {
     LOG(FATAL) << "Invalid benchmark: " << FLAGS_benchmark;
   }

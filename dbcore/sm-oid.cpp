@@ -617,6 +617,11 @@ fat_ptr sm_oid_mgr::UpdateTuple(oid_array *oa, OID o, const varstr *value,
   auto *ptr = oa->get(o);
 start_over:
   fat_ptr head = volatile_read(*ptr);
+#ifdef COPYDDL
+  if (head == NULL_PTR) {
+    return NULL_PTR;
+  }
+#endif
   ASSERT(head.asi_type() == 0);
   Object *old_desc = (Object *)head.offset();
   ASSERT(old_desc);
@@ -711,18 +716,19 @@ install:
   Object *new_object = (Object *)new_obj_ptr->offset();
   new_object->SetCSN(updater_xc->owner.to_ptr());
   if (overwrite) {
-    new_object->SetNextPersistent(old_desc->GetNextPersistent());
+    // new_object->SetNextPersistent(old_desc->GetNextPersistent());
     new_object->SetNextVolatile(old_desc->GetNextVolatile());
     // I already claimed it, no need to use cas then
     volatile_write(ptr->_ptr, new_obj_ptr->_ptr);
     __sync_synchronize();
     return head;
   } else {
-    fat_ptr pa = old_desc->GetPersistentAddress();
+    /*fat_ptr pa = old_desc->GetPersistentAddress();
     while (pa == NULL_PTR) {
       pa = old_desc->GetPersistentAddress();
     }
     new_object->SetNextPersistent(pa);
+    */
     new_object->SetNextVolatile(head);
     if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr,
                                      new_obj_ptr->_ptr)) {
@@ -880,6 +886,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc,
 
     auto state = volatile_read(holder->state);
     auto owner = volatile_read(holder->owner);
+    auto holder_lsn = volatile_read(holder->end);
 
     // context still valid for this XID?
     if (owner != holder_xid) {

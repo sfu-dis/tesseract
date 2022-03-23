@@ -255,7 +255,7 @@ class mbtree {
      */
     virtual bool invoke(const mbtree<masstree_params> *btr_ptr,
                         const string_type &k, dbtuple *v,
-                        const node_opaque_t *n, uint64_t version) = 0;
+                        const node_opaque_t *n, uint64_t version, OID oid) = 0;
   };
 
   /**
@@ -1181,7 +1181,8 @@ class mbtree<P>::low_level_search_range_scanner
     }
     return true;
   }
-  inline bool visit_value(const Masstree::key<uint64_t> &key, dbtuple *value) {
+  inline bool visit_value(const Masstree::key<uint64_t> &key, dbtuple *value,
+                          OID oid) {
     if (this->boundary_compar_) {
       lcdf::Str bs(this->boundary_->data(), this->boundary_->size());
       if ((!Reverse && bs <= key.full_string()) ||
@@ -1189,7 +1190,7 @@ class mbtree<P>::low_level_search_range_scanner
         return false;
     }
     return callback_.invoke(this->btr_ptr_, key.full_string(), value, this->n_,
-                            this->v_);
+                            this->v_, oid);
   }
 
  private:

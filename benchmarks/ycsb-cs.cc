@@ -74,6 +74,11 @@ class ycsb_cs_worker : public ycsb_base_worker {
     return w;
   }
 
+  virtual ddl_workload_desc_vec get_ddl_workload() const override {
+    ddl_workload_desc_vec ddl_w;
+    return ddl_w;
+  }
+
   static ermia::coro::generator<rc_t> TxnRead(bench_worker *w, uint32_t idx,
                                               ermia::epoch_num begin_epoch) {
     return static_cast<ycsb_cs_worker *>(w)->txn_read(idx, begin_epoch);

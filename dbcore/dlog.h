@@ -118,12 +118,18 @@ class tls_log {
   // Lock
   mcs_lock lock;
 
+  // Whether dirty
+  bool dirty;
+
+  // Whether do normal operations
+  bool normal;
+
+  // Whether doing DDL
+  bool doing_ddl;
+
  private:
   // Get the currently open segment
   inline segment *current_segment() { return &segments[segments.size() - 1]; }
-
-  // Do flush when doing enqueue commits
-  void enqueue_flush();
 
   // Issue an async I/O to flush the current active log buffer
   void issue_flush(const char *buf, uint64_t size);
@@ -151,11 +157,32 @@ class tls_log {
   inline uint32_t get_id() { return id; }
   inline segment *get_segment(uint32_t segnum) { return &segments[segnum]; }
 
+  inline bool is_dirty() { return dirty; }
+
+  inline void set_dirty(bool _dirty) { dirty = _dirty; }
+
+  inline bool is_normal() { return normal; }
+
+  inline void set_normal(bool _normal) { normal = _normal; }
+
+  inline bool is_doing_ddl() { return doing_ddl; }
+
+  inline void set_doing_ddl(bool _doing_ddl) { doing_ddl = _doing_ddl; }
+
+  inline std::vector<segment> *get_segments() { return &segments; }
+
+  inline uint64_t get_logbuf_size() { return logbuf_size; }
+
   inline uint64_t get_latest_csn() { return latest_csn; }
 
   inline pcommit::tls_committer *get_committer() { return &tcommitter; }
 
   inline uint64_t get_latency() { return tcommitter.get_latency(); }
+
+  inline tlog_lsn get_durable_lsn() { return durable_lsn; }
+
+  // reset this committer
+  inline void reset_committer(bool set_zero) { tcommitter.reset(set_zero); }
 
   // Allocate a log block in-place on the log buffer
   log_block *allocate_log_block(uint32_t payload_size, uint64_t *out_cur_lsn,
@@ -171,6 +198,9 @@ class tls_log {
     return tcommitter.get_queue_size();
   }
 
+  // Do flush when doing enqueue commits
+  void enqueue_flush();
+
   // Last flush
   void last_flush();
 
@@ -182,6 +212,9 @@ class tls_log {
   void issue_read(int fd, char *buf, uint64_t size, uint64_t offset);
 
   bool peek_read(char *buf, uint64_t size);
+
+  // Resize log buffer
+  void resize_logbuf(uint64_t logbuf_m);
 };
 
 extern std::vector<tls_log *> tlogs;

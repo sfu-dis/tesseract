@@ -116,8 +116,7 @@ class ycsb_bench_runner : public bench_runner {
   }
 
   virtual void prepare(char *) {
-    open_tables["USERTABLE"] =
-        ermia::TableDescriptor::GetPrimaryIndex("USERTABLE");
+    open_tables["USERTABLE"] = ermia::Catalog::GetPrimaryIndex("USERTABLE");
   }
 
  protected:

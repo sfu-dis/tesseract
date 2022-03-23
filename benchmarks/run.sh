@@ -25,19 +25,19 @@ runtime=$1; shift
 
 bench=${workload:0:4}
 
-if [[ "$bench" != "tpce" && "$bench" != "ycsb" && "$bench" != "tpcc" ]]; then
+if [[ "$bench" != "oddl" && "$bench" != "tpce" && "$bench" != "ycsb" && "$bench" != "tpcc" ]]; then
   echo "Unsupported benchmark $bench."
 fi
 
-if [ -z ${logbuf_mb+x} ]; then
-  logbuf_mb=8
-  echo "logbuf_mb is unset, using $logbuf_mb";
+if [ -z ${logbuf_kb+x} ]; then
+  logbuf_kb=32
+  echo "logbuf_kb is unset, using $logbuf_kb";
 else
-  echo "logbuf_mb is set to $logbuf_mb";
+  echo "logbuf_kb is set to $logbuf_kb";
 fi
 
 options="$exe $1 -verbose=1 -benchmark $bench -threads $threads -scale_factor $sf -seconds $runtime \
-  -log_data_dir $LOGDIR -log_buffer_mb=$logbuf_mb -parallel_loading"
+  -log_data_dir $LOGDIR -log_buffer_kb=$logbuf_kb -parallel_loading"
 echo $options
 if [ "$bench" == "tpcc" ]; then
   btype=${workload:4:1}
@@ -64,6 +64,8 @@ elif [ "$bench" == "tpce" ]; then
     $options -benchmark_options "--query-range $query_rng --egen-dir ./benchmarks/egen/flat/egen_flat_in --customer 5000 --working-days 10 --workload-mix="4.9,8,1,13,14,8,10.1,10,9,2,20" $2"
   fi
 elif [ "$bench" == "ycsb" ]; then
+  $options -benchmark_options "$2"
+elif [ "$bench" == "oddl" ]; then
   $options -benchmark_options "$2"
 else
   echo "Unspported benchmark $bench."

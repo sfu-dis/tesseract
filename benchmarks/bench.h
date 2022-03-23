@@ -10,6 +10,7 @@
 #include "../engine.h"
 #include "../util.h"
 
+extern void oddlb_do_test(ermia::Engine *db, int argc, char **argv);
 extern void ycsb_do_test(ermia::Engine *db, int argc, char **argv);
 extern void ycsb_cs_do_test(ermia::Engine *db, int argc, char **argv);
 extern void ycsb_cs_advance_do_test(ermia::Engine *db, int argc, char **argv);
@@ -21,6 +22,9 @@ enum { RUNMODE_TIME = 0, RUNMODE_OPS = 1 };
 
 // benchmark global variables
 extern volatile bool running;
+extern volatile int ddl_done;
+extern volatile unsigned ddl_start_times[8];
+extern volatile unsigned ddl_examples[8];
 
 template <typename T>
 static std::vector<T> unique_filter(const std::vector<T> &v) {
@@ -121,6 +125,7 @@ class bench_worker : public ermia::thread::Runner {
 
   /* For 'normal' workload (r/w on primary, r/o on backups) */
   typedef rc_t (*txn_fn_t)(bench_worker *);
+  typedef rc_t (*txn_ddl_fn_t)(bench_worker *, uint32_t);
   typedef coroutine_handle<ermia::coro::generator<rc_t>::promise_type>
       CoroTxnHandle;
   typedef ermia::coro::generator<rc_t> (*coro_txn_fn_t)(bench_worker *,
@@ -142,9 +147,32 @@ class bench_worker : public ermia::thread::Runner {
     coro_txn_fn_t coro_fn;
     task_fn_t task_fn;
   };
+  struct ddl_workload_desc {
+    ddl_workload_desc() {}
+    ddl_workload_desc(const std::string &name, double frequency,
+                      txn_ddl_fn_t ddl_fn, uint32_t ddl_example = 0,
+                      coro_txn_fn_t cf = nullptr, task_fn_t tf = nullptr)
+        : name(name),
+          frequency(frequency),
+          ddl_fn(ddl_fn),
+          ddl_example(ddl_example),
+          coro_fn(cf),
+          task_fn(tf) {
+      ALWAYS_ASSERT(frequency == 0.0);
+    }
+    std::string name;
+    double frequency;
+    txn_ddl_fn_t ddl_fn;
+    uint32_t ddl_example;
+    coro_txn_fn_t coro_fn;
+    task_fn_t task_fn;
+  };
   typedef std::vector<workload_desc> workload_desc_vec;
+  typedef std::vector<ddl_workload_desc> ddl_workload_desc_vec;
   virtual workload_desc_vec get_workload() const = 0;
+  virtual ddl_workload_desc_vec get_ddl_workload() const = 0;
   workload_desc_vec workload;
+  ddl_workload_desc_vec ddl_workload;
 
   inline size_t get_ntxn_commits() const { return ntxn_commits; }
   inline size_t get_ntxn_aborts() const { return ntxn_aborts; }
@@ -174,6 +202,7 @@ class bench_worker : public ermia::thread::Runner {
   const tx_stat_map get_txn_counts() const;
 
   void do_workload_function(uint32_t i);
+  void do_ddl_workload_function(uint32_t i);
   uint32_t fetch_workload();
   bool finish_workload(rc_t ret, uint32_t workload_idx, util::timer t);
 

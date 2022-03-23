@@ -6,6 +6,7 @@
 
 #include <string>
 
+#include "../catalog_mgr.h"
 #include "bench.h"
 #include "tpcc.h"
 
@@ -343,6 +344,116 @@ class tpcc_worker_mixin : private _dummy {
       if (g_wh_spread == 0 || r.next_uniform() >= g_wh_spread) return home_wh;
       return r.next() % NumWarehouses() + 1;
     }
+  }
+};
+
+class tpcc_schematable_loader : public ermia::schematable_loader {
+ public:
+  tpcc_schematable_loader(
+      unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables)
+      : ermia::schematable_loader(seed, db, open_tables) {}
+
+ protected:
+  void load() {
+    ermia::OrderedIndex *tbl = open_tables.at("SCHEMA");
+    ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
+
+    auto add_column = [=](ermia::varstr *key, ermia::varstr &value,
+                          ermia::str_arena *arena, uint64_t schema_version,
+                          ermia::FID fid, ermia::OID oid) {
+      order_line::value v_ol_temp;
+      const order_line::value *v_ol = Decode(value, v_ol_temp);
+
+      order_line_1::value v_ol_1;
+      v_ol_1.ol_i_id = v_ol->ol_i_id;
+      v_ol_1.ol_delivery_d = v_ol->ol_delivery_d;
+      v_ol_1.ol_amount = v_ol->ol_amount;
+      v_ol_1.ol_supply_w_id = v_ol->ol_supply_w_id;
+      v_ol_1.ol_quantity = v_ol->ol_quantity;
+      v_ol_1.ol_tax = (float)0.1;
+
+      const size_t order_line_sz = ::Size(v_ol_1);
+      ermia::varstr *new_value = arena->next(order_line_sz);
+      new_value = &Encode(*new_value, v_ol_1);
+
+      return new_value;
+    };
+
+    const schema_kv::key k1(
+        ermia::Catalog::GetTable("order_line")->GetTupleFid());
+    const schema_kv::key k2(ermia::Catalog::GetTable("oorder")->GetTupleFid());
+    const schema_kv::key k3(
+        ermia::Catalog::GetTable("customer")->GetTupleFid());
+
+    struct ermia::schema_record order_line_schema;
+    order_line_schema.state = ermia::ddl::schema_state_type::READY;
+    order_line_schema.old_td = nullptr;
+    order_line_schema.old_index = nullptr;
+
+    struct ermia::schema_record oorder_schema;
+    oorder_schema.state = ermia::ddl::schema_state_type::READY;
+    oorder_schema.old_td = nullptr;
+    oorder_schema.old_index = nullptr;
+
+    struct ermia::schema_record customer_schema;
+    customer_schema.state = ermia::ddl::schema_state_type::READY;
+    customer_schema.old_td = nullptr;
+    customer_schema.old_index = nullptr;
+
+    order_line_schema.v = 0;
+    order_line_schema.csn = 0;
+    order_line_schema.reformat_idx = ermia::ddl::reformats.size();
+    order_line_schema.reformats[0] = ermia::ddl::reformats.size();
+    ermia::ddl::reformats.push_back(add_column);
+    order_line_schema.secondary_index_key_create_idx = -1;
+    order_line_schema.constraint_idx = -1;
+    order_line_schema.td = ermia::Catalog::GetTable("order_line");
+    order_line_schema.index = order_line_schema.td->GetPrimaryIndex();
+    order_line_schema.show_index = ddl_examples[0] == 3 ? false : true;
+    order_line_schema.reformats_total = 0;
+    order_line_schema.old_tds_total = 0;
+    schema_kv::value order_line_schema_value;
+    order_line_schema.record_to_value(order_line_schema_value);
+
+    oorder_schema.v = 0;
+    oorder_schema.csn = 0;
+    oorder_schema.secondary_index_key_create_idx = -1;
+    oorder_schema.td = ermia::Catalog::GetTable("oorder");
+    oorder_schema.index = oorder_schema.td->GetPrimaryIndex();
+    oorder_schema.show_index = true;
+    oorder_schema.reformats_total = 0;
+    oorder_schema.old_tds_total = 0;
+    schema_kv::value oorder_schema_value;
+    oorder_schema.record_to_value(oorder_schema_value);
+
+    customer_schema.v = 0;
+    customer_schema.csn = 0;
+    customer_schema.reformat_idx = -1;
+    customer_schema.constraint_idx = -1;
+    customer_schema.secondary_index_key_create_idx = -1;
+    customer_schema.td = ermia::Catalog::GetTable("customer");
+    customer_schema.index = customer_schema.td->GetPrimaryIndex();
+    customer_schema.show_index = true;
+    customer_schema.reformats_total = 0;
+    customer_schema.old_tds_total = 0;
+    schema_kv::value customer_schema_value;
+    customer_schema.record_to_value(customer_schema_value);
+
+    TryVerifyStrict(tbl->InsertRecord(
+        txn, Encode(str(Size(k1)), k1),
+        Encode(str(Size(order_line_schema_value)), order_line_schema_value)));
+    TryVerifyStrict(tbl->InsertRecord(
+        txn, Encode(str(Size(k2)), k2),
+        Encode(str(Size(oorder_schema_value)), oorder_schema_value)));
+    TryVerifyStrict(tbl->InsertRecord(
+        txn, Encode(str(Size(k3)), k3),
+        Encode(str(Size(customer_schema_value)), customer_schema_value)));
+    TryVerifyStrict(db->Commit(txn));
+
+    if (ermia::config::verbose) {
+      std::cerr << "[INFO] schema table loaded" << std::endl;
+    };
   }
 };
 
@@ -827,6 +938,8 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
             v.c_middle.assign("OE");
             v.c_data.assign(RandomStr(r, RandomNumber(r, 300, 500)));
 
+            v.v = 0;
+
 #ifndef NDEBUG
             checker::SanityCheckCustomer(&k, &v);
 #endif
@@ -1111,17 +1224,30 @@ class static_limit_callback : public ermia::OrderedIndex::ScanCallback {
 class credit_check_order_line_scan_callback
     : public ermia::OrderedIndex::ScanCallback {
  public:
-  credit_check_order_line_scan_callback() : sum(0) {}
+  credit_check_order_line_scan_callback(uint64_t v) : sum(0), schema_v(v) {}
   inline virtual bool Invoke(const char *keyp, size_t keylen,
                              const ermia::varstr &value) {
     MARK_REFERENCED(keyp);
     MARK_REFERENCED(keylen);
-    order_line::value v_ol_temp;
-    const order_line::value *val = Decode(value, v_ol_temp);
-    sum += val->ol_amount;
+    if (schema_v == 0) {
+      order_line::value v_ol_temp;
+      const order_line::value *val = Decode(value, v_ol_temp);
+      sum += val->ol_amount;
+    } else {
+      if (ermia::config::ddl_example == 0) {
+        order_line_1::value v_ol_temp;
+        const order_line_1::value *val = Decode(value, v_ol_temp);
+        sum += val->ol_amount;
+      } else if (ermia::config::ddl_example == 4) {
+        order_line_stock::value v_ol_temp;
+        const order_line_stock::value *val = Decode(value, v_ol_temp);
+        sum += val->ol_amount;
+      }
+    }
     return true;
   }
   double sum;
+  uint64_t schema_v;
 };
 
 class credit_check_order_scan_callback
@@ -1143,23 +1269,35 @@ class credit_check_order_scan_callback
 
 class order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
  public:
-  order_line_nop_callback() : n(0) {}
+  order_line_nop_callback(uint64_t v) : n(0), schema_v(v) {}
   virtual bool Invoke(const char *keyp, size_t keylen,
                       const ermia::varstr &value) {
     MARK_REFERENCED(keylen);
     MARK_REFERENCED(keyp);
-    ASSERT(keylen == sizeof(order_line::key));
-    order_line::value v_ol_temp;
-    const order_line::value *v_ol = Decode(value, v_ol_temp);
+    if (schema_v == 0) {
+      ASSERT(keylen == sizeof(order_line::key));
+      order_line::value v_ol_temp;
+      const order_line::value *v_ol = Decode(value, v_ol_temp);
 #ifndef NDEBUG
-    order_line::key k_ol_temp;
-    const order_line::key *k_ol = Decode(keyp, k_ol_temp);
-    checker::SanityCheckOrderLine(k_ol, v_ol);
+      order_line::key k_ol_temp;
+      const order_line::key *k_ol = Decode(keyp, k_ol_temp);
+      checker::SanityCheckOrderLine(k_ol, v_ol);
 #endif
+    } else {
+      ASSERT(keylen == sizeof(order_line_1::key));
+      if (ermia::config::ddl_example == 0) {
+        order_line_1::value v_ol_temp;
+        const order_line_1::value *v_ol = Decode(value, v_ol_temp);
+      } else if (ermia::config::ddl_example == 4) {
+        order_line_stock::value v_ol_temp;
+        const order_line_stock::value *v_ol = Decode(value, v_ol_temp);
+      }
+    }
     ++n;
     return true;
   }
   size_t n;
+  uint64_t schema_v;
 };
 
 class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
@@ -1189,26 +1327,38 @@ class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
 
 class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
  public:
-  order_line_scan_callback() : n(0) {}
+  order_line_scan_callback(uint64_t v) : n(0), schema_v(v) {}
   virtual bool Invoke(const char *keyp, size_t keylen,
                       const ermia::varstr &value) {
     MARK_REFERENCED(keyp);
     MARK_REFERENCED(keylen);
-    ASSERT(keylen == sizeof(order_line::key));
-    order_line::value v_ol_temp;
-    const order_line::value *v_ol = Decode(value, v_ol_temp);
-
+    if (schema_v == 0) {
+      ASSERT(keylen == sizeof(order_line::key));
+      order_line::value v_ol_temp;
+      const order_line::value *v_ol = Decode(value, v_ol_temp);
 #ifndef NDEBUG
-    order_line::key k_ol_temp;
-    const order_line::key *k_ol = Decode(keyp, k_ol_temp);
-    checker::SanityCheckOrderLine(k_ol, v_ol);
+      order_line::key k_ol_temp;
+      const order_line::key *k_ol = Decode(keyp, k_ol_temp);
+      checker::SanityCheckOrderLine(k_ol, v_ol);
 #endif
-
-    s_i_ids[v_ol->ol_i_id] = 1;
+      s_i_ids[v_ol->ol_i_id] = 1;
+    } else {
+      ASSERT(keylen == sizeof(order_line_1::key));
+      if (ermia::config::ddl_example == 0) {
+        order_line_1::value v_ol_temp;
+        const order_line_1::value *v_ol = Decode(value, v_ol_temp);
+        s_i_ids[v_ol->ol_i_id] = 1;
+      } else if (ermia::config::ddl_example == 4) {
+        order_line_stock::value v_ol_temp;
+        const order_line_stock::value *v_ol = Decode(value, v_ol_temp);
+        s_i_ids[v_ol->ol_i_id] = 1;
+      }
+    }
     n++;
     return true;
   }
   size_t n;
+  uint64_t schema_v;
   std::unordered_map<uint, bool> s_i_ids;
 };
 
@@ -1247,9 +1397,56 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a,
                      barrier_b),
         tpcc_worker_mixin(partitions),
-        home_warehouse_id(home_warehouse_id) {
+        home_warehouse_id(home_warehouse_id),
+        schema_index(
+            (ermia::ConcurrentMasstreeIndex *)open_tables.at("SCHEMA")),
+        schema_fid(
+            open_tables.at("SCHEMA")->GetTableDescriptor()->GetTupleFid()),
+        order_line_fid(open_tables.at("order_line_0")
+                           ->GetTableDescriptor()
+                           ->GetTupleFid()),
+        oorder_fid(
+            open_tables.at("oorder_0")->GetTableDescriptor()->GetTupleFid()),
+        customer_fid(
+            open_tables.at("customer_0")->GetTableDescriptor()->GetTupleFid())
+#if !defined(COPYDDL)
+        ,
+        order_line_table_index(
+            (ermia::ConcurrentMasstreeIndex *)open_tables.at("order_line_0")),
+        oorder_table_index(
+            (ermia::ConcurrentMasstreeIndex *)open_tables.at("oorder_0")),
+        oorder_table_secondary_index((ermia::ConcurrentMasstreeIndex *)
+                                         open_tables.at("oorder_c_id_idx_0")),
+        customer_table_index(
+            (ermia::ConcurrentMasstreeIndex *)open_tables.at("customer_0")),
+        customer_table_secondary_index(
+            (ermia::ConcurrentMasstreeIndex *)open_tables.at(
+                "customer_name_idx_0"))
+#endif
+  {
     ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
     memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
+
+    const schema_kv::key k1(order_line_fid);
+    order_line_key = (ermia::varstr *)ermia::MM::allocate(
+        sizeof(ermia::varstr) + sizeof(k1));
+    new (order_line_key) ermia::varstr(
+        (char *)order_line_key + sizeof(ermia::varstr), sizeof(k1));
+    Encode(*order_line_key, k1);
+
+    const schema_kv::key k2(oorder_fid);
+    oorder_key = (ermia::varstr *)ermia::MM::allocate(sizeof(ermia::varstr) +
+                                                      sizeof(k2));
+    new (oorder_key)
+        ermia::varstr((char *)oorder_key + sizeof(ermia::varstr), sizeof(k2));
+    Encode(*oorder_key, k2);
+
+    const schema_kv::key k3(customer_fid);
+    customer_key = (ermia::varstr *)ermia::MM::allocate(sizeof(ermia::varstr) +
+                                                        sizeof(k3));
+    new (customer_key)
+        ermia::varstr((char *)customer_key + sizeof(ermia::varstr), sizeof(k3));
+    Encode(*customer_key, k3);
   }
 
   // XXX(stephentu): tune this
@@ -1302,7 +1499,21 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
     return static_cast<tpcc_worker *>(w)->txn_query2();
   }
 
+  rc_t txn_ddl(uint32_t ddl_example);
+
+  static rc_t TxnDDL(bench_worker *w, uint32_t ddl_example) {
+    return static_cast<tpcc_worker *>(w)->txn_ddl(ddl_example);
+  }
+
+  // Specific DDL operations
+  rc_t add_column(ermia::transaction *txn, uint32_t ddl_example);
+  rc_t table_split(ermia::transaction *txn, uint32_t ddl_example);
+  rc_t preaggregation(ermia::transaction *txn, uint32_t ddl_example);
+  rc_t create_index(ermia::transaction *txn, uint32_t ddl_example);
+  rc_t table_join(ermia::transaction *txn, uint32_t ddl_example);
+
   virtual workload_desc_vec get_workload() const override;
+  virtual ddl_workload_desc_vec get_ddl_workload() const override;
 
  protected:
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
@@ -1310,9 +1521,24 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
  private:
   const uint home_warehouse_id;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
+  ermia::ConcurrentMasstreeIndex *schema_index;
+  ermia::FID schema_fid;
+  ermia::FID order_line_fid;
+  ermia::FID oorder_fid;
+  ermia::FID customer_fid;
+  ermia::varstr *order_line_key;
+  ermia::varstr *oorder_key;
+  ermia::varstr *customer_key;
+#if !defined(COPYDDL)
+  ermia::ConcurrentMasstreeIndex *order_line_table_index;
+  ermia::ConcurrentMasstreeIndex *oorder_table_index;
+  ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index;
+  ermia::ConcurrentMasstreeIndex *customer_table_index;
+  ermia::ConcurrentMasstreeIndex *customer_table_secondary_index;
+#endif
 };
 
-class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
+/*class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
  public:
   tpcc_cs_worker(
       unsigned int worker_id, unsigned long seed, ermia::Engine *db,
@@ -1389,6 +1615,7 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
   }
 
   virtual workload_desc_vec get_workload() const override;
+  virtual ddl_workload_desc_vec get_ddl_workload() const override;
   virtual void MyWork(char *) override;
 
  protected:
@@ -1399,6 +1626,6 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
  private:
   const uint home_warehouse_id;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
-};
+};*/
 
 #endif  // ADV_COROUTINE
