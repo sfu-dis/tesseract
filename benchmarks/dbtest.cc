@@ -51,6 +51,7 @@ DEFINE_uint64(log_buffer_kb, 256, "Log buffer size in KB");
 DEFINE_uint64(log_segment_mb, 16384, "Log segment size in MB.");
 DEFINE_bool(phantom_prot, false, "Whether to enable phantom protection.");
 DEFINE_bool(print_cpu_util, false, "Whether to print CPU utilization.");
+DEFINE_uint64(print_interval_ms, 1000, "Result print interval (ms)");
 DEFINE_bool(enable_perf, false,
             "Whether to run Linux perf along with benchmark.");
 DEFINE_string(perf_record_event, "", "Perf record event");
@@ -160,6 +161,7 @@ int main(int argc, char **argv) {
   ermia::config::benchmark = FLAGS_benchmark;
   ermia::config::state = ermia::config::kStateLoading;
   ermia::config::print_cpu_util = FLAGS_print_cpu_util;
+  ermia::config::print_interval_ms = FLAGS_print_interval_ms;
   ermia::config::htt_is_on = FLAGS_htt;
   ermia::config::enable_perf = FLAGS_enable_perf;
   ermia::config::perf_record_event = FLAGS_perf_record_event;
@@ -343,6 +345,7 @@ int main(int argc, char **argv) {
             << ermia::config::physical_workers_only << std::endl;
   std::cerr << "  print-cpu-util    : " << ermia::config::print_cpu_util
             << std::endl;
+  std::cerr << "  print-interval-ms : " << ermia::config::print_interval_ms << std::endl;
   std::cerr << "  threadpool        : " << ermia::config::threadpool
             << std::endl;
   std::cerr << "  tmpfs-dir         : " << ermia::config::tmpfs_dir

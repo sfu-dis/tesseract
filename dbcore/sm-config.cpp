@@ -81,6 +81,7 @@ float dml_slow_down_prob = 0.5;
 bool always_load = false;
 bool kStateRunning = false;
 bool iouring_read_log = false;
+uint64_t print_interval_ms = 1000;
 
 void init() {
   ALWAYS_ASSERT(threads);

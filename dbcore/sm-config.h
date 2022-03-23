@@ -88,6 +88,8 @@ extern bool enable_late_scan_join;
 extern bool enable_parallel_scan_cdc;
 extern float dml_slow_down_prob;
 
+extern uint64_t print_interval_ms;
+
 // Create an object for each version and install directly on the main
 // indirection arrays only; for experimental purpose only to see the
 // difference between pipelined/sync replay which use the pdest array.

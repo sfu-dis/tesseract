@@ -354,16 +354,16 @@ void bench_runner::start_measurement() {
 
   double total_util = 0;
   double sec_util = 0;
-  // uint32_t sleep_time = 1;
-  uint32_t sleep_time = 1000 * 1000;
+  uint32_t sleep_time = ermia::config::print_interval_ms * 1000;
   auto gather_stats = [&]() {
     if (ddl_done < ermia::config::ddl_total &&
         slept == ddl_start_times[ddl_done] * 1000000) {
       ddl_start = true;
       ermia::ddl::ddl_start = true;
     }
-    // sleep(1);
+
     usleep(sleep_time);
+
     uint64_t sec_commits = 0, sec_aborts = 0;
     for (size_t i = 0; i < ermia::config::worker_threads; i++) {
       sec_commits += workers[i]->get_ntxn_commits();
