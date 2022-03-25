@@ -52,11 +52,10 @@ class oddlb_sequential_worker : public oddlb_base_worker {
   }
 
   rc_t txn_ddl(uint32_t ddl_example) {
-#if SIDDL
+#ifdef SIDDL
   retry:
 #endif
-    ermia::transaction *txn =
-        db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
+    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
     ermia::varstr valptr;
     rc_t rc = rc_t{RC_INVALID};
@@ -66,8 +65,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
     struct ermia::schema_record schema;
     schema_kv::value schema_value_temp;
-    const schema_kv::value *old_schema_value =
-        Decode(valptr, schema_value_temp);
+    const schema_kv::value *old_schema_value = Decode(valptr, schema_value_temp);
     schema.value_to_record(old_schema_value);
     schema.ddl_type = get_example_ddl_type(ddl_example);
 
@@ -143,7 +141,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       TryCatch(rc);
 #endif
     }
-#else
+#else  // COPY_DDL
     uint64_t schema_version = schema.v + 1;
     DLOG(INFO) << "change to new schema: " << schema_version;
     schema.v = schema_version;
