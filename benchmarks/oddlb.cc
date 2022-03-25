@@ -170,7 +170,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(txn, arena);
     if (rc._val != RC_TRUE && running) {
-      std::cerr << "SI DDL aborts" << std::endl;
       db->Abort(txn);
       goto retry;
     }
@@ -178,7 +177,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #endif
 #endif
     TryCatch(db->Commit(txn));
-    DLOG(INFO) << "DDL commit OK";
     return {RC_TRUE};
   }
 
