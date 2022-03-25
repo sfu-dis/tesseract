@@ -125,34 +125,36 @@ class transaction {
 
   enum lock_type { INVALID, SHARED, EXCLUSIVE };
 
-  struct table_info {
-    bool schema_not_ready;
-    OID oid;
-    FID fid;
+  struct table_record_t {
+    TableDescriptor *table_desc;
+    FID table_fid;
+    OID schema_oid;
     uint32_t version;
-    TableDescriptor *td;
-    TableDescriptor *old_td;
-    lock_type lt;
-    table_info()
-        : schema_not_ready(false),
-          oid(0),
-          fid(0),
-          version(0),
-          td(nullptr),
-          old_td(nullptr),
-          lt(lock_type::INVALID) {}
-    table_info(bool schema_not_ready, OID oid, FID fid, uint32_t version,
-               TableDescriptor *td, TableDescriptor *old_td, lock_type lt)
-        : schema_not_ready(schema_not_ready),
-          oid(oid),
-          fid(fid),
-          version(version),
-          td(td),
-          old_td(old_td),
-          lt(lt) {}
+    table_record_t() : table_desc(nullptr), table_fid(0), schema_oid(0), version(0) {}
+    table_record_t(TableDescriptor *td, FID fid, OID oid, uint32_t version)
+        : table_desc(td), table_fid(fid), schema_oid(oid), version(version) {}
   };
 
-  typedef std::vector<table_info *> table_set_t;
+  struct table_set_t {
+    static const uint64_t kMaxEntries = 256;
+    table_record_t entries[kMaxEntries];
+    uint32_t num_entries;
+
+    table_set_t() : num_entries(0) {}
+    ~table_set_t() {}
+
+    inline void emplace(TableDescriptor *td, FID fid, OID schema_oid, uint32_t version) {
+      // Ensure there is no duplicates
+      for (uint32_t i = 0; i < num_entries; ++i) {
+        if (entries[i].table_fid == fid) {
+          LOG(FATAL) << "No support yet for dedup of table set";
+        }
+      }
+      uint32_t idx = num_entries++;
+      LOG_IF(FATAL, num_entries > kMaxEntries);
+      new (&entries[idx]) table_record_t(td, schema_oid, fid, version);
+    }
+  };
 
   enum {
     // use the low-level scan protocol for checking scan consistency,
@@ -340,79 +342,17 @@ class transaction {
 
   inline table_set_t *get_table_set() { return &table_set; }
 
-  inline void add_to_table_set(bool schema_not_ready, OID oid, FID fid,
-                               uint32_t version, TableDescriptor *td,
-                               TableDescriptor *old_td, lock_type lt) {
-    table_set.push_back(
-        new table_info(schema_not_ready, oid, fid, version, td, old_td, lt));
-  }
-
-  inline table_info *find_in_table_set(FID table_fid) {
-    for (table_set_t::const_iterator it = table_set.begin();
-         it != table_set.end(); ++it) {
-      if ((*it)->fid == table_fid) {
-        return *it;
-      }
-    }
-    return nullptr;
+  inline void add_to_table_set(TableDescriptor *td, FID table_fid, OID schema_oid, uint32_t version) {
+    ALWAYS_ASSERT(td);
+    table_set.emplace(td, table_fid, schema_oid, version);
   }
 
 #ifdef BLOCKDDL
-  inline void lock_table(FID table_fid, lock_type lt) {
-    if (lt == lock_type::SHARED) {
-      ReadLock(table_fid);
-    } else if (lt == lock_type::EXCLUSIVE) {
-      WriteLock(table_fid);
-    }
-    // Refresh begin timestamp after lock is granted
-    xc->begin = dlog::current_csn.load(std::memory_order_relaxed);
-  }
-
-  inline void ReadLock(FID table_fid) {
-    if (find_in_table_set(table_fid)) {
-      return;
-    }
-    int ret = pthread_rwlock_rdlock(lock_map[table_fid]);
-    LOG_IF(FATAL, ret);
-    add_to_table_set(false, 0, table_fid, 0, nullptr, nullptr,
-                     lock_type::SHARED);
-  }
-
-  inline void ReadUnlock(FID table_fid) {
-    int ret = pthread_rwlock_unlock(lock_map[table_fid]);
-    LOG_IF(FATAL, ret);
-  }
-
-  inline void WriteLock(FID table_fid) {
-    table_info *l_info = find_in_table_set(table_fid);
-    if (l_info && l_info->lt == lock_type::SHARED) {
-      // Upgrade shared lock to exclusive lock
-      ReadUnlock(table_fid);
-    }
-    if (l_info && l_info->lt == lock_type::EXCLUSIVE) {
-      return;
-    }
-    int ret = pthread_rwlock_wrlock(lock_map[table_fid]);
-    LOG_IF(FATAL, ret);
-    add_to_table_set(false, 0, table_fid, 0, nullptr, nullptr,
-                     lock_type::EXCLUSIVE);
-  }
-
-  inline void WriteUnlock(FID table_fid) {
-    int ret = pthread_rwlock_unlock(lock_map[table_fid]);
-    LOG_IF(FATAL, ret);
-  }
-
   inline void UnlockAll() {
-    for (table_set_t::const_iterator it = table_set.begin();
-         it != table_set.end(); ++it) {
-      ReadUnlock((*it)->fid);
+    for (uint32_t i = 0; i < table_set.num_entries; ++i) {
+      table_set.entries[i].table_desc->UnlockSchema();
     }
   }
-
- public:
-  static std::unordered_map<FID, pthread_rwlock_t *> lock_map;
-  static std::mutex map_rw_latch;
 #endif
 
  protected:

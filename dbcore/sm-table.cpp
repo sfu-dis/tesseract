@@ -14,7 +14,12 @@ TableDescriptor::TableDescriptor(std::string &name)
       tuple_fid(0),
       tuple_array(nullptr),
       aux_fid_(0),
-      aux_array_(nullptr) {}
+      aux_array_(nullptr) {
+#ifdef BLOCKDDL
+    int ret = pthread_rwlock_init(&schema_lock, nullptr);
+    LOG_IF(FATAL, ret);
+#endif
+}
 
 void TableDescriptor::Initialize() {
   tuple_fid = oidmgr->create_file(true);
@@ -68,4 +73,28 @@ void TableDescriptor::Recover(FID tuple_fid, FID aux_fid, OID himark) {
     oidmgr->recreate_allocator(tuple_fid, himark);
   }
 }
+
+#ifdef BLOCKDDL
+// Acquire lock for a table (lock the schema)
+void TableDescriptor::LockSchema(bool exclusive) {
+  int ret = -1;
+  if (exclusive) {
+    ret = pthread_rwlock_wrlock(&schema_lock);
+    LOG_IF(FATAL, schema_lock_type != SchemaLockType::NL);
+    schema_lock_type = SchemaLockType::EX;
+  } else {
+    ret = pthread_rwlock_rdlock(&schema_lock);
+    LOG_IF(FATAL, schema_lock_type != SchemaLockType::NL);
+    schema_lock_type = SchemaLockType::SH;
+  }
+  LOG_IF(FATAL, ret);
+}
+
+void TableDescriptor::UnlockSchema() {
+  schema_lock_type = SchemaLockType::NL;
+  int ret = pthread_rwlock_unlock(&schema_lock);
+  LOG_IF(FATAL, ret);
+}
+#endif  // BLOCKDDL
+
 }  // namespace ermia

@@ -81,22 +81,6 @@ class Engine {
     t->Abort();
     t->uninitialize();
   }
-
-#ifdef BLOCKDDL
-  inline void BuildLockMap(FID table_fid) {
-    std::unique_lock<std::mutex> lock(transaction::map_rw_latch);
-    if (transaction::lock_map.find(table_fid) == transaction::lock_map.end()) {
-      pthread_rwlockattr_t attr;
-      transaction::lock_map[table_fid] = new pthread_rwlock_t;
-      pthread_rwlockattr_init(&attr);
-      int ret = pthread_rwlockattr_setkind_np(
-          &attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
-      LOG_IF(FATAL, ret);
-      ret = pthread_rwlock_init(transaction::lock_map[table_fid], &attr);
-      LOG_IF(FATAL, ret);
-    }
-  }
-#endif
 };
 
 // User-facing table abstraction, operates on OIDs only
@@ -235,8 +219,7 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
                    varstr &value, OID oid, bool is_insert = false) override;
 
   PROMISE(void)
-  ReadSchemaRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-                   OID *out_oid = nullptr) override;
+  ReadSchemaRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid) override;
 
   PROMISE(void)
   GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,

@@ -9,11 +9,6 @@ extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 
 namespace ermia {
 
-#ifdef BLOCKDDL
-std::unordered_map<FID, pthread_rwlock_t *> transaction::lock_map;
-std::mutex transaction::map_rw_latch;
-#endif
-
 transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     : flags(flags),
       log(nullptr),
@@ -615,10 +610,9 @@ bool transaction::DMLConsistencyHandler() {
   uint64_t begin = xc->begin;
   tmp_xc->begin = xc->end;
 
-  for (table_set_t::const_iterator it = table_set.begin();
-       it != table_set.end(); ++it) {
-    dbtuple *tuple =
-        oidmgr->oid_get_version(schema_td->GetTupleArray(), (*it)->oid, tmp_xc);
+  for (uint32_t i = 0; i < table_set.num_entries; ++i) {
+    auto *e = &table_set.entries[i];
+    dbtuple *tuple = oidmgr->oid_get_version(schema_td->GetTupleArray(), e->schema_oid, tmp_xc);
     if (!tuple) {
       tmp_xc->begin = begin;
       return true;
@@ -630,7 +624,7 @@ bool transaction::DMLConsistencyHandler() {
       }
       schema_kv::value schema_value_temp;
       const schema_kv::value *schema = Decode(tuple_v, schema_value_temp);
-      if (schema->version != (*it)->version) {
+      if (schema->version != e->version) {
         tmp_xc->begin = begin;
         return true;
       }

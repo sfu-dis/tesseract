@@ -1,5 +1,7 @@
 #pragma once
 
+#include <pthread.h>
+
 #include <string>
 #include <unordered_map>
 
@@ -21,6 +23,12 @@ class TableDescriptor {
 
   FID aux_fid_;
   oid_array* aux_array_;
+
+#ifdef BLOCKDDL
+  enum SchemaLockType { NL, SH, EX};
+  pthread_rwlock_t schema_lock;
+  SchemaLockType schema_lock_type;
+#endif
 
  public:
   TableDescriptor(std::string& name);
@@ -46,6 +54,11 @@ class TableDescriptor {
     ALWAYS_ASSERT(index);
     sec_indexes.push_back(index);
   }
+
+#ifdef BLOCKDDL
+  void LockSchema(bool exclusive);
+  void UnlockSchema();
+#endif
 };
 
 struct Catalog {
