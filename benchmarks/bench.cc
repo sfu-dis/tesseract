@@ -386,7 +386,6 @@ void bench_runner::start_measurement() {
     slept += sleep_time;
   };
 
-  // Backups run forever until told to stop.
   while (slept < ermia::config::benchmark_seconds * 1000000) {
     gather_stats();
   }
