@@ -490,10 +490,6 @@ void bench_runner::start_measurement() {
     }
   }
 
-  // if (ermia::config::enable_chkpt) {
-  //  delete ermia::chkptmgr;
-  //}
-
   if (ermia::config::verbose) {
     std::cerr << "--- table statistics ---" << std::endl;
     for (std::map<std::string, ermia::OrderedIndex *>::iterator it =
