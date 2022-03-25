@@ -224,6 +224,7 @@ class oddlb_base_worker : public bench_worker {
         return ermia::ddl::ddl_type::COPY_VERIFICATION;
       default:
         LOG(FATAL) << "Not supported";
+        return ermia::ddl::ddl_type::INVALID;
     }
   }
 
