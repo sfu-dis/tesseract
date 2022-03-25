@@ -27,7 +27,6 @@ class TableDescriptor {
 #ifdef BLOCKDDL
   enum SchemaLockType { NL, SH, EX};
   pthread_rwlock_t schema_lock;
-  SchemaLockType schema_lock_type;
 #endif
 
  public:
