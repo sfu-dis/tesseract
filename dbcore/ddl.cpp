@@ -325,7 +325,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
     double_check:
       tlog->last_flush();
       std::vector<dlog::segment> *segments = tlog->get_segments();
-      bool stop_scan = false;
+      bool stop_log_scan = false;
       uint64_t offset_in_seg = volatile_read(flags->_tls_durable_lsn[i]);
       uint64_t offset_increment = 0;
       uint64_t last_csn = 0;
@@ -444,7 +444,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
             }
           } else {
             if (end_csn && header->csn > end_csn) {
-              stop_scan = true;
+              stop_log_scan = true;
               break;
             }
           }
@@ -453,9 +453,9 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                          offset_in_seg + offset_increment);
         }
         RCU::rcu_free(data_buf);
-        if (stop_scan || (flags->cdc_second_phase && insert_total == 0 &&
-                          update_total == 0)) {
-          if (!re_check) {
+        if (stop_log_scan || (flags->cdc_second_phase && insert_total == 0 &&
+                              update_total == 0)) {
+          if (!stop_log_scan && !re_check) {
             re_check = true;
             goto double_check;
           }
