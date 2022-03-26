@@ -45,7 +45,7 @@ retry:
   util::timer t;
   const unsigned long old_seed = r.get_seed();
   const auto ret = ddl_workload[i].ddl_fn(this, ddl_workload[i].ddl_example);
-  if (finish_workload(ret, i, t)) {
+  if (finish_workload(ret, i, t, true)) {
     r.set_seed(old_seed);
     goto retry;
   }
@@ -65,21 +65,22 @@ uint32_t bench_worker::fetch_workload() {
 }
 
 bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx,
-                                   util::timer t) {
+                                   util::timer t, bool is_ddl) {
+  std::vector<tx_stat> &counts = is_ddl ? ddl_txn_counts : txn_counts;
   if (!ret.IsAbort()) {
     ++ntxn_commits;
-    std::get<0>(txn_counts[workload_idx])++;
+    std::get<0>(counts[workload_idx])++;
     if (!ermia::config::pcommit) {
       latency_numer_us += t.lap();
     }
     backoff_shifts >>= 1;
   } else {
     ++ntxn_aborts;
-    std::get<1>(txn_counts[workload_idx])++;
+    std::get<1>(counts[workload_idx])++;
     if (ret._val == RC_ABORT_USER) {
-      std::get<3>(txn_counts[workload_idx])++;
+      std::get<3>(counts[workload_idx])++;
     } else {
-      std::get<2>(txn_counts[workload_idx])++;
+      std::get<2>(counts[workload_idx])++;
     }
     switch (ret._val) {
       case RC_ABORT_SERIAL:
@@ -129,6 +130,7 @@ void bench_worker::MyWork(char *) {
     workload = get_workload();
     ddl_workload = get_ddl_workload();
     txn_counts.resize(workload.size());
+    ddl_txn_counts.resize(ddl_workload.size());
     barrier_a->count_down();
     barrier_b->wait_for();
 
@@ -570,6 +572,11 @@ const tx_stat_map bench_worker::get_txn_counts() const {
   const workload_desc_vec workload = get_workload();
   for (size_t i = 0; i < txn_counts.size(); i++)
     m[workload[i].name] = txn_counts[i];
+#ifdef DDL
+  const ddl_workload_desc_vec ddl_workload = get_ddl_workload();
+  for (size_t i = 0; i < ddl_txn_counts.size(); i++)
+    m[ddl_workload[i].name] = ddl_txn_counts[i];
+#endif
   return m;
 }
 
