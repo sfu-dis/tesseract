@@ -377,10 +377,10 @@ void bench_runner::start_measurement() {
     if (ermia::config::print_cpu_util) {
       sec_util = get_cpu_util();
       total_util += sec_util;
-      printf("%.1f,%lu,%lu,%.2f%%\n", double(slept + sleep_time) / 1000000,
+      printf("%.2f,%lu,%lu,%.2f%%\n", double(slept + sleep_time) / 1000000,
              sec_commits, sec_aborts, sec_util);
     } else {
-      printf("%.1f,%lu,%lu\n", double(slept + sleep_time) / 1000000,
+      printf("%.2f,%lu,%lu\n", double(slept + sleep_time) / 1000000,
              sec_commits, sec_aborts);
     }
     slept += sleep_time;
