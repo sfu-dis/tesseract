@@ -152,7 +152,7 @@ class transaction {
       }
       uint32_t idx = num_entries++;
       LOG_IF(FATAL, num_entries > kMaxEntries);
-      new (&entries[idx]) table_record_t(td, schema_oid, fid, version);
+      new (&entries[idx]) table_record_t(td, fid, schema_oid, version);
     }
   };
 
