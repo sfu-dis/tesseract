@@ -32,77 +32,6 @@ dlog::tls_log *GetLog() {
   return &tlog;
 }
 
-rc_t ConcurrentMasstreeIndex::WriteSchemaTable(transaction *t, rc_t &rc,
-                                               const varstr &key, varstr &value,
-                                               OID oid, bool is_insert) {
-  // For DDL txn only
-  ALWAYS_ASSERT(t->is_ddl());
-
-  rc = is_insert ? InsertRecord(t, key, value, &oid)
-                 : UpdateRecord(t, key, value);
-  if (rc._val == RC_TRUE) {
-    schema_kv::value schema_value_temp;
-    const schema_kv::value *schema = Decode(value, schema_value_temp);
-    t->get_ddl_executor()->add_ddl_flags(oid, schema->version);
-  }
-
-#ifdef BLOCKDDL
-  // Under blocking DDL this will always succeed
-  LOG_IF(FATAL, rc._val != RC_TRUE);
-#endif
-
-#ifndef NDEBUG
-  if (rc._val != RC_TRUE) {
-    DLOG(INFO) << "DDL Failed updating schemaschema update failed";
-  }
-#endif
-
-  return rc;
-}
-
-void ConcurrentMasstreeIndex::ReadSchemaRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid) {
-  auto *td = masstree_.get_table_descriptor();
-#ifdef BLOCKDDL
-  td->LockSchema(t->is_ddl());
-
-  // Refresh begin timestamp after lock is granted
-  t->GetXIDContext()->begin = dlog::current_csn.load(std::memory_order_relaxed);
-#endif
-
-  bool schema_not_ready = false;
-retry:
-  GetRecord(t, rc, key, value, oid);
-  if (rc._val != RC_TRUE) {
-    DLOG(INFO) << "Read schema record failed";
-    goto retry;
-  }
-
-  schema_kv::value schema_value_temp;
-  const schema_kv::value *schema = Decode(value, schema_value_temp);
-#ifdef COPYDDL
-  TableDescriptor *old_td =
-      schema->old_fid ? Catalog::GetTable(schema->old_fid) : nullptr;
-  if (schema->state == ddl::schema_state_type::NOT_READY) {
-#if !defined(LAZYDDL)
-    if (schema->ddl_type != ddl::ddl_type::COPY_ONLY || config::enable_cdc_schema_lock) {
-      goto retry;
-    }
-    ddl::ddl_flags *flags = ddl::get_ddl_flags(*oid, schema->version);
-    if (!flags || !flags->ddl_td_set) {
-      goto retry;
-    } else {
-      t->SetWaitForNewSchema(true);
-      schema_not_ready = true;
-    }
-#else
-    goto retry;
-#endif
-  }
-#endif
-
-  t->add_to_table_set(td, schema->fid, *oid, schema->version);
-}
-
 // Engine initialization, including creating the OID, log, and checkpoint
 // managers and recovery if needed.
 Engine::Engine() {
@@ -118,22 +47,7 @@ Engine::~Engine() { ermia::dlog::uninitialize(); }
 
 TableDescriptor *Engine::CreateTable(const char *name) {
   auto *td = Catalog::NewTable(name);
-
-  if (true) {  //! sm_log::need_recovery) {
-    // Note: this will insert to the log and therefore affect min_flush_lsn,
-    // so must be done in an sm-thread which must be created by the user
-    // application (not here in ERMIA library).
-    // ASSERT(ermia::logmgr);
-
-    // TODO(tzwang): perhaps make this transactional to allocate it from
-    // transaction string arena to avoid malloc-ing memory (~10k size).
-    // char *log_space = (char *)malloc(sizeof(sm_tx_log));
-    // ermia::sm_tx_log *log = ermia::logmgr->new_tx_log(log_space);
-    td->Initialize();
-    // log->log_table(td->GetTupleFid(), td->GetKeyFid(), td->GetName());
-    // log->commit(nullptr);
-    // free(log_space);
-  }
+  td->Initialize();
   return td;
 }
 

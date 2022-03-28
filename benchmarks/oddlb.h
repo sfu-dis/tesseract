@@ -34,12 +34,12 @@ struct OddlbWorkload {
   int16_t update_percent_;
 };
 
-class oddlb_schematable_loader : public ermia::schematable_loader {
+class oddlb_schematable_loader : public ermia::catalog::schematable_loader {
  public:
   oddlb_schematable_loader(
       unsigned long seed, ermia::Engine *db,
       const std::map<std::string, ermia::OrderedIndex *> &open_tables)
-      : ermia::schematable_loader(seed, db, open_tables) {}
+      : ermia::catalog::schematable_loader(seed, db, open_tables) {}
 
  protected:
   void load();
@@ -68,7 +68,7 @@ class oddlb_bench_runner : public bench_runner {
  public:
   oddlb_bench_runner(ermia::Engine *db) : bench_runner(db) {
     oddlb_create_db(db);
-    ermia::create_schema_table(db, "SCHEMA");
+    ermia::catalog::create_schema_table(db, "SCHEMA");
   }
 
   virtual void prepare(char *) {
@@ -206,6 +206,7 @@ class oddlb_base_worker : public bench_worker {
         LOG(FATAL) << "Not supported";
       }
     }
+    return str(0);
   }
 
   // 0: add column

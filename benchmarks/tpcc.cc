@@ -61,17 +61,17 @@ rc_t tpcc_worker::txn_new_order() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaRecord(txn, rc, *order_line_key, v1, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
   TryVerifyStrict(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaRecord(txn, rc, *oorder_key, v2, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *oorder_key, v2, &oid);
   TryVerifyStrict(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaRecord(txn, rc, *customer_key, v3, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *customer_key, v3, &oid);
   TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2,
@@ -371,12 +371,12 @@ rc_t tpcc_worker::txn_payment() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaRecord(txn, rc, *order_line_key, v1, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
   TryVerifyStrict(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaRecord(txn, rc, *customer_key, v2, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *customer_key, v2, &oid);
   TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2;
@@ -621,17 +621,17 @@ rc_t tpcc_worker::txn_delivery() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaRecord(txn, rc, *order_line_key, v1, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
   TryVerifyStrict(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaRecord(txn, rc, *oorder_key, v2, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *oorder_key, v2, &oid);
   TryVerifyStrict(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaRecord(txn, rc, *customer_key, v3, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *customer_key, v3, &oid);
   TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2,
@@ -885,17 +885,17 @@ rc_t tpcc_worker::txn_order_status() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaRecord(txn, rc, *order_line_key, v1, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
   TryVerifyStrict(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaRecord(txn, rc, *oorder_key, v2, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *oorder_key, v2, &oid);
   TryVerifyStrict(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaRecord(txn, rc, *customer_key, v3, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *customer_key, v3, &oid);
   TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2,
@@ -1134,7 +1134,7 @@ rc_t tpcc_worker::txn_stock_level() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaRecord(txn, rc, *order_line_key, v1, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
   TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp;
@@ -1261,17 +1261,17 @@ rc_t tpcc_worker::txn_credit_check() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaRecord(txn, rc, *order_line_key, v1, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
   TryVerifyStrict(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaRecord(txn, rc, *oorder_key, v2, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *oorder_key, v2, &oid);
   TryVerifyStrict(rc);
 
   rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
-  schema_index->ReadSchemaRecord(txn, rc, *customer_key, v3, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *customer_key, v3, &oid);
   TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2,
@@ -1441,7 +1441,7 @@ rc_t tpcc_worker::txn_query2() {
   rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
-  schema_index->ReadSchemaRecord(txn, rc, *order_line_key, v1, &oid);
+  ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
   TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp;

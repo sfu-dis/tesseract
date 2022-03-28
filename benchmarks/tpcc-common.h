@@ -347,12 +347,12 @@ class tpcc_worker_mixin : private _dummy {
   }
 };
 
-class tpcc_schematable_loader : public ermia::schematable_loader {
+class tpcc_schematable_loader : public ermia::catalog::schematable_loader {
  public:
   tpcc_schematable_loader(
       unsigned long seed, ermia::Engine *db,
       const std::map<std::string, ermia::OrderedIndex *> &open_tables)
-      : ermia::schematable_loader(seed, db, open_tables) {}
+      : ermia::catalog::schematable_loader(seed, db, open_tables) {}
 
  protected:
   void load() {

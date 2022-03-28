@@ -60,7 +60,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     ermia::varstr valptr;
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaRecord(txn, rc, *table_key, valptr, &oid);
+    ermia::catalog::read_schema(txn, schema_index, *table_key, valptr, &oid);
     TryVerifyStrict(rc);
 
     struct ermia::schema_record schema;
@@ -123,10 +123,8 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     schema_kv::value new_schema_value;
     schema.record_to_value(new_schema_value);
 
-    rc = rc_t{RC_INVALID};
-    schema_index->WriteSchemaTable(
-        txn, rc, *table_key,
-        Encode(str(Size(new_schema_value)), new_schema_value), oid);
+    rc = ermia::catalog::write_schema(txn, schema_index, *table_key,
+      Encode(str(Size(new_schema_value)), new_schema_value), oid);
     TryCatch(rc);
 
     ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
@@ -149,8 +147,8 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     schema_kv::value new_schema_value;
     schema.record_to_value(new_schema_value);
 
-    TryCatch(schema_index->WriteSchemaTable(
-        txn, rc, *table_key,
+    TryCatch(ermia::catalog::write_schema(
+        txn, schema_index, *table_key,
         Encode(str(Size(new_schema_value)), new_schema_value), oid));
 
     ddl_exe->add_ddl_executor_paras(schema.v, -1, schema.ddl_type,
@@ -188,10 +186,8 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #endif
 
     ermia::varstr v1;
-    rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaRecord(txn, rc, *table_key, v1, &oid);
-    TryVerifyStrict(rc);
+    ermia::catalog::read_schema(txn, schema_index, *table_key, v1, &oid);
 
     schema_kv::value schema_value_temp;
     const schema_kv::value *schema_value = Decode(v1, schema_value_temp);
@@ -207,7 +203,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
       ermia::varstr v2;
 
-      rc = rc_t{RC_INVALID};
+      rc_t rc = rc_t{RC_INVALID};
       oid = ermia::INVALID_OID;
 
 #ifdef COPYDDL
@@ -215,8 +211,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
           (ermia::ConcurrentMasstreeIndex *)schema.index;
 #endif
 
-      table_index->GetRecord(txn, rc, Encode(str(Size(k2)), k2), v2, &oid,
-                             &schema);
+      table_index->GetRecord(txn, rc, Encode(str(Size(k2)), k2), v2, &oid, &schema);
       if (likely(rc._val != RC_FALSE)) {
         TryCatch(rc);
       } else {
@@ -292,8 +287,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     ermia::varstr v;
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = ermia::INVALID_OID;
-    schema_index->ReadSchemaRecord(txn, rc, *table_key, v, &oid);
-    TryVerifyStrict(rc);
+    ermia::catalog::read_schema(txn, schema_index, *table_key, v, &oid);
 
     schema_kv::value schema_value_temp;
     const schema_kv::value *schema_value = Decode(v, schema_value_temp);

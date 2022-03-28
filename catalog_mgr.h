@@ -5,6 +5,8 @@
 
 namespace ermia {
 
+namespace catalog {
+
 class schematable_loader : public bench_loader {
  public:
   schematable_loader(
@@ -17,5 +19,14 @@ class schematable_loader : public bench_loader {
 };
 
 void create_schema_table(ermia::Engine *db, const char *name);
+
+void read_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
+                 const varstr &table_name, varstr &out_schema_value, OID *out_schema_oid);
+
+rc_t write_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
+                  const varstr &table_name, varstr &schema_value,
+                  OID &out_schema_oid, bool is_insert = false);
+
+}  // namespace catalog
 
 }  // namespace ermia

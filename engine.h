@@ -214,13 +214,6 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
                                          ScanCallback &callback,
                                          uint32_t max_keys = ~uint32_t{0});
 
-  PROMISE(rc_t)
-  WriteSchemaTable(transaction *t, rc_t &rc, const varstr &key,
-                   varstr &value, OID oid, bool is_insert = false) override;
-
-  PROMISE(void)
-  ReadSchemaRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid) override;
-
   PROMISE(void)
   GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
             OID *out_oid = nullptr, schema_record *schema = nullptr) override;

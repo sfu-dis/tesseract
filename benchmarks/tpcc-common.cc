@@ -213,7 +213,7 @@ class tpcc_bench_runner : public bench_runner {
     RegisterIndex(db, "region", "region", true);
     RegisterIndex(db, "supplier", "supplier", true);
     RegisterIndex(db, "warehouse", "warehouse", true);
-    ermia::create_schema_table(db, "SCHEMA");
+    ermia::catalog::create_schema_table(db, "SCHEMA");
   }
 
   virtual void prepare(char *) {

@@ -35,13 +35,6 @@ class OrderedIndex {
                         const varstr &value) = 0;
   };
 
-  virtual PROMISE(rc_t)
-      WriteSchemaTable(transaction *t, rc_t &rc, const varstr &key,
-                       varstr &value, OID oid, bool is_insert = false) = 0;
-
-  virtual PROMISE(void)
-      ReadSchemaRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid) = 0;
-
   // Get a record with a key of length keylen. The underlying DB does not manage
   // the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
   virtual PROMISE(void)
