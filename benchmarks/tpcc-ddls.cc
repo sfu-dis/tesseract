@@ -32,11 +32,9 @@ static ermia::ddl::ddl_type get_example_ddl_type(uint32_t ddl_example) {
 
 rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
   ermia::varstr valptr;
-  rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
   ermia::catalog::read_schema(txn, schema_index, *order_line_key, valptr, &oid);
-  TryVerifyStrict(rc);
 
   struct ermia::schema_record schema;
   schema_kv::value schema_value_temp;
@@ -204,11 +202,9 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
       };
 
   ermia::varstr valptr;
-  rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
   ermia::catalog::read_schema(txn, schema_index, *customer_key, valptr, &oid);
-  TryVerifyStrict(rc);
 
   struct ermia::schema_record customer_schema;
   schema_kv::value schema_value_temp;
@@ -372,15 +368,12 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
       };
 
   ermia::varstr valptr1, valptr2;
-  rc_t rc = rc_t{RC_INVALID};
   ermia::OID order_line_oid = ermia::INVALID_OID;
   ermia::OID oorder_oid = ermia::INVALID_OID;
 
   ermia::catalog::read_schema(txn, schema_index, *order_line_key, valptr1, &order_line_oid);
-  TryVerifyStrict(rc);
 
   ermia::catalog::read_schema(txn, schema_index, *oorder_key, valptr2, &oorder_oid);
-  TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2;
   const schema_kv::value *old_order_line_schema_value =
@@ -562,11 +555,9 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
 
 rc_t tpcc_worker::create_index(ermia::transaction *txn, uint32_t ddl_example) {
   ermia::varstr valptr;
-  rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
   ermia::catalog::read_schema(txn, schema_index, *order_line_key, valptr, &oid);
-  TryVerifyStrict(rc);
 
   struct ermia::schema_record schema;
   schema_kv::value schema_value_temp;
@@ -607,7 +598,7 @@ rc_t tpcc_worker::create_index(ermia::transaction *txn, uint32_t ddl_example) {
   schema_kv::value new_schema_value;
   schema.record_to_value(new_schema_value);
 
-  rc = ermia::catalog::write_schema(txn, schema_index, *order_line_key,
+  auto rc = ermia::catalog::write_schema(txn, schema_index, *order_line_key,
     Encode(str(Size(new_schema_value)), new_schema_value), oid);
   TryCatch(rc);
 
@@ -660,11 +651,9 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, uint32_t ddl_example) {
       };
 
   ermia::varstr valptr;
-  rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
   ermia::catalog::read_schema(txn, schema_index, *order_line_key, valptr, &oid);
-  TryVerifyStrict(rc);
 
   struct ermia::schema_record schema;
   schema_kv::value schema_value_temp;

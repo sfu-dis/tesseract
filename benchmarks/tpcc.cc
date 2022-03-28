@@ -58,21 +58,15 @@ rc_t tpcc_worker::txn_new_order() {
 
   // Read schema tables first
   ermia::varstr v1, v2, v3;
-  rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
   ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
-  TryVerifyStrict(rc);
 
-  rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
   ermia::catalog::read_schema(txn, schema_index, *oorder_key, v2, &oid);
-  TryVerifyStrict(rc);
 
-  rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
   ermia::catalog::read_schema(txn, schema_index, *customer_key, v3, &oid);
-  TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2,
       schema_value_temp_3;
@@ -102,7 +96,7 @@ rc_t tpcc_worker::txn_new_order() {
   if (customer_schema.v == 0) {
     customer::value v_c_temp;
 
-    rc = rc_t{RC_INVALID};
+    rc_t rc = rc_t{RC_INVALID};
     customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
                                     valptr, nullptr, &customer_schema);
     // TryVerifyRelaxed(rc);
@@ -115,7 +109,7 @@ rc_t tpcc_worker::txn_new_order() {
   } else {
     customer_private::value v_c_temp;
 
-    rc = rc_t{RC_INVALID};
+    rc_t rc = rc_t{RC_INVALID};
     customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
                                     valptr, nullptr, &customer_schema);
     // TryVerifyRelaxed(rc);
@@ -127,7 +121,7 @@ rc_t tpcc_worker::txn_new_order() {
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
 
-  rc = rc_t{RC_INVALID};
+  rc_t rc = rc_t{RC_INVALID};
   tbl_warehouse(warehouse_id)
       ->GetRecord(txn, rc, Encode(str(Size(k_w)), k_w), valptr);
   TryVerifyRelaxed(rc);
@@ -368,16 +362,12 @@ rc_t tpcc_worker::txn_payment() {
 
   // Read schema tables first
   ermia::varstr v1, v2;
-  rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
   ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
-  TryVerifyStrict(rc);
 
-  rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
   ermia::catalog::read_schema(txn, schema_index, *customer_key, v2, &oid);
-  TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2;
   const schema_kv::value *order_line_schema_value =
@@ -399,11 +389,11 @@ rc_t tpcc_worker::txn_payment() {
           (customer_schema.td)->GetSecIndexes().begin()));
 #endif
 
-  rc = rc_t{RC_INVALID};
   ermia::varstr valptr;
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
 
+  rc_t rc = rc_t{RC_INVALID};
   tbl_warehouse(warehouse_id)
       ->GetRecord(txn, rc, Encode(str(Size(k_w)), k_w), valptr);
   TryVerifyRelaxed(rc);
@@ -618,21 +608,15 @@ rc_t tpcc_worker::txn_delivery() {
 
   // Read schema tables first
   ermia::varstr v1, v2, v3;
-  rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
   ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
-  TryVerifyStrict(rc);
 
-  rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
   ermia::catalog::read_schema(txn, schema_index, *oorder_key, v2, &oid);
-  TryVerifyStrict(rc);
 
-  rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
   ermia::catalog::read_schema(txn, schema_index, *customer_key, v3, &oid);
-  TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2,
       schema_value_temp_3;
@@ -684,7 +668,7 @@ rc_t tpcc_worker::txn_delivery() {
     const oorder::value *v_oo = nullptr;
     const oorder_precompute_aggregate::value *v_oo_pa = nullptr;
 
-    rc = rc_t{RC_INVALID};
+    rc_t rc = rc_t{RC_INVALID};
     if (oorder_schema.v == 0) {
       oorder_table_index->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo),
                                     valptr, nullptr, &oorder_schema);
@@ -882,21 +866,15 @@ rc_t tpcc_worker::txn_order_status() {
 
   // Read schema tables first
   ermia::varstr v1, v2, v3;
-  rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
   ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
-  TryVerifyStrict(rc);
 
-  rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
   ermia::catalog::read_schema(txn, schema_index, *oorder_key, v2, &oid);
-  TryVerifyStrict(rc);
 
-  rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
   ermia::catalog::read_schema(txn, schema_index, *customer_key, v3, &oid);
-  TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2,
       schema_value_temp_3;
@@ -982,7 +960,7 @@ rc_t tpcc_worker::txn_order_status() {
     k_c.c_d_id = districtID;
     k_c.c_id = customerID;
 
-    rc = rc_t{RC_INVALID};
+    rc_t rc = rc_t{RC_INVALID};
     customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
                                     valptr, nullptr, &customer_schema);
     // TryVerifyRelaxed(rc);
@@ -1131,11 +1109,9 @@ rc_t tpcc_worker::txn_stock_level() {
 
   // Read schema tables first
   ermia::varstr v1;
-  rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
   ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
-  TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp;
   const schema_kv::value *order_line_schema_value =
@@ -1150,7 +1126,7 @@ rc_t tpcc_worker::txn_stock_level() {
   district::value v_d_temp;
   ermia::varstr valptr;
 
-  rc = rc_t{RC_INVALID};
+  rc_t rc = rc_t{RC_INVALID};
   tbl_district(warehouse_id)
       ->GetRecord(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
   TryVerifyRelaxed(rc);
@@ -1258,21 +1234,15 @@ rc_t tpcc_worker::txn_credit_check() {
 
   // Read schema tables first
   ermia::varstr v1, v2, v3;
-  rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
   ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
-  TryVerifyStrict(rc);
 
-  rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
   ermia::catalog::read_schema(txn, schema_index, *oorder_key, v2, &oid);
-  TryVerifyStrict(rc);
 
-  rc = rc_t{RC_INVALID};
   oid = ermia::INVALID_OID;
   ermia::catalog::read_schema(txn, schema_index, *customer_key, v3, &oid);
-  TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2,
       schema_value_temp_3;
@@ -1307,7 +1277,7 @@ rc_t tpcc_worker::txn_credit_check() {
   k_c.c_d_id = customerDistrictID;
   k_c.c_id = customerID;
 
-  rc = rc_t{RC_INVALID};
+  rc_t rc = rc_t{RC_INVALID};
   customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr,
                                   nullptr, &customer_schema);
   // TryVerifyRelaxed(rc);
@@ -1438,11 +1408,9 @@ rc_t tpcc_worker::txn_query2() {
 
   // Read schema tables first
   ermia::varstr v1;
-  rc_t rc = rc_t{RC_INVALID};
   ermia::OID oid = ermia::INVALID_OID;
 
   ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
-  TryVerifyStrict(rc);
 
   schema_kv::value schema_value_temp;
   const schema_kv::value *order_line_schema_value =
@@ -1499,7 +1467,7 @@ rc_t tpcc_worker::txn_query2() {
         supplier::value v_su_tmp;
         ermia::varstr valptr;
 
-        rc = rc_t{RC_INVALID};
+        rc_t rc = rc_t{RC_INVALID};
         tbl_supplier(1)->GetRecord(txn, rc, Encode(str(Size(k_su)), k_su),
                                    valptr);
         TryVerifyRelaxed(rc);
