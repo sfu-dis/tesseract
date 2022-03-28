@@ -19,7 +19,6 @@ void create_schema_table(ermia::Engine *db, const char *name) {
   ermia::thread::PutThread(thread);
 }
 
-
 void read_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
                  const varstr &table_name, varstr &out_schema_value, OID *out_schema_oid) {
 #ifdef BLOCKDDL
@@ -34,10 +33,15 @@ void read_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
 retry:
   rc_t rc;
   schema_table_index->GetRecord(t, rc, table_name, out_schema_value, out_schema_oid);
+#ifdef BLOCKDDL
+  // Under blocking DDL this will always succeed
+  LOG_IF(FATAL, rc._val != RC_TRUE);
+#else
   if (rc._val != RC_TRUE) {
-    DLOG(INFO) << "Read schema record failed";
+    DLOG(INFO) << "Catalog: failed reading schema";
     goto retry;
   }
+#endif
 
   schema_kv::value schema_value_temp;
   const schema_kv::value *schema = Decode(out_schema_value, schema_value_temp);
@@ -56,7 +60,7 @@ retry:
       t->SetWaitForNewSchema(true);
       schema_not_ready = true;
     }
-#else
+#else  // LAZYDDL
     goto retry;
 #endif
   }
@@ -87,12 +91,7 @@ rc_t write_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
   LOG_IF(FATAL, rc._val != RC_TRUE);
 #endif
 
-#ifndef NDEBUG
-  if (rc._val != RC_TRUE) {
-    DLOG(INFO) << "DDL Failed updating schemaschema update failed";
-  }
-#endif
-
+  DLOG_IF(INFO, rc._val != RC_TRUE) << "Catalog: failed updating schema";
   return rc;
 }
 
