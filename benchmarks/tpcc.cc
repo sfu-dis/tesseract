@@ -1749,10 +1749,34 @@ bench_worker::workload_desc_vec tpcc_worker::get_workload() const {
   return w;
 }
 
+static const std::string get_example_name(uint32_t ddl_example) {
+  switch (ddl_example) {
+    case 0:
+      return "DDL_ADD_COLUMN";
+    case 1:
+      return "DDL_TABLE_SPLIT";
+    case 2:
+      return "DDL_PREAGGREGATION";
+    case 3:
+      return "DDL_CREATE_INDEX";
+    case 4:
+      return "DDL_TABLE_JOIN";
+    case 5:
+      return "DDL_ADD_COLUMN_NO_COPY";
+    case 6:
+      return "DDL_TABLE_SPLIT_NO_COPY";
+    case 7:
+      return "DDL_PREAGGREGATION_NO_COPY";
+    default:
+      LOG(FATAL) << "Not supported";
+  }
+}
+
 bench_worker::ddl_workload_desc_vec tpcc_worker::get_ddl_workload() const {
   ddl_workload_desc_vec ddl_w;
   for (int i = 0; i < ermia::config::ddl_total; i++) {
-    ddl_w.push_back(ddl_workload_desc("DDL", 0, TxnDDL, ddl_examples[i]));
+    ddl_w.push_back(ddl_workload_desc(get_example_name(ddl_examples[i]), 0, TxnDDL,
+                    ddl_examples[i]));
   }
   return ddl_w;
 }

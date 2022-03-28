@@ -33,10 +33,26 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     return w;
   }
 
+  static const std::string get_example_name(uint32_t ddl_example) {
+    switch (ddl_example) {
+      case 0:
+        return "DDL_ADD_COLUMN";
+      case 1:
+        return "DDL_ADD_COLUMN_NO_COPY";
+      case 2:
+        return "DDL_ADD_CONSTRAINT";
+      case 3:
+        return "DDL_ADD_COLUMN_AND_ADD_CONSTRAINT";
+      default:
+        LOG(FATAL) << "Not supported";
+    }
+  }
+
   virtual ddl_workload_desc_vec get_ddl_workload() const {
     ddl_workload_desc_vec ddl_w;
     for (int i = 0; i < ermia::config::ddl_total; i++) {
-      ddl_w.push_back(ddl_workload_desc("DDL", 0, TxnDDL, ddl_examples[i]));
+      ddl_w.push_back(ddl_workload_desc(get_example_name(ddl_examples[i]), 0, TxnDDL,
+                      ddl_examples[i]));
     }
     return ddl_w;
   }

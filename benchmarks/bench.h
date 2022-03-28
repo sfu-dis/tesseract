@@ -204,7 +204,8 @@ class bench_worker : public ermia::thread::Runner {
   void do_workload_function(uint32_t i);
   void do_ddl_workload_function(uint32_t i);
   uint32_t fetch_workload();
-  bool finish_workload(rc_t ret, uint32_t workload_idx, util::timer t);
+  bool finish_workload(rc_t ret, uint32_t workload_idx, util::timer t,
+                       bool is_bool = false);
 
   inline ermia::dlog::tls_log *get_log() { return tlog; }
 
@@ -242,6 +243,7 @@ class bench_worker : public ermia::thread::Runner {
 
  protected:
   std::vector<tx_stat> txn_counts;  // commits and aborts breakdown
+  std::vector<tx_stat> ddl_txn_counts; // DDL commits and aborts breakdown
 
   ermia::transaction *txn_obj_buf;
   ermia::str_arena *arena;

@@ -16,7 +16,12 @@ TableDescriptor::TableDescriptor(std::string &name)
       aux_fid_(0),
       aux_array_(nullptr) {
 #ifdef BLOCKDDL
-    int ret = pthread_rwlock_init(&schema_lock, nullptr);
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_init(&attr);
+    int ret = pthread_rwlockattr_setkind_np(
+        &attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+    LOG_IF(FATAL, ret);
+    ret = pthread_rwlock_init(&schema_lock, &attr);
     LOG_IF(FATAL, ret);
 #endif
 }
