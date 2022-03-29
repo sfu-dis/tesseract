@@ -140,13 +140,13 @@ class oddlb_sequential_worker : public oddlb_base_worker {
                                     schema.td, schema.old_td, schema.index,
                                     schema.state);
 
+#ifndef LAZYDDL
     if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
-#if !defined(LAZYDDL)
       rc = rc_t{RC_INVALID};
       rc = ddl_exe->scan(txn, arena);
       TryCatch(rc);
-#endif
     }
+#endif
 #else  // COPY_DDL
     uint64_t schema_version = schema.v + 1;
     DLOG(INFO) << "Changing to new schema: version " << schema_version;
