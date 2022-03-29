@@ -137,7 +137,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     schema.record_to_value(new_schema_value);
 
     auto rc = ermia::catalog::write_schema(txn, schema_index, *table_key,
-              Encode(str(Size(new_schema_value)), new_schema_value), oid);
+              Encode(str(Size(new_schema_value)), new_schema_value), nullptr);
     TryCatch(rc);
 
     ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
@@ -203,7 +203,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       ermia::schema_record *schema_ptr = nullptr;
 #ifdef DDL
       // Read schema for each record first
-      struct ermia::schema_record schema_rec;
+      struct ermia::schema_record schema;
       schema_version = oddlb_read_schema(txn, schema);
       schema_ptr = &schema;
 
@@ -225,6 +225,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         // some new tuple have not been filled with values
         rc._val = RC_ABORT_USER;
       }
+      TryCatch(rc);
 
       oddlb_kv_1::value record_temp;
       const oddlb_kv_1::value *record_test = Decode(v2, record_temp);

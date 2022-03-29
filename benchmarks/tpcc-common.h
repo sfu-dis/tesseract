@@ -1408,9 +1408,7 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
         oorder_fid(
             open_tables.at("oorder_0")->GetTableDescriptor()->GetTupleFid()),
         customer_fid(
-            open_tables.at("customer_0")->GetTableDescriptor()->GetTupleFid())
-#if !defined(COPYDDL)
-        ,
+            open_tables.at("customer_0")->GetTableDescriptor()->GetTupleFid()),
         order_line_table_index(
             (ermia::ConcurrentMasstreeIndex *)open_tables.at("order_line_0")),
         oorder_table_index(
@@ -1422,7 +1420,6 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
         customer_table_secondary_index(
             (ermia::ConcurrentMasstreeIndex *)open_tables.at(
                 "customer_name_idx_0"))
-#endif
   {
     ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
     memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
@@ -1529,13 +1526,11 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   ermia::varstr *order_line_key;
   ermia::varstr *oorder_key;
   ermia::varstr *customer_key;
-#if !defined(COPYDDL)
   ermia::ConcurrentMasstreeIndex *order_line_table_index;
   ermia::ConcurrentMasstreeIndex *oorder_table_index;
   ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index;
   ermia::ConcurrentMasstreeIndex *customer_table_index;
   ermia::ConcurrentMasstreeIndex *customer_table_secondary_index;
-#endif
 };
 
 /*class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
