@@ -60,13 +60,13 @@ rc_t tpcc_worker::txn_new_order() {
   ermia::varstr v1, v2, v3;
   ermia::OID oid = ermia::INVALID_OID;
 
-  ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
+  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, v1, &oid);
 
   oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, *oorder_key, v2, &oid);
+  ermia::catalog::read_schema(txn, schema_index, oorder_table_index, *oorder_key, v2, &oid);
 
   oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, *customer_key, v3, &oid);
+  ermia::catalog::read_schema(txn, schema_index, customer_table_index, *customer_key, v3, &oid);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2,
       schema_value_temp_3;
@@ -364,10 +364,10 @@ rc_t tpcc_worker::txn_payment() {
   ermia::varstr v1, v2;
   ermia::OID oid = ermia::INVALID_OID;
 
-  ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
+  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, v1, &oid);
 
   oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, *customer_key, v2, &oid);
+  ermia::catalog::read_schema(txn, schema_index, customer_table_index, *customer_key, v2, &oid);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2;
   const schema_kv::value *order_line_schema_value =
@@ -610,13 +610,13 @@ rc_t tpcc_worker::txn_delivery() {
   ermia::varstr v1, v2, v3;
   ermia::OID oid = ermia::INVALID_OID;
 
-  ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
+  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, v1, &oid);
 
   oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, *oorder_key, v2, &oid);
+  ermia::catalog::read_schema(txn, schema_index, oorder_table_index, *oorder_key, v2, &oid);
 
   oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, *customer_key, v3, &oid);
+  ermia::catalog::read_schema(txn, schema_index, customer_table_index, *customer_key, v3, &oid);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2,
       schema_value_temp_3;
@@ -868,13 +868,13 @@ rc_t tpcc_worker::txn_order_status() {
   ermia::varstr v1, v2, v3;
   ermia::OID oid = ermia::INVALID_OID;
 
-  ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
+  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, v1, &oid);
 
   oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, *oorder_key, v2, &oid);
+  ermia::catalog::read_schema(txn, schema_index, oorder_table_index, *oorder_key, v2, &oid);
 
   oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, *customer_key, v3, &oid);
+  ermia::catalog::read_schema(txn, schema_index, customer_table_index, *customer_key, v3, &oid);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2,
       schema_value_temp_3;
@@ -1111,7 +1111,7 @@ rc_t tpcc_worker::txn_stock_level() {
   ermia::varstr v1;
   ermia::OID oid = ermia::INVALID_OID;
 
-  ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
+  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, v1, &oid);
 
   schema_kv::value schema_value_temp;
   const schema_kv::value *order_line_schema_value =
@@ -1236,13 +1236,13 @@ rc_t tpcc_worker::txn_credit_check() {
   ermia::varstr v1, v2, v3;
   ermia::OID oid = ermia::INVALID_OID;
 
-  ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
+  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, v1, &oid);
 
   oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, *oorder_key, v2, &oid);
+  ermia::catalog::read_schema(txn, schema_index, oorder_table_index, *oorder_key, v2, &oid);
 
   oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, *customer_key, v3, &oid);
+  ermia::catalog::read_schema(txn, schema_index, customer_table_index, *customer_key, v3, &oid);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2,
       schema_value_temp_3;
@@ -1410,7 +1410,7 @@ rc_t tpcc_worker::txn_query2() {
   ermia::varstr v1;
   ermia::OID oid = ermia::INVALID_OID;
 
-  ermia::catalog::read_schema(txn, schema_index, *order_line_key, v1, &oid);
+  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, v1, &oid);
 
   schema_kv::value schema_value_temp;
   const schema_kv::value *order_line_schema_value =

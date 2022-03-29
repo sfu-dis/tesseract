@@ -34,7 +34,7 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
   ermia::varstr valptr;
   ermia::OID oid = ermia::INVALID_OID;
 
-  ermia::catalog::read_schema(txn, schema_index, *order_line_key, valptr, &oid);
+  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, valptr, &oid);
 
   struct ermia::schema_record schema;
   schema_kv::value schema_value_temp;
@@ -202,7 +202,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
   ermia::varstr valptr;
   ermia::OID oid = ermia::INVALID_OID;
 
-  ermia::catalog::read_schema(txn, schema_index, *customer_key, valptr, &oid);
+  ermia::catalog::read_schema(txn, schema_index, customer_table_index, *customer_key, valptr, &oid);
 
   struct ermia::schema_record customer_schema;
   schema_kv::value schema_value_temp;
@@ -367,9 +367,9 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
   ermia::OID order_line_oid = ermia::INVALID_OID;
   ermia::OID oorder_oid = ermia::INVALID_OID;
 
-  ermia::catalog::read_schema(txn, schema_index, *order_line_key, valptr1, &order_line_oid);
+  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, valptr1, &order_line_oid);
 
-  ermia::catalog::read_schema(txn, schema_index, *oorder_key, valptr2, &oorder_oid);
+  ermia::catalog::read_schema(txn, schema_index, oorder_table_index, *oorder_key, valptr2, &oorder_oid);
 
   schema_kv::value schema_value_temp_1, schema_value_temp_2;
   const schema_kv::value *old_order_line_schema_value =
@@ -553,7 +553,7 @@ rc_t tpcc_worker::create_index(ermia::transaction *txn, uint32_t ddl_example) {
   ermia::varstr valptr;
   ermia::OID oid = ermia::INVALID_OID;
 
-  ermia::catalog::read_schema(txn, schema_index, *order_line_key, valptr, &oid);
+  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, valptr, &oid);
 
   struct ermia::schema_record schema;
   schema_kv::value schema_value_temp;
@@ -649,7 +649,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, uint32_t ddl_example) {
   ermia::varstr valptr;
   ermia::OID oid = ermia::INVALID_OID;
 
-  ermia::catalog::read_schema(txn, schema_index, *order_line_key, valptr, &oid);
+  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, valptr, &oid);
 
   struct ermia::schema_record schema;
   schema_kv::value schema_value_temp;

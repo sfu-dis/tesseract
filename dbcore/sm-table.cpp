@@ -83,6 +83,7 @@ void TableDescriptor::Recover(FID tuple_fid, FID aux_fid, OID himark) {
 
 #ifdef BLOCKDDL
 // Acquire lock for a table (lock the schema)
+// Note: caller needs to make sure only calling this once per table per transaction
 void TableDescriptor::LockSchema(bool exclusive) {
   int ret = -1;
   if (exclusive) {

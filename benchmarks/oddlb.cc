@@ -66,7 +66,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
   inline uint64_t oddlb_read_schema(ermia::transaction *txn, ermia::schema_record &out_schema) {
     ermia::varstr v1;
     ermia::OID oid = ermia::INVALID_OID;
-    ermia::catalog::read_schema(txn, schema_index, *table_key, v1, &oid);
+    ermia::catalog::read_schema(txn, schema_index, table_index, *table_key, v1, &oid);
 
     schema_kv::value schema_value_temp;
     const schema_kv::value *schema_value = Decode(v1, schema_value_temp);

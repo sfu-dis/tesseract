@@ -153,10 +153,8 @@ class transaction {
 		        bool schema_ready, TableDescriptor *old_td) {
       // Ensure there is no duplicates - it's the caller's responsibility (e.g., under blocking DDL)
       // to make sure the table lock type is correct
-      for (uint32_t i = 0; i < num_entries; ++i) {
-        if (entries[i].table_fid == fid) {
-          return;
-        }
+      if (find(fid)) {
+        return;
       }
       uint32_t idx = num_entries++;
       LOG_IF(FATAL, num_entries > kMaxEntries);

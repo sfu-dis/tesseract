@@ -21,6 +21,7 @@ class schematable_loader : public bench_loader {
 void create_schema_table(ermia::Engine *db, const char *name);
 
 void read_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
+                 ConcurrentMasstreeIndex *target_table_index,
                  const varstr &table_name, varstr &out_schema_value, OID *out_schema_oid);
 
 rc_t write_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
