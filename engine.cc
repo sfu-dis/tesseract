@@ -218,8 +218,10 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
       if (t->IsWaitForNewSchema() && tuple) {
-	ermia::transaction::table_record_t *table_record = t->find_in_table_set(table_descriptor->GetTupleFid());
-	if (table_record && !table_record->schema_ready && AWAIT t->OverlapCheck(table_descriptor, table_record->old_table_desc, oid)) {
+	ermia::transaction::table_record_t *table_record =
+            t->find_in_table_set(table_descriptor->GetTupleFid());
+        if (table_record && !table_record->schema_ready &&
+            AWAIT t->OverlapCheck(table_descriptor, table_record->old_table_desc, oid)) {
           volatile_write(rc._val, RC_ABORT_INTERNAL);
           RETURN;
         }
@@ -658,8 +660,10 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
   if (caller_callback->return_code._val == RC_TRUE) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
     if (t->IsWaitForNewSchema()) {
-      ermia::transaction::table_record_t *table_record = t->find_in_table_set(table_descriptor->GetTupleFid());
-      if (table_record && !table_record->schema_ready && AWAIT t->OverlapCheck(table_descriptor, table_record->old_table_desc, oid)) {
+      ermia::transaction::table_record_t *table_record =
+          t->find_in_table_set(table_descriptor->GetTupleFid());
+      if (table_record && !table_record->schema_ready &&
+          AWAIT t->OverlapCheck(table_descriptor, table_record->old_table_desc, oid)) {
         caller_callback->return_code = rc_t{RC_ABORT_SI_CONFLICT};
         return false;
       }
