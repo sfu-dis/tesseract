@@ -95,8 +95,6 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     schema.state = ermia::ddl::schema_state_type::NOT_READY;
     schema.show_index = true;
 
-    rc = rc_t{RC_INVALID};
-
     if (schema.ddl_type == ermia::ddl::ddl_type::COPY_ONLY ||
         schema.ddl_type == ermia::ddl::ddl_type::COPY_VERIFICATION) {
       char table_name[20];
@@ -161,9 +159,10 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     schema_kv::value new_schema_value;
     schema.record_to_value(new_schema_value);
 
-    TryCatch(ermia::catalog::write_schema(
+    auto rc = ermia::catalog::write_schema(
         txn, schema_index, *table_key,
-        Encode(str(Size(new_schema_value)), new_schema_value), oid));
+        Encode(str(Size(new_schema_value)), new_schema_value), oid);
+    TryCatch(rc);
 
     ddl_exe->add_ddl_executor_paras(schema.v, -1, schema.ddl_type,
                                     schema.reformat_idx, schema.constraint_idx,

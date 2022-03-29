@@ -21,8 +21,8 @@ void create_schema_table(ermia::Engine *db, const char *name) {
 
 void read_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
                  const varstr &table_name, varstr &out_schema_value, OID *out_schema_oid) {
-#ifdef BLOCKDDL
   auto *target_td = schema_table_index->GetMasstree().get_table_descriptor();
+#ifdef BLOCKDDL
   target_td->LockSchema(t->is_ddl());
 
   // Refresh begin timestamp after lock is granted

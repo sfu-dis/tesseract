@@ -55,8 +55,6 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
 #ifdef COPYDDL
   schema.state = ermia::ddl::schema_state_type::NOT_READY;
 
-  rc = rc_t{RC_INVALID};
-
   if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
     char table_name[20];
     snprintf(table_name, 20, "order_line_%lu", schema_version);
@@ -87,7 +85,7 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
   schema_kv::value new_schema_value;
   schema.record_to_value(new_schema_value);
 
-  rc = ermia::catalog::write_schema(txn, schema_index, *order_line_key,
+  auto rc = ermia::catalog::write_schema(txn, schema_index, *order_line_key,
     Encode(str(Size(new_schema_value)), new_schema_value), oid);
   TryCatch(rc);
 
@@ -231,8 +229,6 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
 #ifdef COPYDDL
   customer_schema.state = ermia::ddl::schema_state_type::NOT_READY;
 
-  rc = rc_t{RC_INVALID};
-
   if (customer_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
     char table_name[20];
     snprintf(table_name, 20, "customer_%lu", schema_version);
@@ -270,7 +266,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
   schema_kv::value new_schema_value;
   customer_schema.record_to_value(new_schema_value);
 
-  rc = ermia::catalog::write_schema(txn, schema_index, *customer_key,
+  auto rc = ermia::catalog::write_schema(txn, schema_index, *customer_key,
       Encode(str(Size(new_schema_value)), new_schema_value), oid);
   TryCatch(rc);
 
@@ -505,7 +501,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
   schema_kv::value new_schema_value;
   oorder_schema.record_to_value(new_schema_value);
 
-  rc = ermia::catalog::write_schema(txn, schema_index, *oorder_key,
+  auto rc = ermia::catalog::write_schema(txn, schema_index, *oorder_key,
       Encode(str(Size(new_schema_value)), new_schema_value), oorder_oid);
   TryCatch(rc);
 
@@ -677,8 +673,6 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, uint32_t ddl_example) {
 #ifdef COPYDDL
   schema.state = ermia::ddl::schema_state_type::NOT_READY;
 
-  rc = rc_t{RC_INVALID};
-
   if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
     char table_name[20];
     snprintf(table_name, 20, "order_line_%lu", schema_version);
@@ -709,7 +703,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, uint32_t ddl_example) {
   schema_kv::value new_schema_value;
   schema.record_to_value(new_schema_value);
 
-  rc = ermia::catalog::write_schema(txn, schema_index, *order_line_key,
+  auto rc = ermia::catalog::write_schema(txn, schema_index, *order_line_key,
     Encode(str(Size(new_schema_value)), new_schema_value), oid);
   TryCatch(rc);
 
