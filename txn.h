@@ -151,10 +151,11 @@ class transaction {
 
     inline void emplace(TableDescriptor *td, FID fid, OID schema_oid, uint32_t version,
 		        bool schema_ready, TableDescriptor *old_td) {
-      // Ensure there is no duplicates
+      // Ensure there is no duplicates - it's the caller's responsibility (e.g., under blocking DDL)
+      // to make sure the table lock type is correct
       for (uint32_t i = 0; i < num_entries; ++i) {
         if (entries[i].table_fid == fid) {
-          LOG(FATAL) << "No support yet for dedup of table set";
+          return;
         }
       }
       uint32_t idx = num_entries++;
