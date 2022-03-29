@@ -123,17 +123,12 @@ class oddlb_base_worker : public bench_worker {
       spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a,
                      barrier_b),
-        schema_index(
-            (ermia::ConcurrentMasstreeIndex *)open_tables.at("SCHEMA")),
-        schema_fid(
-            open_tables.at("SCHEMA")->GetTableDescriptor()->GetTupleFid()),
-        table_fid(
-            open_tables.at("USERTABLE")->GetTableDescriptor()->GetTupleFid())
-#if defined(SIDDL) || defined(BLOCKDDL)
-        ,
-        table_index(
-            (ermia::ConcurrentMasstreeIndex *)open_tables.at("USERTABLE"))
+#ifdef DDL
+        schema_index((ermia::ConcurrentMasstreeIndex *)open_tables.at("SCHEMA")),
 #endif
+        schema_fid(open_tables.at("SCHEMA")->GetTableDescriptor()->GetTupleFid()),
+        table_fid(open_tables.at("USERTABLE")->GetTableDescriptor()->GetTupleFid()),
+        table_index((ermia::ConcurrentMasstreeIndex *)open_tables.at("USERTABLE"))
   {
     const schema_kv::key k(table_fid);
     table_key =
@@ -229,11 +224,11 @@ class oddlb_base_worker : public bench_worker {
     }
   }
 
+#ifdef DDL
   ermia::ConcurrentMasstreeIndex *schema_index;
+#endif
   ermia::varstr *table_key;
   ermia::FID schema_fid;
   ermia::FID table_fid;
-#if defined(SIDDL) || defined(BLOCKDDL)
   ermia::ConcurrentMasstreeIndex *table_index;
-#endif
 };

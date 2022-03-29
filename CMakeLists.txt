@@ -129,7 +129,13 @@ add_executable(corobase_DDL_BLOCK ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.
 set_target_properties(corobase_DDL_BLOCK PROPERTIES COMPILE_FLAGS "-DDDL -DBLOCKDDL")
 target_link_libraries(corobase_DDL_BLOCK corobase_ddl_block thread_pool)
 
-set(corobase_BLOCK_LIB corobase_ddl_block)
+# Baseline without DDL 
+add_library(corobase_no_ddl SHARED ${LIB_SRC})
+set_target_properties(corobase_no_ddl PROPERTIES COMPILE_FLAGS "")
+
+add_executable(corobase_NO_DDL ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(corobase_NO_DDL PROPERTIES COMPILE_FLAGS "")
+target_link_libraries(corobase_NO_DDL corobase_no_ddl thread_pool)
 
 # SI
 #add_library(corobase_si SHARED ${LIB_SRC})
