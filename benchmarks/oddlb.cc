@@ -202,14 +202,15 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
 #endif
 
-    ermia::schema_record schema;
-    uint64_t schema_version = oddlb_read_schema(txn, schema);
-
 #ifdef COPYDDL
     ermia::ConcurrentMasstreeIndex *table_index = (ermia::ConcurrentMasstreeIndex *)schema.index;
 #endif
 
     for (uint i = 0; i < oddlb_reps_per_tx; ++i) {
+      // Read schema for each record first
+      struct ermia::schema_record schema;
+      uint64_t schema_version = oddlb_read_schema(txn, schema);
+
       uint64_t a = r.next() % oddlb_initial_table_size;  // 0 ~ oddlb_initial_table_size-1
       const oddlb_kv_1::key k2(a);
       ermia::varstr v2;
@@ -300,14 +301,16 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
   rc_t txn_rmw() {
     ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
-    struct ermia::schema_record schema;
-    uint64_t schema_version = oddlb_read_schema(txn, schema);
 
 #ifdef COPYDDL
     ermia::ConcurrentMasstreeIndex *table_index = (ermia::ConcurrentMasstreeIndex *)schema.index;
 #endif
 
     for (uint i = 0; i < oddlb_reps_per_tx; ++i) {
+      // Read schema for each record first
+      struct ermia::schema_record schema;
+      uint64_t schema_version = oddlb_read_schema(txn, schema);
+
       uint64_t a = r.next() % oddlb_initial_table_size;  // 0 ~ oddlb_initial_table_size-1
       ermia::varstr v2;
       if (schema_version == 0) {
