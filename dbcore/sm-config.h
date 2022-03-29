@@ -78,7 +78,6 @@ extern uint32_t scan_threads;
 extern bool scan_physical_workers_only;
 extern bool enable_cdc_schema_lock;
 extern bool enable_cdc_verification_test;
-extern bool enable_dml_slow_down;
 extern uint32_t ddl_total;
 extern uint32_t no_copy_verification_version_add;
 extern uint32_t ddl_example;
@@ -86,7 +85,6 @@ extern bool enable_ddl_keys;
 extern bool enable_lazy_background;
 extern bool enable_late_scan_join;
 extern bool enable_parallel_scan_cdc;
-extern float dml_slow_down_prob;
 
 extern uint64_t print_interval_ms;
 

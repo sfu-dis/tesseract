@@ -122,7 +122,6 @@ DEFINE_bool(enable_cdc_schema_lock, true,
             "Whether to lock schema records when CDC");
 DEFINE_bool(enable_cdc_verification_test, false,
             "Whether enable CDC test for verification related DDL");
-DEFINE_bool(enable_dml_slow_down, true, "Whether make DMLs slow down when DDL");
 DEFINE_uint64(ddl_total, 1, "Number of DDL txns");
 DEFINE_uint64(no_copy_verification_version_add, 1,
               "To which version we want to add to version when doing no copy "
@@ -135,8 +134,6 @@ DEFINE_bool(enable_late_scan_join, false,
             "Whether enable join scan workers after commit");
 DEFINE_bool(enable_parallel_scan_cdc, true,
             "Whether enable doing scan and CDC together");
-DEFINE_uint64(dml_slow_down_prob, 50,
-              "Probability of a DML should slow down when DDL");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -176,7 +173,6 @@ int main(int argc, char **argv) {
   ermia::config::enable_cdc_schema_lock = FLAGS_enable_cdc_schema_lock;
   ermia::config::enable_cdc_verification_test =
       FLAGS_enable_cdc_verification_test;
-  ermia::config::enable_dml_slow_down = FLAGS_enable_dml_slow_down;
   ermia::config::ddl_total = FLAGS_ddl_total;
   ermia::config::no_copy_verification_version_add =
       FLAGS_no_copy_verification_version_add;
@@ -185,7 +181,6 @@ int main(int argc, char **argv) {
   ermia::config::enable_lazy_background = FLAGS_enable_lazy_background;
   ermia::config::enable_late_scan_join = FLAGS_enable_late_scan_join;
   ermia::config::enable_parallel_scan_cdc = FLAGS_enable_parallel_scan_cdc;
-  ermia::config::dml_slow_down_prob = 1 - (float)FLAGS_dml_slow_down_prob / 100;
 
   if (ermia::config::physical_workers_only) {
 #if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
@@ -373,12 +368,6 @@ int main(int argc, char **argv) {
             << ermia::config::enable_cdc_schema_lock << std::endl;
   std::cerr << "  enable_cdc_verification_test		: "
             << ermia::config::enable_cdc_verification_test << std::endl;
-  std::cerr << "  enable_dml_slow_down    		: "
-            << ermia::config::enable_dml_slow_down << std::endl;
-  if (ermia::config::enable_dml_slow_down) {
-    std::cerr << "  dml_slow_down_prob                    : "
-              << 1 - ermia::config::dml_slow_down_prob << std::endl;
-  }
   std::cerr << "  ddl_total				: "
             << ermia::config::ddl_total << std::endl;
   std::cerr << "  no_copy_verification_version_add	: "
