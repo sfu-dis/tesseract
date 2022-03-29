@@ -130,9 +130,15 @@ class transaction {
     FID table_fid;
     OID schema_oid;
     uint32_t version;
-    table_record_t() : table_desc(nullptr), table_fid(0), schema_oid(0), version(0) {}
-    table_record_t(TableDescriptor *td, FID fid, OID oid, uint32_t version)
-        : table_desc(td), table_fid(fid), schema_oid(oid), version(version) {}
+    bool schema_ready;
+    TableDescriptor *old_table_desc;
+    table_record_t()
+	: table_desc(nullptr), table_fid(0), schema_oid(0), version(0),
+          schema_ready(false), old_table_desc(nullptr) {}
+    table_record_t(TableDescriptor *td, FID fid, OID oid, uint32_t version,
+		   bool schema_ready, TableDescriptor *old_td)
+        : table_desc(td), table_fid(fid), schema_oid(oid), version(version),
+          schema_ready(schema_ready), old_table_desc(old_td) {}
   };
 
   struct table_set_t {
@@ -143,7 +149,8 @@ class transaction {
     table_set_t() : num_entries(0) {}
     ~table_set_t() {}
 
-    inline void emplace(TableDescriptor *td, FID fid, OID schema_oid, uint32_t version) {
+    inline void emplace(TableDescriptor *td, FID fid, OID schema_oid, uint32_t version,
+		        bool schema_ready, TableDescriptor *old_td) {
       // Ensure there is no duplicates
       for (uint32_t i = 0; i < num_entries; ++i) {
         if (entries[i].table_fid == fid) {
@@ -152,7 +159,16 @@ class transaction {
       }
       uint32_t idx = num_entries++;
       LOG_IF(FATAL, num_entries > kMaxEntries);
-      new (&entries[idx]) table_record_t(td, fid, schema_oid, version);
+      new (&entries[idx]) table_record_t(td, fid, schema_oid, version, schema_ready, old_td);
+    }
+
+    inline table_record_t *find(FID fid) {
+      for (uint32_t i = 0; i < num_entries; ++i) {
+        if (entries[i].table_fid == fid) {
+          return &entries[i];
+	}
+      }
+      return nullptr;
     }
   };
 
@@ -342,9 +358,14 @@ class transaction {
 
   inline table_set_t *get_table_set() { return &table_set; }
 
-  inline void add_to_table_set(TableDescriptor *td, FID table_fid, OID schema_oid, uint32_t version) {
+  inline void add_to_table_set(TableDescriptor *td, FID table_fid, OID schema_oid, uint32_t version,
+		               bool schema_ready, TableDescriptor *old_td) {
     ALWAYS_ASSERT(td);
-    table_set.emplace(td, table_fid, schema_oid, version);
+    table_set.emplace(td, table_fid, schema_oid, version, schema_ready, old_td);
+  }
+
+  inline table_record_t *find_in_table_set(FID table_fid) {
+    return table_set.find(table_fid);
   }
 
 #ifdef BLOCKDDL
