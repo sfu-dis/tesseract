@@ -29,7 +29,7 @@ void read_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
   t->GetXIDContext()->begin = dlog::current_csn.load(std::memory_order_relaxed);
 #endif
 
-  bool schema_not_ready = false;
+  bool schema_ready = true;
 retry:
   rc_t rc;
   schema_table_index->GetRecord(t, rc, table_name, out_schema_value, out_schema_oid);
@@ -45,9 +45,9 @@ retry:
 
   schema_kv::value schema_value_temp;
   const schema_kv::value *schema = Decode(out_schema_value, schema_value_temp);
+  TableDescriptor *old_td = nullptr;
 #ifdef COPYDDL
-  TableDescriptor *old_td =
-      schema->old_fid ? Catalog::GetTable(schema->old_fid) : nullptr;
+  old_td = schema->old_fid ? Catalog::GetTable(schema->old_fid) : nullptr;
   if (schema->state == ddl::schema_state_type::NOT_READY) {
 #if !defined(LAZYDDL)
     if (schema->ddl_type != ddl::ddl_type::COPY_ONLY || config::enable_cdc_schema_lock) {
@@ -58,7 +58,7 @@ retry:
       goto retry;
     } else {
       t->SetWaitForNewSchema(true);
-      schema_not_ready = true;
+      schema_ready = false;
     }
 #else  // LAZYDDL
     goto retry;
@@ -66,7 +66,8 @@ retry:
   }
 #endif
 
-  t->add_to_table_set(target_td, schema->fid, *out_schema_oid, schema->version);
+  t->add_to_table_set(target_td, schema->fid, *out_schema_oid, schema->version,
+		      schema_ready, old_td);
 }
 
 rc_t write_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
