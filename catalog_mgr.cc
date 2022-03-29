@@ -72,19 +72,20 @@ retry:
 
 rc_t write_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
                   const varstr &table_name, varstr &schema_value,
-                  OID &out_schema_oid, bool is_insert) {
+                  OID *out_schema_oid, bool is_insert) {
   // For DDL txn only
   ALWAYS_ASSERT(t->is_ddl());
 
   auto &schema_idx = schema_table_index->GetMasstree();
   auto *target_td = schema_idx.get_table_descriptor();
 
-  rc_t rc = is_insert ? schema_table_index->InsertRecord(t, table_name, schema_value, &out_schema_oid)
+  OID oid = INVALID_OID;
+  rc_t rc = is_insert ? schema_table_index->InsertRecord(t, table_name, schema_value, &oid)
                       : schema_table_index->UpdateRecord(t, table_name, schema_value);
   if (rc._val == RC_TRUE) {
     schema_kv::value schema_value_temp;
     const schema_kv::value *schema = Decode(schema_value, schema_value_temp);
-    t->get_ddl_executor()->add_ddl_flags(out_schema_oid, schema->version);
+    t->get_ddl_executor()->add_ddl_flags(oid, schema->version);
   }
 
 #ifdef BLOCKDDL
@@ -93,6 +94,10 @@ rc_t write_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
 #endif
 
   DLOG_IF(INFO, rc._val != RC_TRUE) << "Catalog: failed updating schema";
+
+  if (out_schema_oid) {
+    *out_schema_oid = oid;
+  }
   return rc;
 }
 

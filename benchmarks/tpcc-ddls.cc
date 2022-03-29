@@ -86,7 +86,7 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
   schema.record_to_value(new_schema_value);
 
   auto rc = ermia::catalog::write_schema(txn, schema_index, *order_line_key,
-    Encode(str(Size(new_schema_value)), new_schema_value), oid);
+    Encode(str(Size(new_schema_value)), new_schema_value), &oid);
   TryCatch(rc);
 
   ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
@@ -107,7 +107,7 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
 
   TryCatch(ermia::catalog::write_schema(
       txn, schema_index, *order_line_key,
-      Encode(str(Size(new_schema_value)), new_schema_value), oid));
+      Encode(str(Size(new_schema_value)), new_schema_value), &oid));
 
   ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
                                   schema.reformat_idx, schema.constraint_idx,
@@ -267,7 +267,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
   customer_schema.record_to_value(new_schema_value);
 
   auto rc = ermia::catalog::write_schema(txn, schema_index, *customer_key,
-      Encode(str(Size(new_schema_value)), new_schema_value), oid);
+      Encode(str(Size(new_schema_value)), new_schema_value), &oid);
   TryCatch(rc);
 
   ddl_exe->add_ddl_executor_paras(
@@ -288,7 +288,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
   customer_schema.record_to_value(new_schema_value);
 
   TryCatch(ermia::catalog::write_schema(txn, schema_index, *customer_key,
-      Encode(str(Size(new_schema_value)), new_schema_value), oid));
+      Encode(str(Size(new_schema_value)), new_schema_value), &oid));
 
   ddl_exe->add_ddl_executor_paras(
       customer_schema.v, customer_schema.old_v, customer_schema.ddl_type,
@@ -502,7 +502,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
   oorder_schema.record_to_value(new_schema_value);
 
   auto rc = ermia::catalog::write_schema(txn, schema_index, *oorder_key,
-      Encode(str(Size(new_schema_value)), new_schema_value), oorder_oid);
+      Encode(str(Size(new_schema_value)), new_schema_value), &oorder_oid);
   TryCatch(rc);
 
   ddl_exe->add_ddl_executor_paras(
@@ -531,7 +531,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
   oorder_schema.record_to_value(new_schema_value);
 
   TryCatch(ermia::catalog::write_schema(txn, schema_index, *oorder_key,
-      Encode(str(Size(new_schema_value)), new_schema_value), oorder_oid));
+      Encode(str(Size(new_schema_value)), new_schema_value), &oorder_oid));
 
   ddl_exe->add_ddl_executor_paras(
       oorder_schema.v, oorder_schema.old_v, oorder_schema.ddl_type,
@@ -595,7 +595,7 @@ rc_t tpcc_worker::create_index(ermia::transaction *txn, uint32_t ddl_example) {
   schema.record_to_value(new_schema_value);
 
   auto rc = ermia::catalog::write_schema(txn, schema_index, *order_line_key,
-    Encode(str(Size(new_schema_value)), new_schema_value), oid);
+    Encode(str(Size(new_schema_value)), new_schema_value), &oid);
   TryCatch(rc);
 
   ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
@@ -704,7 +704,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, uint32_t ddl_example) {
   schema.record_to_value(new_schema_value);
 
   auto rc = ermia::catalog::write_schema(txn, schema_index, *order_line_key,
-    Encode(str(Size(new_schema_value)), new_schema_value), oid);
+    Encode(str(Size(new_schema_value)), new_schema_value), &oid);
   TryCatch(rc);
 
   ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
@@ -725,7 +725,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, uint32_t ddl_example) {
 
   TryCatch(ermia::catalog::write_schema(
       txn, schema_index, *order_line_key,
-      Encode(str(Size(new_schema_value)), new_schema_value), oid));
+      Encode(str(Size(new_schema_value)), new_schema_value), &oid));
 
   ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
                                   schema.reformat_idx, schema.constraint_idx,
