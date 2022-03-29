@@ -45,9 +45,7 @@ retry:
 
   schema_kv::value schema_value_temp;
   const schema_kv::value *schema = Decode(out_schema_value, schema_value_temp);
-  TableDescriptor *old_td = nullptr;
 #ifdef COPYDDL
-  old_td = schema->old_fid ? Catalog::GetTable(schema->old_fid) : nullptr;
   if (schema->state == ddl::schema_state_type::NOT_READY) {
 #if !defined(LAZYDDL)
     if (schema->ddl_type != ddl::ddl_type::COPY_ONLY || config::enable_cdc_schema_lock) {
@@ -66,6 +64,8 @@ retry:
   }
 #endif
 
+  TableDescriptor *old_td =
+      schema->old_fid ? Catalog::GetTable(schema->old_fid) : nullptr;
   t->add_to_table_set(target_td, schema->fid, *out_schema_oid, schema->version,
 		      schema_ready, old_td);
 }

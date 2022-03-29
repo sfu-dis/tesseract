@@ -49,7 +49,7 @@ class Engine {
   static const uint16_t kIndexConcurrentMasstree = 0x1;
 
   // Create a table without any index (at least yet)
-  TableDescriptor *CreateTable(const char *name);
+  TableDescriptor *CreateTable(const char *name, bool modify_hash_table = true);
 
   // Create the primary index for a table
   inline void CreateMasstreePrimaryIndex(const char *table_name,

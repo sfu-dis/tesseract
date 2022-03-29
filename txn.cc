@@ -288,6 +288,9 @@ rc_t transaction::si_commit() {
         auto *new_alloc = oidmgr->get_allocator(v.second->GetTupleFid());
         himark = new_alloc->head.hiwater_mark;
 
+        // Add new table descriptor to fid_map
+        Catalog::fid_map[v.second->GetTupleFid()] = v.second;
+
         // Switch table descriptor for primary index
         OrderedIndex *index = v.second->GetPrimaryIndex();
         index->SetTableDescriptor(v.second);

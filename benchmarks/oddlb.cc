@@ -100,7 +100,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       char table_name[20];
       snprintf(table_name, 20, "USERTABLE_%lu", schema_version);
 
-      db->CreateTable(table_name);
+      db->CreateTable(table_name, false);
 
       schema.td = ermia::Catalog::GetTable(table_name);
       schema.old_index = schema.index;

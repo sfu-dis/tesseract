@@ -32,7 +32,7 @@ class TableDescriptor {
  public:
   TableDescriptor(std::string& name);
 
-  void Initialize();
+  void Initialize(bool modify_hash_table = true);
   void SetPrimaryIndex(OrderedIndex* index, const std::string& name);
   void AddSecondaryIndex(OrderedIndex* index, const std::string& name);
   void Recover(FID tuple_fid, FID key_fid, OID himark = 0);

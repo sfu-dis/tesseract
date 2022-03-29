@@ -45,9 +45,9 @@ Engine::Engine() {
 
 Engine::~Engine() { ermia::dlog::uninitialize(); }
 
-TableDescriptor *Engine::CreateTable(const char *name) {
+TableDescriptor *Engine::CreateTable(const char *name, bool modify_hash_table) {
   auto *td = Catalog::NewTable(name);
-  td->Initialize();
+  td->Initialize(modify_hash_table);
   return td;
 }
 

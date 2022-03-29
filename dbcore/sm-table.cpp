@@ -26,9 +26,11 @@ TableDescriptor::TableDescriptor(std::string &name)
 #endif
 }
 
-void TableDescriptor::Initialize() {
+void TableDescriptor::Initialize(bool modify_hash_table) {
   tuple_fid = oidmgr->create_file(true);
-  Catalog::fid_map[tuple_fid] = this;
+  if (modify_hash_table) {
+    Catalog::fid_map[tuple_fid] = this;
+  }
   tuple_array = oidmgr->get_array(tuple_fid);
 
   // Dedicated array for keys
