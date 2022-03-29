@@ -15,19 +15,16 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       unsigned int worker_id, unsigned long seed, ermia::Engine *db,
       const std::map<std::string, ermia::OrderedIndex *> &open_tables,
       spin_barrier *barrier_a, spin_barrier *barrier_b)
-      : oddlb_base_worker(worker_id, seed, db, open_tables, barrier_a,
-                          barrier_b) {}
+      : oddlb_base_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b) {}
 
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
 
     if (oddlb_workload.read_percent()) {
-      w.push_back(workload_desc(
-          "Read", double(oddlb_workload.read_percent()) / 100.0, TxnRead));
+      w.push_back(workload_desc("Read", double(oddlb_workload.read_percent()) / 100.0, TxnRead));
     }
     if (oddlb_workload.update_percent()) {
-      w.push_back(workload_desc(
-          "RMW", double(oddlb_workload.update_percent()) / 100.0, TxnRMW));
+      w.push_back(workload_desc("RMW", double(oddlb_workload.update_percent()) / 100.0, TxnRMW));
     }
 
     return w;
@@ -51,8 +48,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
   virtual ddl_workload_desc_vec get_ddl_workload() const {
     ddl_workload_desc_vec ddl_w;
     for (int i = 0; i < ermia::config::ddl_total; i++) {
-      ddl_w.push_back(ddl_workload_desc(get_example_name(ddl_examples[i]), 0, TxnDDL,
-                      ddl_examples[i]));
+      ddl_w.push_back(ddl_workload_desc(get_example_name(ddl_examples[i]), 0, TxnDDL, ddl_examples[i]));
     }
     return ddl_w;
   }
@@ -83,12 +79,9 @@ class oddlb_sequential_worker : public oddlb_base_worker {
   retry:
 #endif
     ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
-
     struct ermia::schema_record schema;
     oddlb_read_schema(txn, schema);
-
     schema.ddl_type = get_example_ddl_type(ddl_example);
-
     ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
     ddl_exe->set_ddl_type(schema.ddl_type);
 
@@ -101,8 +94,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     schema.state = ermia::ddl::schema_state_type::NOT_READY;
     schema.show_index = true;
 
-    if (schema.ddl_type == ermia::ddl::ddl_type::COPY_ONLY ||
-        schema.ddl_type == ermia::ddl::ddl_type::COPY_VERIFICATION) {
+    if (schema.ddl_type == ermia::ddl::ddl_type::COPY_ONLY || schema.ddl_type == ermia::ddl::ddl_type::COPY_VERIFICATION) {
       char table_name[20];
       snprintf(table_name, 20, "USERTABLE_%lu", schema_version);
 
@@ -127,11 +119,9 @@ class oddlb_sequential_worker : public oddlb_base_worker {
       ddl_exe->add_old_td_map(schema.old_td);
     } else {
       if (schema.ddl_type == ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
-        schema_version =
-            schema.old_v + ermia::config::no_copy_verification_version_add;
+        schema_version = schema.old_v + ermia::config::no_copy_verification_version_add;
         schema.v = schema_version;
-        schema.reformats_total =
-            ermia::config::no_copy_verification_version_add;
+        schema.reformats_total = ermia::config::no_copy_verification_version_add;
       }
 
       ddl_exe->set_old_td(schema.td);
@@ -142,7 +132,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     schema.record_to_value(new_schema_value);
 
     auto rc = ermia::catalog::write_schema(txn, schema_index, *table_key,
-      Encode(str(Size(new_schema_value)), new_schema_value), oid);
+              Encode(str(Size(new_schema_value)), new_schema_value), oid);
     TryCatch(rc);
 
     ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
@@ -159,7 +149,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     }
 #else  // COPY_DDL
     uint64_t schema_version = schema.v + 1;
-    DLOG(INFO) << "change to new schema: " << schema_version;
+    DLOG(INFO) << "Changing to new schema: version " << schema_version;
     schema.v = schema_version;
 
     schema_kv::value new_schema_value;

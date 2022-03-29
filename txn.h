@@ -166,7 +166,7 @@ class transaction {
       for (uint32_t i = 0; i < num_entries; ++i) {
         if (entries[i].table_fid == fid) {
           return &entries[i];
-	}
+        }
       }
       return nullptr;
     }
