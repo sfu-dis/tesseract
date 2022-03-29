@@ -9,19 +9,6 @@
 
 extern OddlbWorkload oddlb_workload;
 
-void oddlb_read_schema(ermia::transaction *txn,
-                                          ermia::ConcurrentMasstreeIndex *schema_index,
-                                          ermia::varstr *table_name,
-                                          ermia::schema_record &schema) {
-  ermia::varstr v1;
-  ermia::OID oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, *table_name, v1, &oid);
-
-  schema_kv::value schema_value_temp;
-  const schema_kv::value *schema_value = Decode(v1, schema_value_temp);
-  schema.value_to_record(schema_value);
-}
-
 class oddlb_sequential_worker : public oddlb_base_worker {
  public:
   oddlb_sequential_worker(
@@ -80,6 +67,17 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     return static_cast<oddlb_sequential_worker *>(w)->txn_rmw();
   }
 
+  inline uint64_t oddlb_read_schema(ermia::transaction *txn, ermia::schema_record &out_schema) {
+    ermia::varstr v1;
+    ermia::OID oid = ermia::INVALID_OID;
+    ermia::catalog::read_schema(txn, schema_index, *table_key, v1, &oid);
+
+    schema_kv::value schema_value_temp;
+    const schema_kv::value *schema_value = Decode(v1, schema_value_temp);
+    out_schema.value_to_record(schema_value);
+    return out_schema.v;
+  }
+
   rc_t txn_ddl(uint32_t ddl_example) {
 #ifdef SIDDL
   retry:
@@ -87,7 +85,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
 
     struct ermia::schema_record schema;
-    oddlb_read_schema(txn, schema_index, table_key, schema);
+    oddlb_read_schema(txn, schema);
 
     schema.ddl_type = get_example_ddl_type(ddl_example);
 
@@ -205,7 +203,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #endif
 
     ermia::schema_record schema;
-    uint64_t schema_version = oddlb_read_schema(txn, schema_index, table_key, schema);
+    uint64_t schema_version = oddlb_read_schema(txn, schema);
 
 #ifdef COPYDDL
     ermia::ConcurrentMasstreeIndex *table_index = (ermia::ConcurrentMasstreeIndex *)schema.index;
@@ -303,7 +301,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
   rc_t txn_rmw() {
     ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
     struct ermia::schema_record schema;
-    uint64_t schema_version = oddlb_read_schema(txn, schema_index, table_key, schema);
+    uint64_t schema_version = oddlb_read_schema(txn, schema);
 
 #ifdef COPYDDL
     ermia::ConcurrentMasstreeIndex *table_index = (ermia::ConcurrentMasstreeIndex *)schema.index;
