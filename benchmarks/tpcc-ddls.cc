@@ -59,7 +59,7 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, uint32_t ddl_example) {
     char table_name[20];
     snprintf(table_name, 20, "order_line_%lu", schema_version);
 
-    db->CreateTable(table_name);
+    db->CreateTable(table_name, false);
 
     schema.td = ermia::Catalog::GetTable(table_name);
     schema.old_index = schema.index;
@@ -233,7 +233,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, uint32_t ddl_example) {
     char table_name[20];
     snprintf(table_name, 20, "customer_%lu", schema_version);
 
-    db->CreateTable(table_name);
+    db->CreateTable(table_name, false);
 
     customer_schema.td = ermia::Catalog::GetTable(table_name);
     customer_schema.old_index = customer_schema.index;
@@ -470,7 +470,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
     char table_name[20];
     snprintf(table_name, 20, "oorder_%lu", schema_version);
 
-    db->CreateTable(table_name);
+    db->CreateTable(table_name, false);
 
     oorder_schema.td = ermia::Catalog::GetTable(table_name);
     oorder_schema.old_index = oorder_schema.index;
@@ -677,7 +677,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, uint32_t ddl_example) {
     char table_name[20];
     snprintf(table_name, 20, "order_line_%lu", schema_version);
 
-    db->CreateTable(table_name);
+    db->CreateTable(table_name, false);
 
     schema.td = ermia::Catalog::GetTable(table_name);
     schema.old_index = schema.index;
