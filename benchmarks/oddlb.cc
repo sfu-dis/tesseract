@@ -9,6 +9,19 @@
 
 extern OddlbWorkload oddlb_workload;
 
+void oddlb_read_schema(ermia::transaction *txn,
+                                          ermia::ConcurrentMasstreeIndex *schema_index,
+                                          ermia::varstr *table_name,
+                                          ermia::schema_record &schema) {
+  ermia::varstr v1;
+  ermia::OID oid = ermia::INVALID_OID;
+  ermia::catalog::read_schema(txn, schema_index, *table_name, v1, &oid);
+
+  schema_kv::value schema_value_temp;
+  const schema_kv::value *schema_value = Decode(v1, schema_value_temp);
+  schema.value_to_record(schema_value);
+}
+
 class oddlb_sequential_worker : public oddlb_base_worker {
  public:
   oddlb_sequential_worker(
@@ -198,25 +211,14 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
 #endif
 
-    ermia::varstr v1;
-    ermia::OID oid = ermia::INVALID_OID;
-    ermia::catalog::read_schema(txn, schema_index, *table_key, v1, &oid);
-
-    schema_kv::value schema_value_temp;
-    const schema_kv::value *schema_value = Decode(v1, schema_value_temp);
     ermia::schema_record schema;
-    schema.value_to_record(schema_value);
+    oddlb_read_schema(txn, schema_index, table_key, schema);
     uint64_t schema_version = schema.v;
 
     for (uint i = 0; i < oddlb_reps_per_tx; ++i) {
-      uint64_t a = r.next() %
-                   oddlb_initial_table_size;  // 0 ~ oddlb_initial_table_size-1
-
+      uint64_t a = r.next() % oddlb_initial_table_size;  // 0 ~ oddlb_initial_table_size-1
       const oddlb_kv_1::key k2(a);
-
       ermia::varstr v2;
-
-      oid = ermia::INVALID_OID;
 
 #ifdef COPYDDL
       ermia::ConcurrentMasstreeIndex *table_index =
@@ -224,7 +226,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #endif
 
       rc_t rc = rc_t{RC_INVALID};
-      table_index->GetRecord(txn, rc, Encode(str(Size(k2)), k2), v2, &oid, &schema);
+      table_index->GetRecord(txn, rc, Encode(str(Size(k2)), k2), v2, nullptr, &schema);
       if (likely(rc._val != RC_FALSE)) {
         TryCatch(rc);
       } else {
