@@ -1635,39 +1635,43 @@ rc_t tpcc_worker::txn_microbench_random() {
 }
 
 rc_t tpcc_worker::txn_ddl(uint32_t ddl_example) {
+  ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
+  
   ermia::transaction *txn =
-      db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
+      db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf(), 0, ddl_exe);
+
+  ddl_exe->set_transaction(txn);
 
   switch (ddl_example) {
     case 0:
-      add_column(txn, ddl_example);
+      add_column(txn, ddl_exe, ddl_example);
       break;
     case 1:
-      table_split(txn, ddl_example);
+      table_split(txn, ddl_exe, ddl_example);
       break;
     case 2:
-      preaggregation(txn, ddl_example);
+      preaggregation(txn, ddl_exe, ddl_example);
       break;
     case 3:
-      create_index(txn, ddl_example);
+      create_index(txn, ddl_exe, ddl_example);
       break;
     case 4:
-      table_join(txn, ddl_example);
+      table_join(txn, ddl_exe, ddl_example);
       break;
     case 5:
-      add_column(txn, ddl_example);
+      add_column(txn, ddl_exe, ddl_example);
       break;
     case 6:
-      table_split(txn, ddl_example);
+      table_split(txn, ddl_exe, ddl_example);
       break;
     case 7:
-      preaggregation(txn, ddl_example);
+      preaggregation(txn, ddl_exe, ddl_example);
       break;
     default:
       break;
   }
 
-  TryCatch(db->Commit(txn));
+  TryCatch(db->Commit(txn, ddl_exe));
   DLOG(INFO) << "DDL commit OK";
   return {RC_TRUE};
 }

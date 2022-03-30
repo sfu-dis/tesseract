@@ -26,7 +26,8 @@ void read_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
 
 rc_t write_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
                   const varstr &table_name, varstr &schema_value,
-                  OID *out_schema_oid, bool is_insert = false);
+                  OID *out_schema_oid, ddl::ddl_executor *ddl_exe,
+                  bool is_insert = false);
 
 }  // namespace catalog
 

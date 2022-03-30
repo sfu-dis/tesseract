@@ -9,7 +9,8 @@ extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 
 namespace ermia {
 
-transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
+transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx,
+                         ddl::ddl_executor *ddl_exe)
     : flags(flags),
       log(nullptr),
       log_size(0),
@@ -20,9 +21,6 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     masstree_absent_set.clear();
   }
   wait_for_new_schema = false;
-  if (is_ddl()) {
-    ddl_exe = new ddl::ddl_executor();
-  }
   write_set.clear();
   cur_write_record_block = &write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
@@ -119,7 +117,7 @@ void transaction::uninitialize() {
   TXN::xid_free(xid);  // must do this after epoch_exit, which uses xc.end
 }
 
-void transaction::Abort() {
+void transaction::Abort(ddl::ddl_executor *ddl_exe) {
   // Mark the dirty tuple as invalid, for oid_get_version to
   // move on more quickly.
   volatile_write(xc->state, TXN::TXN_ABRTD);
@@ -163,7 +161,7 @@ void transaction::Abort() {
 
 #if defined(SIDDL) || defined(BLOCKDDL)
   if (is_ddl()) {
-    ddl_exe->ddl_write_set_abort(this);
+    ddl_exe->ddl_write_set_abort();
   }
 #endif
 
@@ -172,7 +170,7 @@ void transaction::Abort() {
 #endif
 }
 
-rc_t transaction::commit() {
+rc_t transaction::commit(ddl::ddl_executor *ddl_exe) {
   ALWAYS_ASSERT(state() == TXN::TXN_ACTIVE);
   volatile_write(xc->state, TXN::TXN_COMMITTING);
   rc_t ret;
@@ -201,7 +199,7 @@ rc_t transaction::commit() {
 #elif defined(MVOCC)
   ret = mvocc_commit();
 #else
-  ret = si_commit();
+  ret = si_commit(ddl_exe);
 #endif
 
   // Enqueue to pipelined commit queue, if enabled
@@ -223,7 +221,7 @@ rc_t transaction::commit() {
 }
 
 #if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
-rc_t transaction::si_commit() {
+rc_t transaction::si_commit(ddl::ddl_executor *ddl_exe) {
   if (!log && ((flags & TXN_FLAG_READ_ONLY) || write_set.size() == 0)) {
     volatile_write(xc->state, TXN::TXN_CMMTD);
     return rc_t{RC_TRUE};
@@ -255,8 +253,8 @@ rc_t transaction::si_commit() {
                                  &lb_lsn, &segnum, xc->end);
   }
 
-  if (is_ddl() && ddl_exe) {
-    return ddl_exe->commit_op(this, lb, &lb_lsn, &segnum);
+  if (unlikely(is_ddl() && ddl_exe)) {
+    return ddl_exe->commit_op(lb, &lb_lsn, &segnum);
   }
 
   // Normally, we'd generate each version's persitent address along the way or
@@ -376,7 +374,7 @@ bool transaction::MasstreeCheckPhantom() {
 
 PROMISE(rc_t)
 transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
-                    int wid) {
+                    int wid, ddl::ddl_executor *ddl_exe) {
   oid_array *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
 
@@ -493,7 +491,7 @@ transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
 
 #if defined(SIDDL) || defined(BLOCKDDL)
       add_to_write_set(true, tuple_array->get(oid), tuple_fid, oid, tuple->size,
-                       dlog::log_record::logrec_type::UPDATE, wid);
+                       dlog::log_record::logrec_type::UPDATE, wid, ddl_exe);
 #else
       add_to_write_set(tuple_fid == schema_td->GetTupleFid(),
                        tuple_array->get(oid), tuple_fid, oid, tuple->size,

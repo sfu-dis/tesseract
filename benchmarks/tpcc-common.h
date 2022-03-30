@@ -1503,11 +1503,16 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   }
 
   // Specific DDL operations
-  rc_t add_column(ermia::transaction *txn, uint32_t ddl_example);
-  rc_t table_split(ermia::transaction *txn, uint32_t ddl_example);
-  rc_t preaggregation(ermia::transaction *txn, uint32_t ddl_example);
-  rc_t create_index(ermia::transaction *txn, uint32_t ddl_example);
-  rc_t table_join(ermia::transaction *txn, uint32_t ddl_example);
+  rc_t add_column(ermia::transaction *txn, ermia::ddl::ddl_executor *ddl_exe,
+                  uint32_t ddl_example);
+  rc_t table_split(ermia::transaction *txn, ermia::ddl::ddl_executor *ddl_exe,
+                   uint32_t ddl_example);
+  rc_t preaggregation(ermia::transaction *txn, ermia::ddl::ddl_executor *ddl_exe,
+                      uint32_t ddl_example);
+  rc_t create_index(ermia::transaction *txn, ermia::ddl::ddl_executor *ddl_exe,
+                    uint32_t ddl_example);
+  rc_t table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *ddl_exe,
+                  uint32_t ddl_example);
 
   virtual workload_desc_vec get_workload() const override;
   virtual ddl_workload_desc_vec get_ddl_workload() const override;

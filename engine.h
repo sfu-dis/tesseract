@@ -65,20 +65,21 @@ class Engine {
 
   inline transaction *NewTransaction(uint64_t txn_flags, str_arena &arena,
                                      transaction *buf,
-                                     uint32_t coro_batch_idx = 0) {
+                                     uint32_t coro_batch_idx = 0,
+				     ddl::ddl_executor *ddl_exe = nullptr) {
     // Reset the arena here - can't rely on the benchmark/user code to do it
     arena.reset();
-    new (buf) transaction(txn_flags, arena, coro_batch_idx);
+    new (buf) transaction(txn_flags, arena, coro_batch_idx, ddl_exe);
     return buf;
   }
 
-  inline rc_t Commit(transaction *t) {
-    rc_t rc = t->commit();
+  inline rc_t Commit(transaction *t, ddl::ddl_executor *ddl_exe = nullptr) {
+    rc_t rc = t->commit(ddl_exe);
     return rc;
   }
 
-  inline void Abort(transaction *t) {
-    t->Abort();
+  inline void Abort(transaction *t, ddl::ddl_executor *ddl_exe = nullptr) {
+    t->Abort(ddl_exe);
     t->uninitialize();
   }
 };

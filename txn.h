@@ -206,7 +206,8 @@ class transaction {
   MasstreeAbsentSet masstree_absent_set;
 
  public:
-  transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx);
+  transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx,
+              ddl::ddl_executor *ddl_exe);
   ~transaction() {}
 
   void uninitialize();
@@ -216,7 +217,7 @@ class transaction {
     ASSERT(state() == TXN::TXN_ACTIVE);
   }
 
-  rc_t commit();
+  rc_t commit(ddl::ddl_executor *ddl_exe = nullptr);
 #ifdef SSN
   rc_t parallel_ssn_commit();
   rc_t ssn_read(dbtuple *tuple);
@@ -227,13 +228,13 @@ class transaction {
   rc_t mvocc_commit();
   rc_t mvocc_read(dbtuple *tuple);
 #else
-  rc_t si_commit();
+  rc_t si_commit(ddl::ddl_executor *ddl_exe = nullptr);
 #endif
 
   bool DMLConsistencyHandler();
 
   bool MasstreeCheckPhantom();
-  void Abort();
+  void Abort(ddl::ddl_executor *ddl_exe = nullptr);
 
   // Insert a record to the underlying table
   OID Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple = nullptr);
@@ -268,12 +269,13 @@ class transaction {
 
   PROMISE(rc_t)
   Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
-         int wid = -1);
+         int wid = -1, ddl::ddl_executor *ddl_exe = nullptr);
 
   // Same as Update but without support for logging key
   inline PROMISE(rc_t)
-      Update(TableDescriptor *td, OID oid, varstr *v, int wid = -1) {
-    auto rc = AWAIT Update(td, oid, nullptr, v, wid);
+      Update(TableDescriptor *td, OID oid, varstr *v, int wid = -1,
+             ddl::ddl_executor *ddl_exe = nullptr) {
+    auto rc = AWAIT Update(td, oid, nullptr, v, wid, ddl_exe);
     RETURN rc;
   }
 
@@ -304,8 +306,8 @@ class transaction {
   inline str_arena &string_allocator() { return *sa; }
 
   inline void add_to_write_set(bool is_allowed, fat_ptr *entry, FID fid,
-                               OID oid, uint64_t size, bool insert,
-                               int wid = -1) {
+                               OID oid, uint64_t size, bool insert, int wid = -1,
+                               ddl::ddl_executor * ddl_exe = nullptr) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto &w = write_set.entries[i];
@@ -347,12 +349,6 @@ class transaction {
 
   inline bool IsWaitForNewSchema() { return wait_for_new_schema; }
 
-  inline void set_ddl_executor(ddl::ddl_executor *_ddl_exe) {
-    ddl_exe = _ddl_exe;
-  }
-
-  inline ddl::ddl_executor *get_ddl_executor() { return ddl_exe; }
-
   inline dlog::tls_log *get_log() { return log; }
 
   inline table_set_t *get_table_set() { return &table_set; }
@@ -393,7 +389,6 @@ class transaction {
   uint32_t coro_batch_idx;  // its index in the batch
   table_set_t table_set;
   bool wait_for_new_schema;
-  ddl::ddl_executor *ddl_exe;
   util::timer timer;
   write_record_block *cur_write_record_block;
   write_record_block write_set;

@@ -79,15 +79,15 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
   rc_t txn_ddl(uint32_t ddl_example) {
 #ifdef DDL
-
+    ermia::ddl::ddl_executor *ddl_exe = new ermia::ddl::ddl_executor();
 #ifdef SIDDL
   retry:
 #endif
-    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf());
+    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_DDL, *arena, txn_buf(), 0, ddl_exe);
     struct ermia::schema_record schema;
     oddlb_read_schema(txn, schema);
     schema.ddl_type = get_example_ddl_type(ddl_example);
-    ermia::ddl::ddl_executor *ddl_exe = txn->get_ddl_executor();
+    ddl_exe->set_transaction(txn);
     ddl_exe->set_ddl_type(schema.ddl_type);
 
 #ifdef COPYDDL
@@ -137,7 +137,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     schema.record_to_value(new_schema_value);
 
     auto rc = ermia::catalog::write_schema(txn, schema_index, *table_key,
-              Encode(str(Size(new_schema_value)), new_schema_value), nullptr);
+              Encode(str(Size(new_schema_value)), new_schema_value), nullptr, ddl_exe);
     TryCatch(rc);
 
     ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
@@ -148,7 +148,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #ifndef LAZYDDL
     if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
       rc = rc_t{RC_INVALID};
-      rc = ddl_exe->scan(txn, arena);
+      rc = ddl_exe->scan(arena);
       TryCatch(rc);
     }
 #endif
@@ -162,7 +162,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
     auto rc = ermia::catalog::write_schema(
         txn, schema_index, *table_key,
-        Encode(str(Size(new_schema_value)), new_schema_value), nullptr);
+        Encode(str(Size(new_schema_value)), new_schema_value), nullptr, ddl_exe);
     TryCatch(rc);
 
     ddl_exe->add_ddl_executor_paras(schema.v, -1, schema.ddl_type,
@@ -175,18 +175,18 @@ class oddlb_sequential_worker : public oddlb_base_worker {
     ddl_exe->add_new_td_map(schema.td);
 
 #ifdef BLOCKDDL
-    TryCatch(ddl_exe->scan(txn, arena));
+    TryCatch(ddl_exe->scan(arena));
 #elif SIDDL
     rc = rc_t{RC_INVALID};
-    rc = ddl_exe->scan(txn, arena);
+    rc = ddl_exe->scan(arena);
     if (rc._val != RC_TRUE && running) {
-      db->Abort(txn);
+      db->Abort(txn, ddl_exe);
       goto retry;
     }
     TryCatch(rc);
 #endif  // BLOCKDDL
 #endif  // COPYDDL
-    TryCatch(db->Commit(txn));
+    TryCatch(db->Commit(txn, ddl_exe));
 #endif  // DDL
     return {RC_TRUE};
   }
@@ -289,7 +289,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
               case 5:
                 ALWAYS_ASSERT(record2_test->o_value_g == schema_version);
                 break;
-              defautl:
+              default:
                 LOG(FATAL);
             }
             break;
