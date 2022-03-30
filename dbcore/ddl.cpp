@@ -14,15 +14,14 @@ volatile bool cdc_test = false;
 
 std::vector<Reformat> reformats;
 std::vector<Constraint> constraints;
-std::vector<ddl_flags_wrapper *> ddl_flags_set;
+std::vector<ddl_flags_wrapper> ddl_flags_set;
 mcs_lock lock;
 
+// Not thread-safe
 ddl_flags *get_ddl_flags(OID oid, uint32_t version) {
-  for (std::vector<ddl_flags_wrapper *>::const_iterator it =
-           ddl_flags_set.begin();
-       it != ddl_flags_set.end(); ++it) {
-    if ((*it)->oid == oid && (*it)->version == version) {
-      return (*it)->flags;
+  for (auto &f : ddl_flags_set) {
+    if (f.oid == oid && f.version == version) {
+      return f.flags;
     }
   }
   return nullptr;
@@ -30,7 +29,7 @@ ddl_flags *get_ddl_flags(OID oid, uint32_t version) {
 
 void ddl_executor::add_ddl_flags(OID oid, uint32_t version) {
   CRITICAL_SECTION(cs, lock);
-  ddl_flags_set.push_back(new ddl_flags_wrapper(oid, version, &flags));
+  ddl_flags_set.emplace_back(oid, version, &flags);
 }
 
 rc_t ddl_executor::scan(str_arena *arena) {
