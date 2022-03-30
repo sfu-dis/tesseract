@@ -475,8 +475,8 @@ void bench_runner::start_measurement() {
 
   const double agg_replay_latency_ms = agg_latency_us / 1000.0;
 
-  tx_stat_map agg_txn_counts = workers[0]->get_txn_counts();
-  for (size_t i = 1; i < workers.size(); i++) {
+  tx_stat_map agg_txn_counts;
+  for (size_t i = 0; i < workers.size(); i++) {
 #ifdef COPYDDL
     if (i == ddl_worker_id) {
       continue;
@@ -490,6 +490,10 @@ void bench_runner::start_measurement() {
       std::get<3>(agg_txn_counts[t.first]) += std::get<3>(t.second);
     }
   }
+
+#ifdef DDL
+  tx_stat_map agg_ddl_txn_counts = workers[ddl_worker_id]->get_ddl_txn_counts();
+#endif
 
   if (ermia::config::verbose) {
     std::cerr << "--- table statistics ---" << std::endl;
@@ -555,6 +559,16 @@ void bench_runner::start_measurement() {
               << std::get<3>(c.second) / (double)elapsed_sec
               << " user aborts/s\n";
   }
+#ifdef DDL
+  for (auto &c : agg_ddl_txn_counts) {
+    std::cout << c.first << "\t" << std::get<0>(c.second) / (double)elapsed_sec
+              << " commits/s\t" << std::get<1>(c.second) / (double)elapsed_sec
+              << " aborts/s\t" << std::get<2>(c.second) / (double)elapsed_sec
+              << " system aborts/s\t"
+              << std::get<3>(c.second) / (double)elapsed_sec
+              << " user aborts/s\n";
+  }
+#endif
   std::cout.flush();
 }
 
@@ -572,11 +586,14 @@ const tx_stat_map bench_worker::get_txn_counts() const {
   const workload_desc_vec workload = get_workload();
   for (size_t i = 0; i < txn_counts.size(); i++)
     m[workload[i].name] = txn_counts[i];
-#ifdef DDL
+  return m;
+}
+
+const tx_stat_map bench_worker::get_ddl_txn_counts() const {
+  tx_stat_map m;
   const ddl_workload_desc_vec ddl_workload = get_ddl_workload();
   for (size_t i = 0; i < ddl_txn_counts.size(); i++)
     m[ddl_workload[i].name] = ddl_txn_counts[i];
-#endif
   return m;
 }
 

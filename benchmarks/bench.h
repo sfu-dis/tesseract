@@ -200,6 +200,7 @@ class bench_worker : public ermia::thread::Runner {
   }
 
   const tx_stat_map get_txn_counts() const;
+  const tx_stat_map get_ddl_txn_counts() const;
 
   void do_workload_function(uint32_t i);
   void do_ddl_workload_function(uint32_t i);
