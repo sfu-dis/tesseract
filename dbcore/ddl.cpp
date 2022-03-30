@@ -63,9 +63,9 @@ rc_t ddl_executor::scan(str_arena *arena) {
 #else
   uint32_t scan_threads = config::scan_threads + config::cdc_threads;
 #endif
+
   uint32_t total_per_scan_thread = himark / scan_threads;
-  DLOG(INFO) << "scan_threads: " << scan_threads
-             << ", total_per_scan_thread: " << total_per_scan_thread;
+  DLOG(INFO) << "scan_threads: " << scan_threads << ", total_per_scan_thread: " << total_per_scan_thread;
 
   for (uint32_t i = 1; i < scan_threads; i++) {
     uint32_t begin = i * total_per_scan_thread;
@@ -73,8 +73,7 @@ rc_t ddl_executor::scan(str_arena *arena) {
     if (i == scan_threads - 1) {
       end = himark;
     }
-    thread::Thread *thread =
-        thread::GetThread(config::scan_physical_workers_only);
+    thread::Thread *thread = thread::GetThread(config::scan_physical_workers_only);
     ALWAYS_ASSERT(thread);
     scan_workers.push_back(thread);
     auto parallel_scan = [=](char *) {
@@ -82,10 +81,7 @@ rc_t ddl_executor::scan(str_arena *arena) {
       dlog::log_block *lb = nullptr;
       str_arena *arena = new str_arena(config::arena_size_mb);
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
-        // for (uint32_t oid = 0; oid <= himark; oid++) {
-        //  if (oid % scan_threads != i) continue;
-        r = scan_impl(arena, oid, fid, xc, old_tuple_array, key_array, lb, i,
-                      this);
+        r = scan_impl(arena, oid, fid, xc, old_tuple_array, key_array, lb, i, this);
         if (r._val != RC_TRUE || flags.ddl_failed) {
           break;
         }
@@ -116,11 +112,9 @@ rc_t ddl_executor::scan(str_arena *arena) {
   if (flags.ddl_failed) {
     DLOG(INFO) << "DDL failed";
     join_cdc_workers();
-    for (std::vector<struct ddl_executor_paras *>::const_iterator it =
-             ddl_executor_paras_list.begin();
-         it != ddl_executor_paras_list.end(); ++it) {
-      if ((*it)->new_td != (*it)->old_td) {
-        (*it)->new_td->GetTupleArray()->destroy((*it)->new_td->GetTupleArray());
+    for (auto &param : ddl_executor_paras_list) {
+      if (param->new_td != param->old_td) {
+        param->new_td->GetTupleArray()->destroy(param->new_td->GetTupleArray());
       }
     }
     return rc_t{RC_ABORT_INTERNAL};
@@ -150,67 +144,61 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
   fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
   varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
   if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
-    for (std::vector<struct ddl_executor_paras *>::const_iterator it =
-             ddl_executor_paras_list.begin();
-         it != ddl_executor_paras_list.end(); ++it) {
-      if ((*it)->old_td->GetTupleFid() != old_fid) continue;
-      if ((*it)->type == VERIFICATION_ONLY ||
-          (*it)->type == COPY_VERIFICATION) {
-        if (!constraints[(*it)->constraint_idx](tuple_value, (*it)->new_v)) {
+    for (auto &param : ddl_executor_paras_list) {
+      if (param->old_td->GetTupleFid() != old_fid) {
+        continue;
+      }
+
+      if (param->type == VERIFICATION_ONLY || param->type == COPY_VERIFICATION) {
+        if (!constraints[param->constraint_idx](tuple_value, param->new_v)) {
           DLOG(INFO) << "DDL failed";
           flags.ddl_failed = true;
           flags.cdc_running = false;
           return rc_t{RC_ABORT_INTERNAL};
         }
       }
-      if ((*it)->type == COPY_ONLY || (*it)->type == COPY_VERIFICATION) {
+      if (param->type == COPY_ONLY || param->type == COPY_VERIFICATION) {
         arena->reset();
-        uint64_t reformat_idx = (*it)->scan_reformat_idx == -1
-                                    ? (*it)->reformat_idx
-                                    : (*it)->scan_reformat_idx;
-        varstr *new_tuple_value = reformats[reformat_idx](
-            key, tuple_value, arena, (*it)->new_v, old_fid, oid);
-        if (!new_tuple_value) continue;
+        uint64_t reformat_idx = param->scan_reformat_idx == -1
+                                    ? param->reformat_idx
+                                    : param->scan_reformat_idx;
+        varstr *new_tuple_value = reformats[reformat_idx](key, tuple_value, arena, param->new_v, old_fid, oid);
+        if (!new_tuple_value) {
+          continue;
+        }
 #ifdef COPYDDL
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
         fat_ptr *out_entry = nullptr;
-        OID o = t->LazyDDLInsert((*it)->new_td, new_tuple_value, &out_entry);
+        OID o = t->LazyDDLInsert(param->new_td, new_tuple_value, &out_entry);
         if (!o) {
           continue;
         }
-        if (!AWAIT(*it)->index->InsertOID(t, *key, o)) {
+        if (!AWAITparam->index->InsertOID(t, *key, o)) {
           Object *obj = (Object *)out_entry->offset();
           fat_ptr entry = *out_entry;
           obj->SetCSN(NULL_PTR);
           ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
           MM::deallocate(entry);
         } else {
-          if ((*it)->new_td->GetSecIndexes().size()) {
-            ConcurrentMasstreeIndex *secondary_index =
-                (ConcurrentMasstreeIndex
-                     *)((*it)->new_td->GetSecIndexes().front());
-            varstr *new_secondary_index_key =
-                reformats[(*it)->secondary_index_key_create_idx](
-                    key, tuple_value, arena, (*it)->new_v, old_fid, oid);
-            if (!AWAIT secondary_index->InsertOID(t, *new_secondary_index_key,
-                                                  o)) {
+          if (param->new_td->GetSecIndexes().size()) {
+            auto *secondary_index = (ConcurrentMasstreeIndex *)(param->new_td->GetSecIndexes().front());
+            varstr *new_secondary_index_key = reformats[param->secondary_index_key_create_idx](
+                    key, tuple_value, arena, param->new_v, old_fid, oid);
+            if (!AWAIT secondary_index->InsertOID(t, *new_secondary_index_key, o)) {
               continue;
             }
           }
         }
 #elif OPTLAZYDDL
-        t->DDLInsert((*it)->new_td, oid, new_tuple_value, xc->end, lb);
+        t->DDLInsert(param->new_td, oid, new_tuple_value, xc->end, lb);
 #else
-        t->DDLInsert((*it)->new_td, oid, new_tuple_value,
-                     !xc->end ? xc->begin : xc->end, lb);
+        t->DDLInsert(param->new_td, oid, new_tuple_value, !xc->end ? xc->begin : xc->end, lb);
 #endif
 #elif BLOCKDDL
-        rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid,
-                           ddl_exe);
+        rc_t r = t->Update(param->new_td, oid, nullptr, new_tuple_value, wid, ddl_exe);
         ASSERT(r._val == RC_TRUE);
 #elif SIDDL
-        rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid,
-                           ddl_exe);
+        rc_t r = t->Update(param->new_td, oid, nullptr, new_tuple_value, wid, ddl_exe);
         if (r._val != RC_TRUE) {
           DLOG(INFO) << "DDL failed";
           flags.ddl_failed = true;
