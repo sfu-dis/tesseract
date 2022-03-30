@@ -9,13 +9,8 @@ extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 
 namespace ermia {
 
-transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx,
-                         ddl::ddl_executor *ddl_exe)
-    : flags(flags),
-      log(nullptr),
-      log_size(0),
-      sa(&sa),
-      coro_batch_idx(coro_batch_idx) {
+transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx, ddl::ddl_executor *ddl_exe)
+    : flags(flags), log(nullptr), log_size(0), sa(&sa), coro_batch_idx(coro_batch_idx) {
   if (config::phantom_prot) {
     masstree_absent_set.set_empty_key(NULL);  // google dense map
     masstree_absent_set.clear();
@@ -50,8 +45,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx,
     xc->begin = volatile_read(MM::safesnap_lsn);
   } else {
     TXN::serial_register_tx(coro_batch_idx, xid);
-    log = logmgr->new_tx_log(
-        (char *)string_allocator().next(sizeof(sm_tx_log))->data());
+    log = logmgr->new_tx_log( (char *)string_allocator().next(sizeof(sm_tx_log))->data());
     // Must +1: a tx T can only update a tuple if its latest version was
     // created before T's begin timestamp (i.e., version.clsn < T.begin,
     // note the range is exclusive; see first updater wins rule in
@@ -67,8 +61,7 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx,
 #endif
   }
 #elif defined(MVOCC)
-  log = logmgr->new_tx_log(
-      (char *)string_allocator().next(sizeof(sm_tx_log))->data());
+  log = logmgr->new_tx_log( (char *)string_allocator().next(sizeof(sm_tx_log))->data());
   xc->begin = logmgr->cur_lsn().offset() + 1;
 #else
   // Give a log regardless - with pipelined commit, read-only tx needs
@@ -80,10 +73,8 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx,
 #if defined(COPYDDL)
       for (uint32_t i = 0; i < ermia::dlog::tlogs.size(); i++) {
         dlog::tls_log *tlog = dlog::tlogs[i];
-        if (tlog && tlog != log &&
-            volatile_read(pcommit::_tls_durable_csn[i])) {
-          ddl_exe->get_ddl_flags()->_tls_durable_lsn[i] =
-              tlog->get_durable_lsn();
+        if (tlog != log && volatile_read(pcommit::_tls_durable_csn[i])) {
+          ddl_exe->get_ddl_flags()->_tls_durable_lsn[i] = tlog->get_durable_lsn();
         }
       }
 #endif
@@ -276,21 +267,17 @@ rc_t transaction::si_commit(ddl::ddl_executor *ddl_exe) {
 
       // Populate log block and obtain persistent address
       uint32_t off = lb->payload_size;
-      if (lb->payload_size +
-              align_up(log_tuple_size + sizeof(dlog::log_record)) >
-          lb->capacity) {
+      if (lb->payload_size + align_up(log_tuple_size + sizeof(dlog::log_record)) > lb->capacity) {
         lb = log->allocate_log_block(
             std::min<uint64_t>(log_size - current_log_size, max_log_size),
             &lb_lsn, &segnum, xc->end);
         off = lb->payload_size;
       }
       if (w.is_insert) {
-        auto ret_off =
-            dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+        auto ret_off = dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
         ALWAYS_ASSERT(ret_off == off);
       } else {
-        auto ret_off =
-            dlog::log_update(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+        auto ret_off = dlog::log_update(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
         ALWAYS_ASSERT(ret_off == off);
       }
       ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
@@ -309,8 +296,7 @@ rc_t transaction::si_commit(ddl::ddl_executor *ddl_exe) {
       // followed by individual log records, so the log record's direct address
       // would be lb_lsn + sizeof(log_block) + off
       fat_ptr pdest =
-          LSN::make(log->get_id(), lb_lsn + sizeof(dlog::log_block) + off,
-                    segnum, size_code)
+          LSN::make(log->get_id(), lb_lsn + sizeof(dlog::log_block) + off, segnum, size_code)
               .to_ptr();
       object->SetPersistentAddress(pdest);
       ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);

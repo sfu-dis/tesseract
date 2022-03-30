@@ -195,20 +195,17 @@ class ddl_executor {
   inline void set_ddl_type(ddl_type _dt) { dt = _dt; }
 
   inline void join_scan_workers() {
-    for (std::vector<thread::Thread *>::const_iterator it =
-             scan_workers.begin();
-         it != scan_workers.end(); ++it) {
-      (*it)->Join();
-      thread::PutThread(*it);
+    for (auto &w : scan_workers) {
+      w->Join();
+      thread::PutThread(w);
     }
     scan_workers.clear();
   }
 
   inline void join_cdc_workers() {
-    for (std::vector<thread::Thread *>::const_iterator it = cdc_workers.begin();
-         it != cdc_workers.end(); ++it) {
-      (*it)->Join();
-      thread::PutThread(*it);
+    for (auto &w : cdc_workers) {
+      w->Join();
+      thread::PutThread(w);
     }
     cdc_workers.clear();
   }
@@ -270,8 +267,7 @@ class ddl_executor {
   void init_ddl_write_set();
 
   // DDL write set commit
-  void ddl_write_set_commit(dlog::log_block *lb, uint64_t *out_cur_lsn,
-                            uint64_t *out_seg_num);
+  void ddl_write_set_commit(dlog::log_block *lb, uint64_t *out_cur_lsn, uint64_t *out_seg_num);
 
   // DDL write set abort
   void ddl_write_set_abort();
@@ -280,7 +276,7 @@ class ddl_executor {
 
 extern std::vector<Reformat> reformats;
 extern std::vector<Constraint> constraints;
-extern std::vector<ddl_flags_wrapper *> ddl_flags_set;
+extern std::vector<ddl_flags_wrapper> ddl_flags_set;
 extern mcs_lock lock;
 
 }  // namespace ddl

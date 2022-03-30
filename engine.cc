@@ -213,13 +213,12 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 
     if (found) {
       // Key-OID mapping exists, now try to get the actual tuple to be sure
-      tuple = AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(),
-                                            oid, t->xc);
+      tuple = AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oid, t->xc);
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
       if (t->IsWaitForNewSchema() && tuple) {
-	ermia::transaction::table_record_t *table_record =
-            t->find_in_table_set(table_descriptor->GetTupleFid());
+        ermia::transaction::table_record_t *table_record =
+          t->find_in_table_set(table_descriptor->GetTupleFid());
         if (table_record && !table_record->schema_ready &&
             AWAIT t->OverlapCheck(table_descriptor, table_record->old_table_desc, oid)) {
           volatile_write(rc._val, RC_ABORT_INTERNAL);
@@ -229,7 +228,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
 #endif
 
       if (schema && table_descriptor != schema->td) {
-	volatile_write(rc._val, RC_ABORT_INTERNAL);
+        volatile_write(rc._val, RC_ABORT_INTERNAL);
         RETURN;
       }
 
@@ -316,8 +315,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
           schema->ddl_type == ddl::ddl_type::NO_COPY_VERIFICATION &&
           tuple->GetCSN() <= schema->csn) {
         auto *key_array = table_descriptor->GetKeyArray();
-        fat_ptr *entry =
-            config::enable_ddl_keys ? key_array->get(oid) : nullptr;
+        fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
         varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
         varstr *new_tuple_value = &value;
         for (int i = 0; i < schema->reformats_total; i++) {
