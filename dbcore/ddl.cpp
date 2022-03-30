@@ -584,6 +584,282 @@ void ddl_executor::ddl_write_set_abort(transaction *t) {
 }
 #endif
 
+rc_t ddl_executor::commit_op(transaction *t, dlog::log_block *lb,
+                             uint64_t *lb_lsn, uint64_t *segnum) {
+  TXN::xid_context *xc = t->GetXIDContext();
+  dlog::tls_log *log = t->get_log();
+  write_record_block *cur_write_record_block = t->get_cur_write_record_block();
+  write_record_block *write_set = t->get_write_set();
+
+  DLOG(INFO) << "DDL txn end: " << xc->end;
+  // If txn is DDL, commit schema record(s) first (before CDC), no logging
+  cur_write_record_block = write_set;
+  while (cur_write_record_block) {
+    for (uint32_t i = 0; i < cur_write_record_block->size(); ++i) {
+      auto &w = (*cur_write_record_block)[i];
+      Object *object = w.get_object();
+      dbtuple *tuple = (dbtuple *)object->GetPayload();
+
+      // Set CSN
+      fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
+      object->SetCSN(csn_ptr);
+      ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
+    }
+    cur_write_record_block = cur_write_record_block->next;
+  }
+  DLOG(INFO) << "DDL schema commit with size " << write_set->size();
+
+#ifdef COPYDDL
+  if (dt != ddl_type::NO_COPY_VERIFICATION) {
+    for (auto &v : new_td_map) {
+      // Fix new table file's marks
+      auto *alloc = oidmgr->get_allocator(old_td->GetTupleFid());
+      uint32_t himark = alloc->head.hiwater_mark;
+      auto *new_tuple_array = v.second->GetTupleArray();
+      new_tuple_array->ensure_size(himark);
+      oidmgr->recreate_allocator(v.second->GetTupleFid(), himark);
+      auto *new_alloc = oidmgr->get_allocator(v.second->GetTupleFid());
+      himark = new_alloc->head.hiwater_mark;
+
+      // Add new table descriptor to fid_map
+      Catalog::fid_map[v.second->GetTupleFid()] = v.second;
+
+      // Switch table descriptor for primary index
+      OrderedIndex *index = v.second->GetPrimaryIndex();
+      index->SetTableDescriptor(v.second);
+      index->SetArrays(true);
+
+      // Switch table descriptor for secondary index(es)
+      std::vector<OrderedIndex *> sec_indexes = v.second->GetSecIndexes();
+      for (std::vector<OrderedIndex *>::const_iterator it = sec_indexes.begin();
+           it != sec_indexes.end(); ++it) {
+        (*it)->SetTableDescriptor(v.second);
+        (*it)->SetArrays(false);
+      }
+    }
+    flags->ddl_td_set = true;
+  }
+#endif
+
+#ifdef DDL
+#if defined(COPYDDL) && !defined(LAZYDDL)
+  if (dt != ddl_type::NO_COPY_VERIFICATION) {
+    // Start the second round of CDC
+    DLOG(INFO) << "Second CDC begins";
+    flags->cdc_second_phase = true;
+    flags->cdc_end_total.store(0);
+    uint32_t cdc_threads = changed_data_capture(t);
+    if (config::enable_late_scan_join) {
+      join_scan_workers();
+    }
+    while (flags->cdc_end_total.load() != cdc_threads && !flags->ddl_failed) {
+    }
+    flags->cdc_running = false;
+    join_cdc_workers();
+    flags->cdc_second_phase = false;
+    DLOG(INFO) << "Second CDC ends";
+    if (flags->ddl_failed) {
+      DLOG(INFO) << "DDL failed";
+      for (auto &v : new_td_map) {
+        OrderedIndex *index = v.second->GetPrimaryIndex();
+        index->SetTableDescriptor(old_td);
+        index->SetArrays(true);
+        v.second->GetTupleArray()->destroy(v.second->GetTupleArray());
+      }
+      return rc_t{RC_ABORT_INTERNAL};
+    }
+  }
+#endif
+
+  // Real commit for schema records, logging enabled
+  cur_write_record_block = write_set;
+  while (cur_write_record_block) {
+    for (uint32_t i = 0; i < cur_write_record_block->size(); ++i) {
+      auto &w = (*cur_write_record_block)[i];
+      Object *object = w.get_object();
+      dbtuple *tuple = (dbtuple *)object->GetPayload();
+
+      varstr value(tuple->get_value_start(), tuple->size);
+      schema_kv::value schema_value_temp;
+      const schema_kv::value *schema_not_ready =
+          Decode(value, schema_value_temp);
+      schema_kv::value schema_ready(*schema_not_ready);
+      schema_ready.state = schema_state_type::READY;
+      schema_ready.csn = xc->end;
+
+      t->string_allocator().reset();
+      varstr *new_value = t->string_allocator().next(Size(schema_ready));
+
+      ALWAYS_ASSERT(
+          t->DDLSchemaReady(schema_td, w.oid, &Encode(*new_value, schema_ready))
+              ._val == RC_TRUE);
+
+      object = w.get_object();
+      tuple = (dbtuple *)object->GetPayload();
+
+      // Populate log block and obtain persistent address
+      uint32_t off = lb->payload_size;
+      if (w.is_insert) {
+        auto ret_off =
+            dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, w.size);
+        ALWAYS_ASSERT(ret_off == off);
+      } else {
+        auto ret_off =
+            dlog::log_update(lb, w.fid, w.oid, (char *)tuple, w.size);
+        ALWAYS_ASSERT(ret_off == off);
+      }
+      ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
+
+      // This aligned_size should match what was calculated during
+      // add_to_write_set, and the size_code calculated based on this aligned
+      // size will be part of the persistent address, which a read can
+      // directly use to load the log record from the log (i.e., knowing how
+      // many bytes to read to obtain the log record header + dbtuple header +
+      // record data).
+      auto aligned_size = align_up(w.size + sizeof(dlog::log_record));
+      auto size_code = encode_size_aligned(aligned_size);
+
+      // lb_lsn points to the start of the log block which has a header,
+      // followed by individual log records, so the log record's direct
+      // address would be lb_lsn + sizeof(log_block) + off
+      fat_ptr pdest =
+          LSN::make(log->get_id(), *lb_lsn + sizeof(dlog::log_block) + off,
+                    *segnum, size_code)
+              .to_ptr();
+      object->SetPersistentAddress(pdest);
+      ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
+
+      // Set CSN
+      fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
+      object->SetCSN(csn_ptr);
+      ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
+    }
+    cur_write_record_block = cur_write_record_block->next;
+  }
+
+#if defined(SIDDL) || defined(BLOCKDDL)
+  ddl_write_set_commit(t, lb, lb_lsn, segnum);
+#endif
+#endif
+
+  flags->ddl_running = false;
+  volatile_write(xc->state, TXN::TXN_CMMTD);
+#ifdef COPYDDL
+#ifdef LAZYDDL
+  // Background migration
+  if (!config::enable_lazy_background) {
+    log->set_dirty(false);
+    log->set_doing_ddl(false);
+    return rc_t{RC_TRUE};
+  }
+  rc_t rc = scan(t, &(t->string_allocator()));
+  if (rc.IsAbort()) {
+    log->set_dirty(false);
+    log->set_doing_ddl(false);
+    return rc;
+  }
+#endif
+
+  // Traverse new table arrays to do logging
+  for (auto &v : new_td_map) {
+    FID fid = v.second->GetTupleFid();
+    auto *new_alloc = oidmgr->get_allocator(fid);
+    uint32_t himark = new_alloc->head.hiwater_mark;
+    auto *new_tuple_array = v.second->GetTupleArray();
+
+    uint32_t ddl_log_threads = config::scan_threads + config::cdc_threads - 1;
+    uint32_t num_per_scan_thread = himark / ddl_log_threads;
+
+    std::vector<thread::Thread *> ddl_log_workers;
+
+    for (uint32_t i = 0; i < ddl_log_threads; i++) {
+      uint32_t begin = i * num_per_scan_thread;
+      uint32_t end = (i + 1) * num_per_scan_thread;
+      if (i == ddl_log_threads - 1) end = himark;
+
+      thread::Thread *thread =
+          thread::GetThread(config::scan_physical_workers_only);
+      ALWAYS_ASSERT(thread);
+      ddl_log_workers.push_back(thread);
+      auto ddl_log = [=](char *) {
+        dlog::tls_log *log = GetLog();
+        log->set_normal(false);
+        log->resize_logbuf(2);
+        dlog::log_block *lb = nullptr;
+        dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
+        uint64_t segnum = -1;
+        uint64_t max_log_size =
+            log->get_logbuf_size() - sizeof(dlog::log_block);
+
+        lb = log->allocate_log_block(max_log_size, &lb_lsn, &segnum, xc->end);
+        for (uint32_t oid = 0; oid <= himark; ++oid) {
+          if (oid % ddl_log_threads != i) continue;
+          // for (uint32_t oid = begin; oid <= end; ++oid) {
+          fat_ptr *entry = new_tuple_array->get(oid);
+          fat_ptr ptr = volatile_read(*entry);
+          while (ptr.offset()) {
+            fat_ptr tentative_next = NULL_PTR;
+            Object *cur_obj = (Object *)ptr.offset();
+            tentative_next = cur_obj->GetNextVolatile();
+            fat_ptr csn = cur_obj->GetCSN();
+            if (csn.asi_type() == fat_ptr::ASI_CSN &&
+                CSN::from_ptr(csn).offset() > xc->end) {
+              break;
+            } else if (csn.asi_type() == fat_ptr::ASI_CSN &&
+#ifdef LAZYDDL
+                       CSN::from_ptr(csn).offset() <= xc->end &&
+#else
+                       CSN::from_ptr(csn).offset() < xc->end &&
+#endif
+                       CSN::from_ptr(csn).offset() >= xc->begin) {
+              dbtuple *tuple = (dbtuple *)cur_obj->GetPayload();
+              uint64_t log_tuple_size = sizeof(dbtuple) + tuple->size;
+              uint32_t off = lb->payload_size;
+              if (off + align_up(log_tuple_size + sizeof(dlog::log_record)) >
+                  lb->capacity) {
+                lb = log->allocate_log_block(max_log_size, &lb_lsn, &segnum,
+                                             xc->end);
+                off = lb->payload_size;
+              }
+              auto ret_off =
+                  dlog::log_insert(lb, fid, oid, (char *)tuple, log_tuple_size);
+              ALWAYS_ASSERT(ret_off == off);
+
+              auto aligned_size =
+                  align_up(log_tuple_size + sizeof(dlog::log_record));
+              auto size_code = encode_size_aligned(aligned_size);
+
+              fat_ptr pdest = LSN::make(log->get_id(),
+                                        lb_lsn + sizeof(dlog::log_block) + off,
+                                        segnum, size_code)
+                                  .to_ptr();
+              cur_obj->SetPersistentAddress(pdest);
+              ASSERT(cur_obj->GetPersistentAddress().asi_type() ==
+                     fat_ptr::ASI_LOG);
+
+              break;
+            }
+            ptr = tentative_next;
+          }
+        }
+        log->last_flush();
+      };
+      thread->StartTask(ddl_log);
+    }
+
+    for (std::vector<thread::Thread *>::const_iterator it =
+             ddl_log_workers.begin();
+         it != ddl_log_workers.end(); ++it) {
+      (*it)->Join();
+      thread::PutThread(*it);
+    }
+  }
+#endif
+  log->set_dirty(false);
+  log->set_doing_ddl(false);
+  return rc_t{RC_TRUE};
+}
+
 }  // namespace ddl
 
 }  // namespace ermia

@@ -247,6 +247,10 @@ class ddl_executor {
                  TXN::xid_context *xc, oid_array *old_tuple_array,
                  oid_array *key_array, dlog::log_block *lb, int wid);
 
+  // DDL operations in commit
+  rc_t commit_op(transaction *t, dlog::log_block *lb, uint64_t *lb_lsn,
+                 uint64_t *segnum);
+
 #if defined(COPYDDL) && !defined(LAZYDDL)
   // CDC
   uint32_t changed_data_capture(transaction *t);

@@ -357,6 +357,14 @@ class transaction {
 
   inline table_set_t *get_table_set() { return &table_set; }
 
+  inline write_record_block *get_cur_write_record_block() {
+    return cur_write_record_block;
+  }
+
+  inline write_record_block *get_write_set() {
+    return &write_set;
+  };
+
   inline void add_to_table_set(TableDescriptor *td, FID table_fid, OID schema_oid, uint32_t version,
 		               bool schema_ready, TableDescriptor *old_td) {
     ALWAYS_ASSERT(td);
