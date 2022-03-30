@@ -40,7 +40,8 @@ struct ddl_flags {
   volatile bool ddl_td_set = false;
   std::atomic<uint64_t> cdc_end_total;
   uint64_t *_tls_durable_lsn CACHE_ALIGNED =
-      (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);;
+      (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
+  ;
 };
 
 // DDL flags wrapper for each new table
@@ -135,6 +136,9 @@ class ddl_executor {
   friend class transaction;
 
  private:
+  // Transaction where DDL executor resides
+  transaction *t;
+
   // List of DDL executor parameters
   std::vector<struct ddl_executor_paras *> ddl_executor_paras_list;
 
@@ -231,30 +235,31 @@ class ddl_executor {
     old_td_map[old_td->GetTupleFid()] = old_td;
   }
 
+  inline void set_transaction(transaction *_t) { t = _t; }
+
   // Add a ddl_flags to ddl_flags_set
   void add_ddl_flags(OID oid, uint32_t version);
 
   // Scan and do operations (copy, verification)
-  rc_t scan(transaction *t, str_arena *arena);
+  rc_t scan(str_arena *arena);
 
   // Scan impl
-  rc_t scan_impl(transaction *t, str_arena *arena, OID oid, FID old_fid,
-                 TXN::xid_context *xc, oid_array *old_tuple_array,
-                 oid_array *key_array, dlog::log_block *lb, int wid);
+  rc_t scan_impl(str_arena *arena, OID oid, FID old_fid, TXN::xid_context *xc,
+                 oid_array *old_tuple_array, oid_array *key_array,
+                 dlog::log_block *lb, int wid, ddl_executor *ddl_exe);
 
   // DDL operations in commit
-  rc_t commit_op(transaction *t, dlog::log_block *lb, uint64_t *lb_lsn,
-                 uint64_t *segnum);
+  rc_t commit_op(dlog::log_block *lb, uint64_t *lb_lsn, uint64_t *segnum);
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
   // CDC
-  uint32_t changed_data_capture(transaction *t);
+  uint32_t changed_data_capture();
 
   // CDC impl
-  rc_t changed_data_capture_impl(transaction *t, uint32_t thread_id,
-                                 uint32_t ddl_thread_id, uint32_t begin_log,
-                                 uint32_t end_log, str_arena *arena,
-                                 bool *ddl_end, uint32_t count);
+  rc_t changed_data_capture_impl(uint32_t thread_id, uint32_t ddl_thread_id,
+                                 uint32_t begin_log, uint32_t end_log,
+                                 str_arena *arena, bool *ddl_end,
+                                 uint32_t count);
 #endif
 
 #if defined(SIDDL) || defined(BLOCKDDL)
@@ -265,11 +270,11 @@ class ddl_executor {
   void init_ddl_write_set();
 
   // DDL write set commit
-  void ddl_write_set_commit(transaction *t, dlog::log_block *lb,
-                            uint64_t *out_cur_lsn, uint64_t *out_seg_num);
+  void ddl_write_set_commit(dlog::log_block *lb, uint64_t *out_cur_lsn,
+                            uint64_t *out_seg_num);
 
   // DDL write set abort
-  void ddl_write_set_abort(transaction *t);
+  void ddl_write_set_abort();
 #endif
 };
 

@@ -77,7 +77,8 @@ retry:
 
 rc_t write_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
                   const varstr &table_name, varstr &schema_value,
-                  OID *out_schema_oid, bool is_insert) {
+                  OID *out_schema_oid, ddl::ddl_executor *ddl_exe,
+                  bool is_insert) {
   // For DDL txn only
   ALWAYS_ASSERT(t->is_ddl());
 
@@ -90,7 +91,7 @@ rc_t write_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
   if (rc._val == RC_TRUE) {
     schema_kv::value schema_value_temp;
     const schema_kv::value *schema = Decode(schema_value, schema_value_temp);
-    t->get_ddl_executor()->add_ddl_flags(oid, schema->version);
+    ddl_exe->add_ddl_flags(oid, schema->version);
   }
 
 #ifdef BLOCKDDL

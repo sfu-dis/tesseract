@@ -33,12 +33,12 @@ void ddl_executor::add_ddl_flags(OID oid, uint32_t version) {
   ddl_flags_set.push_back(new ddl_flags_wrapper(oid, version, &flags));
 }
 
-rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
+rc_t ddl_executor::scan(str_arena *arena) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
   if (config::enable_parallel_scan_cdc) {
     DLOG(INFO) << "First CDC begins";
     flags.cdc_first_phase = true;
-    changed_data_capture(t);
+    changed_data_capture();
   }
 #endif
 
@@ -85,8 +85,8 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
         // for (uint32_t oid = 0; oid <= himark; oid++) {
         //  if (oid % scan_threads != i) continue;
-        r = scan_impl(t, arena, oid, fid, xc, old_tuple_array, key_array, lb,
-                      i);
+        r = scan_impl(arena, oid, fid, xc, old_tuple_array, key_array, lb, i,
+                      this);
         if (r._val != RC_TRUE || flags.ddl_failed) {
           break;
         }
@@ -100,7 +100,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   for (OID oid = 0; oid <= end; oid++) {
     // for (uint32_t oid = 0; oid <= himark; oid++) {
     //  if (oid % scan_threads != 0) continue;
-    r = scan_impl(t, arena, oid, fid, xc, old_tuple_array, key_array, lb, 0);
+    r = scan_impl(arena, oid, fid, xc, old_tuple_array, key_array, lb, 0, this);
     if (r._val != RC_TRUE || flags.ddl_failed) {
       break;
     }
@@ -142,10 +142,10 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   return rc_t{RC_TRUE};
 }
 
-rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
-                             FID old_fid, TXN::xid_context *xc,
-                             oid_array *old_tuple_array, oid_array *key_array,
-                             dlog::log_block *lb, int wid) {
+rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
+                             TXN::xid_context *xc, oid_array *old_tuple_array,
+                             oid_array *key_array, dlog::log_block *lb, int wid,
+                             ddl_executor *ddl_exe) {
   dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
   varstr tuple_value;
   fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
@@ -206,10 +206,12 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
                      !xc->end ? xc->begin : xc->end, lb);
 #endif
 #elif BLOCKDDL
-        rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid);
+        rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid,
+                           ddl_exe);
         ASSERT(r._val == RC_TRUE);
 #elif SIDDL
-        rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid);
+        rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid,
+                           ddl_exe);
         if (r._val != RC_TRUE) {
           DLOG(INFO) << "DDL failed";
           flags.ddl_failed = true;
@@ -223,7 +225,7 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
 }
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
-uint32_t ddl_executor::changed_data_capture(transaction *t) {
+uint32_t ddl_executor::changed_data_capture() {
   flags.ddl_failed = false;
   flags.cdc_running = true;
   dlog::tls_log *log = t->get_log();
@@ -286,7 +288,7 @@ uint32_t ddl_executor::changed_data_capture(transaction *t) {
       str_arena *arena = new str_arena(config::arena_size_mb);
       rc_t rc;
       while (flags.cdc_running) {
-        rc = changed_data_capture_impl(t, i, ddl_thread_id, begin_log, end_log,
+        rc = changed_data_capture_impl(i, ddl_thread_id, begin_log, end_log,
                                        arena, &ddl_end_local, count);
         if (rc._val != RC_TRUE) {
           flags.ddl_failed = true;
@@ -305,12 +307,9 @@ uint32_t ddl_executor::changed_data_capture(transaction *t) {
   return cdc_threads;
 }
 
-rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
-                                             uint32_t ddl_thread_id,
-                                             uint32_t begin_log,
-                                             uint32_t end_log, str_arena *arena,
-                                             bool *ddl_end_local,
-                                             uint32_t count) {
+rc_t ddl_executor::changed_data_capture_impl(
+    uint32_t thread_id, uint32_t ddl_thread_id, uint32_t begin_log,
+    uint32_t end_log, str_arena *arena, bool *ddl_end_local, uint32_t count) {
   RCU::rcu_enter();
   TXN::xid_context *xc = t->GetXIDContext();
   uint64_t begin_csn = xc->begin;
@@ -463,8 +462,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
         }
       }
     }
-    if ((!flags.cdc_running && !flags.cdc_second_phase) ||
-        flags.ddl_failed) {
+    if ((!flags.cdc_running && !flags.cdc_second_phase) || flags.ddl_failed) {
       break;
     }
   }
@@ -480,8 +478,8 @@ void ddl_executor::init_ddl_write_set() {
   ddl_write_set->init();
 }
 
-void ddl_executor::ddl_write_set_commit(transaction *t, dlog::log_block *lb,
-                                        uint64_t *lb_lsn, uint64_t *segnum) {
+void ddl_executor::ddl_write_set_commit(dlog::log_block *lb, uint64_t *lb_lsn,
+                                        uint64_t *segnum) {
   TXN::xid_context *xc = t->GetXIDContext();
   dlog::tls_log *log = t->get_log();
   uint64_t max_log_size = log->get_logbuf_size() - sizeof(dlog::log_block);
@@ -550,7 +548,7 @@ void ddl_executor::ddl_write_set_commit(transaction *t, dlog::log_block *lb,
   }
 }
 
-void ddl_executor::ddl_write_set_abort(transaction *t) {
+void ddl_executor::ddl_write_set_abort() {
   TXN::xid_context *xc = t->GetXIDContext();
   for (std::vector<write_record_block_info *>::const_iterator it =
            ddl_write_set->write_record_block_info_vec.begin();
@@ -584,8 +582,8 @@ void ddl_executor::ddl_write_set_abort(transaction *t) {
 }
 #endif
 
-rc_t ddl_executor::commit_op(transaction *t, dlog::log_block *lb,
-                             uint64_t *lb_lsn, uint64_t *segnum) {
+rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
+                             uint64_t *segnum) {
   TXN::xid_context *xc = t->GetXIDContext();
   dlog::tls_log *log = t->get_log();
   write_record_block *cur_write_record_block = t->get_cur_write_record_block();
@@ -648,7 +646,7 @@ rc_t ddl_executor::commit_op(transaction *t, dlog::log_block *lb,
     DLOG(INFO) << "Second CDC begins";
     flags.cdc_second_phase = true;
     flags.cdc_end_total.store(0);
-    uint32_t cdc_threads = changed_data_capture(t);
+    uint32_t cdc_threads = changed_data_capture();
     if (config::enable_late_scan_join) {
       join_scan_workers();
     }
@@ -738,7 +736,7 @@ rc_t ddl_executor::commit_op(transaction *t, dlog::log_block *lb,
   }
 
 #if defined(SIDDL) || defined(BLOCKDDL)
-  ddl_write_set_commit(t, lb, lb_lsn, segnum);
+  ddl_write_set_commit(lb, lb_lsn, segnum);
 #endif
 #endif
 
@@ -752,7 +750,7 @@ rc_t ddl_executor::commit_op(transaction *t, dlog::log_block *lb,
     log->set_doing_ddl(false);
     return rc_t{RC_TRUE};
   }
-  rc_t rc = scan(t, &(t->string_allocator()));
+  rc_t rc = scan(&(t->string_allocator()));
   if (rc.IsAbort()) {
     log->set_dirty(false);
     log->set_doing_ddl(false);
