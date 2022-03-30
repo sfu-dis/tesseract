@@ -32,20 +32,15 @@ typedef std::function<bool(varstr &value, uint64_t schema_version)> Constraint;
 
 // DDL flags
 struct ddl_flags {
-  volatile bool ddl_running = false;
+  volatile bool ddl_running = true;
   volatile bool cdc_first_phase = false;
   volatile bool cdc_second_phase = false;
   volatile bool ddl_failed = false;
   volatile bool cdc_running = false;
   volatile bool ddl_td_set = false;
   std::atomic<uint64_t> cdc_end_total;
-  uint64_t *_tls_durable_lsn CACHE_ALIGNED;
-  ddl_flags() {
-    ddl_running = true;
-    cdc_end_total = 0;
-    _tls_durable_lsn =
-        (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
-  }
+  uint64_t *_tls_durable_lsn CACHE_ALIGNED =
+      (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);;
 };
 
 // DDL flags wrapper for each new table
@@ -153,7 +148,7 @@ class ddl_executor {
   ddl_type dt;
 
   // DDL flags
-  ddl_flags *flags;
+  ddl_flags flags;
 
   // Old table descriptor
   TableDescriptor *old_td;
@@ -172,7 +167,7 @@ class ddl_executor {
  public:
   // Constructor and destructor
   ddl_executor() : dt(ddl_type::INVALID) {
-    flags = new ddl_flags();
+    flags.cdc_end_total = 0;
 #if defined(SIDDL) || defined(BLOCKDDL)
     init_ddl_write_set();
 #endif
@@ -214,7 +209,7 @@ class ddl_executor {
     cdc_workers.clear();
   }
 
-  inline ddl_flags *get_ddl_flags() { return flags; }
+  inline ddl_flags *get_ddl_flags() { return &flags; }
 
   inline TableDescriptor *get_old_td() { return old_td; }
 

@@ -30,14 +30,14 @@ ddl_flags *get_ddl_flags(OID oid, uint32_t version) {
 
 void ddl_executor::add_ddl_flags(OID oid, uint32_t version) {
   CRITICAL_SECTION(cs, lock);
-  ddl_flags_set.push_back(new ddl_flags_wrapper(oid, version, flags));
+  ddl_flags_set.push_back(new ddl_flags_wrapper(oid, version, &flags));
 }
 
 rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
   if (config::enable_parallel_scan_cdc) {
     DLOG(INFO) << "First CDC begins";
-    flags->cdc_first_phase = true;
+    flags.cdc_first_phase = true;
     changed_data_capture(t);
   }
 #endif
@@ -87,7 +87,7 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
         //  if (oid % scan_threads != i) continue;
         r = scan_impl(t, arena, oid, fid, xc, old_tuple_array, key_array, lb,
                       i);
-        if (r._val != RC_TRUE || flags->ddl_failed) {
+        if (r._val != RC_TRUE || flags.ddl_failed) {
           break;
         }
       }
@@ -101,20 +101,20 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
     // for (uint32_t oid = 0; oid <= himark; oid++) {
     //  if (oid % scan_threads != 0) continue;
     r = scan_impl(t, arena, oid, fid, xc, old_tuple_array, key_array, lb, 0);
-    if (r._val != RC_TRUE || flags->ddl_failed) {
+    if (r._val != RC_TRUE || flags.ddl_failed) {
       break;
     }
   }
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
-  if (!config::enable_late_scan_join || flags->ddl_failed) {
+  if (!config::enable_late_scan_join || flags.ddl_failed) {
     join_scan_workers();
   }
   if (config::enable_parallel_scan_cdc) {
-    flags->cdc_running = false;
+    flags.cdc_running = false;
     join_cdc_workers();
   }
-  if (flags->ddl_failed) {
+  if (flags.ddl_failed) {
     DLOG(INFO) << "DDL failed";
     join_cdc_workers();
     for (std::vector<struct ddl_executor_paras *>::const_iterator it =
@@ -130,11 +130,11 @@ rc_t ddl_executor::scan(transaction *t, str_arena *arena) {
   if (config::enable_cdc_verification_test) {
     cdc_test = true;
   }
-  flags->ddl_td_set = false;
-  flags->cdc_first_phase = false;
+  flags.ddl_td_set = false;
+  flags.cdc_first_phase = false;
 #else
   join_scan_workers();
-  if (flags->ddl_failed) {
+  if (flags.ddl_failed) {
     return rc_t{RC_ABORT_INTERNAL};
   }
 #endif
@@ -159,8 +159,8 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
           (*it)->type == COPY_VERIFICATION) {
         if (!constraints[(*it)->constraint_idx](tuple_value, (*it)->new_v)) {
           DLOG(INFO) << "DDL failed";
-          flags->ddl_failed = true;
-          flags->cdc_running = false;
+          flags.ddl_failed = true;
+          flags.cdc_running = false;
           return rc_t{RC_ABORT_INTERNAL};
         }
       }
@@ -212,7 +212,7 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
         rc_t r = t->Update((*it)->new_td, oid, nullptr, new_tuple_value, wid);
         if (r._val != RC_TRUE) {
           DLOG(INFO) << "DDL failed";
-          flags->ddl_failed = true;
+          flags.ddl_failed = true;
           return rc_t{RC_ABORT_INTERNAL};
         }
 #endif
@@ -224,12 +224,12 @@ rc_t ddl_executor::scan_impl(transaction *t, str_arena *arena, OID oid,
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
 uint32_t ddl_executor::changed_data_capture(transaction *t) {
-  flags->ddl_failed = false;
-  flags->cdc_running = true;
+  flags.ddl_failed = false;
+  flags.cdc_running = true;
   dlog::tls_log *log = t->get_log();
   uint32_t cdc_threads;
-  if ((config::enable_parallel_scan_cdc && !flags->cdc_second_phase) ||
-      (config::enable_late_scan_join && flags->cdc_second_phase)) {
+  if ((config::enable_parallel_scan_cdc && !flags.cdc_second_phase) ||
+      (config::enable_late_scan_join && flags.cdc_second_phase)) {
     cdc_threads = config::cdc_threads;
   } else {
     cdc_threads = config::cdc_threads + config::scan_threads - 1;
@@ -285,18 +285,18 @@ uint32_t ddl_executor::changed_data_capture(transaction *t) {
       bool ddl_end_local = false;
       str_arena *arena = new str_arena(config::arena_size_mb);
       rc_t rc;
-      while (flags->cdc_running) {
+      while (flags.cdc_running) {
         rc = changed_data_capture_impl(t, i, ddl_thread_id, begin_log, end_log,
                                        arena, &ddl_end_local, count);
         if (rc._val != RC_TRUE) {
-          flags->ddl_failed = true;
-          flags->cdc_running = false;
+          flags.ddl_failed = true;
+          flags.cdc_running = false;
         }
-        if (ddl_end_local && flags->cdc_second_phase) {
+        if (ddl_end_local && flags.cdc_second_phase) {
           break;
         }
       }
-      flags->cdc_end_total.fetch_add(1);
+      flags.cdc_end_total.fetch_add(1);
     };
 
     thread->StartTask(parallel_changed_data_capture);
@@ -326,7 +326,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
       tlog->last_flush();
       std::vector<dlog::segment> *segments = tlog->get_segments();
       bool stop_log_scan = false;
-      uint64_t offset_in_seg = volatile_read(flags->_tls_durable_lsn[i]);
+      uint64_t offset_in_seg = volatile_read(flags._tls_durable_lsn[i]);
       uint64_t offset_increment = 0;
       uint64_t last_csn = 0;
       int insert_total = 0, update_total = 0;
@@ -340,8 +340,8 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
                             offset_in_seg);
 
         while (offset_increment < data_sz - offset_in_seg &&
-               (flags->cdc_running || flags->cdc_second_phase) &&
-               !flags->ddl_failed) {
+               (flags.cdc_running || flags.cdc_second_phase) &&
+               !flags.ddl_failed) {
           dlog::log_block *header =
               (dlog::log_block *)(data_buf + offset_increment);
           if ((end_csn && begin_csn <= header->csn && header->csn <= end_csn) ||
@@ -349,7 +349,7 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
             last_csn = header->csn;
             uint64_t offset_in_block = 0;
             while (offset_in_block < header->payload_size &&
-                   !flags->ddl_failed) {
+                   !flags.ddl_failed) {
               dlog::log_record *logrec =
                   (dlog::log_record *)(data_buf + offset_increment + block_sz +
                                        offset_in_block);
@@ -449,11 +449,11 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
             }
           }
           offset_increment += header->total_size();
-          volatile_write(flags->_tls_durable_lsn[i],
+          volatile_write(flags._tls_durable_lsn[i],
                          offset_in_seg + offset_increment);
         }
         RCU::rcu_free(data_buf);
-        if (stop_log_scan || (flags->cdc_second_phase && insert_total == 0 &&
+        if (stop_log_scan || (flags.cdc_second_phase && insert_total == 0 &&
                               update_total == 0)) {
           if (!stop_log_scan && !re_check) {
             re_check = true;
@@ -463,8 +463,8 @@ rc_t ddl_executor::changed_data_capture_impl(transaction *t, uint32_t thread_id,
         }
       }
     }
-    if ((!flags->cdc_running && !flags->cdc_second_phase) ||
-        flags->ddl_failed) {
+    if ((!flags.cdc_running && !flags.cdc_second_phase) ||
+        flags.ddl_failed) {
       break;
     }
   }
@@ -637,7 +637,7 @@ rc_t ddl_executor::commit_op(transaction *t, dlog::log_block *lb,
         (*it)->SetArrays(false);
       }
     }
-    flags->ddl_td_set = true;
+    flags.ddl_td_set = true;
   }
 #endif
 
@@ -646,19 +646,19 @@ rc_t ddl_executor::commit_op(transaction *t, dlog::log_block *lb,
   if (dt != ddl_type::NO_COPY_VERIFICATION) {
     // Start the second round of CDC
     DLOG(INFO) << "Second CDC begins";
-    flags->cdc_second_phase = true;
-    flags->cdc_end_total.store(0);
+    flags.cdc_second_phase = true;
+    flags.cdc_end_total.store(0);
     uint32_t cdc_threads = changed_data_capture(t);
     if (config::enable_late_scan_join) {
       join_scan_workers();
     }
-    while (flags->cdc_end_total.load() != cdc_threads && !flags->ddl_failed) {
+    while (flags.cdc_end_total.load() != cdc_threads && !flags.ddl_failed) {
     }
-    flags->cdc_running = false;
+    flags.cdc_running = false;
     join_cdc_workers();
-    flags->cdc_second_phase = false;
+    flags.cdc_second_phase = false;
     DLOG(INFO) << "Second CDC ends";
-    if (flags->ddl_failed) {
+    if (flags.ddl_failed) {
       DLOG(INFO) << "DDL failed";
       for (auto &v : new_td_map) {
         OrderedIndex *index = v.second->GetPrimaryIndex();
@@ -742,7 +742,7 @@ rc_t ddl_executor::commit_op(transaction *t, dlog::log_block *lb,
 #endif
 #endif
 
-  flags->ddl_running = false;
+  flags.ddl_running = false;
   volatile_write(xc->state, TXN::TXN_CMMTD);
 #ifdef COPYDDL
 #ifdef LAZYDDL
