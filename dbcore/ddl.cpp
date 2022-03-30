@@ -740,7 +740,6 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
 #endif
 #endif
 
-  flags.ddl_running = false;
   volatile_write(xc->state, TXN::TXN_CMMTD);
 #ifdef COPYDDL
 #ifdef LAZYDDL

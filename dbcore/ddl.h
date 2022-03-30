@@ -32,7 +32,6 @@ typedef std::function<bool(varstr &value, uint64_t schema_version)> Constraint;
 
 // DDL flags
 struct ddl_flags {
-  volatile bool ddl_running = true;
   volatile bool cdc_first_phase = false;
   volatile bool cdc_second_phase = false;
   volatile bool ddl_failed = false;
