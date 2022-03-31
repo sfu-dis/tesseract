@@ -277,6 +277,8 @@ class oddlb_sequential_worker : public oddlb_base_worker {
             ALWAYS_ASSERT(record2_test->o_value_c == schema_version);
 
             switch (schema.v) {
+              case 1:
+                break;
               case 2:
                 ALWAYS_ASSERT(record2_test->o_value_d == schema_version);
                 break;
