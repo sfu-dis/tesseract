@@ -36,7 +36,6 @@ rc_t ddl_executor::scan(str_arena *arena) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
   if (config::enable_parallel_scan_cdc) {
     DLOG(INFO) << "First CDC begins";
-    flags.cdc_first_phase = true;
     changed_data_capture();
   }
 #endif
@@ -77,11 +76,10 @@ rc_t ddl_executor::scan(str_arena *arena) {
     ALWAYS_ASSERT(thread);
     scan_workers.push_back(thread);
     auto parallel_scan = [=](char *) {
-      rc_t r;
       dlog::log_block *lb = nullptr;
       str_arena *arena = new str_arena(config::arena_size_mb);
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
-        r = scan_impl(arena, oid, fid, xc, old_tuple_array, key_array, lb, i, this);
+        rc_t r = scan_impl(arena, oid, fid, xc, old_tuple_array, key_array, lb, i, this);
         if (r._val != RC_TRUE || flags.ddl_failed) {
           break;
         }
@@ -93,8 +91,6 @@ rc_t ddl_executor::scan(str_arena *arena) {
   dlog::log_block *lb = nullptr;
   OID end = scan_threads == 1 ? himark : total_per_scan_thread;
   for (OID oid = 0; oid <= end; oid++) {
-    // for (uint32_t oid = 0; oid <= himark; oid++) {
-    //  if (oid % scan_threads != 0) continue;
     r = scan_impl(arena, oid, fid, xc, old_tuple_array, key_array, lb, 0, this);
     if (r._val != RC_TRUE || flags.ddl_failed) {
       break;
@@ -124,7 +120,6 @@ rc_t ddl_executor::scan(str_arena *arena) {
     cdc_test = true;
   }
   flags.ddl_td_set = false;
-  flags.cdc_first_phase = false;
 #else
   join_scan_workers();
   if (flags.ddl_failed) {
@@ -173,7 +168,7 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
         if (!o) {
           continue;
         }
-        if (!AWAITparam->index->InsertOID(t, *key, o)) {
+        if (!AWAIT param->index->InsertOID(t, *key, o)) {
           Object *obj = (Object *)out_entry->offset();
           fat_ptr entry = *out_entry;
           obj->SetCSN(NULL_PTR);
