@@ -174,7 +174,11 @@ class ddl_executor {
     init_ddl_write_set();
 #endif
   }
-  ~ddl_executor() {}
+  ~ddl_executor() {
+#if defined(SIDDL) || defined(BLOCKDDL)
+    free_ddl_write_set();
+#endif
+  }
 
   inline void add_ddl_executor_paras(
       uint64_t new_v, uint64_t old_v, ddl_type type, uint64_t reformat_idx,
@@ -263,6 +267,9 @@ class ddl_executor {
 
   // Init DDl write set
   void init_ddl_write_set();
+
+  // Delete DDL write set
+  void free_ddl_write_set();
 
   // DDL write set commit
   void ddl_write_set_commit(dlog::log_block *lb, uint64_t *out_cur_lsn, uint64_t *out_seg_num);

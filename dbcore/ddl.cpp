@@ -460,6 +460,10 @@ void ddl_executor::init_ddl_write_set() {
   ddl_write_set->init();
 }
 
+void ddl_executor::free_ddl_write_set() {
+  delete ddl_write_set;
+}
+
 void ddl_executor::ddl_write_set_commit(dlog::log_block *lb, uint64_t *lb_lsn,
                                         uint64_t *segnum) {
   TXN::xid_context *xc = t->GetXIDContext();
@@ -568,26 +572,21 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
                              uint64_t *segnum) {
   TXN::xid_context *xc = t->GetXIDContext();
   dlog::tls_log *log = t->get_log();
-  write_record_block *cur_write_record_block = t->get_cur_write_record_block();
-  write_record_block *write_set = t->get_write_set();
+  write_set_t &write_set = t->get_write_set();
 
   DLOG(INFO) << "DDL txn end: " << xc->end;
   // If txn is DDL, commit schema record(s) first (before CDC), no logging
-  cur_write_record_block = write_set;
-  while (cur_write_record_block) {
-    for (uint32_t i = 0; i < cur_write_record_block->size(); ++i) {
-      auto &w = (*cur_write_record_block)[i];
-      Object *object = w.get_object();
-      dbtuple *tuple = (dbtuple *)object->GetPayload();
+  for (uint32_t i = 0; i < write_set.size(); ++i) {
+    auto &w = write_set[i];
+    Object *object = w.get_object();
+    dbtuple *tuple = (dbtuple *)object->GetPayload();
 
-      // Set CSN
-      fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
-      object->SetCSN(csn_ptr);
-      ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
-    }
-    cur_write_record_block = cur_write_record_block->next;
+    // Set CSN
+    fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
+    object->SetCSN(csn_ptr);
+    ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
   }
-  DLOG(INFO) << "DDL schema commit with size " << write_set->size();
+  DLOG(INFO) << "DDL schema commit with size " << write_set.size();
 
 #ifdef COPYDDL
   if (dt != ddl_type::NO_COPY_VERIFICATION) {
@@ -652,69 +651,62 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
 #endif
 
   // Real commit for schema records, logging enabled
-  cur_write_record_block = write_set;
-  while (cur_write_record_block) {
-    for (uint32_t i = 0; i < cur_write_record_block->size(); ++i) {
-      auto &w = (*cur_write_record_block)[i];
-      Object *object = w.get_object();
-      dbtuple *tuple = (dbtuple *)object->GetPayload();
+  for (uint32_t i = 0; i < write_set.size(); ++i) {
+    auto &w = write_set[i];
+    Object *object = w.get_object();
+    dbtuple *tuple = (dbtuple *)object->GetPayload();
 
-      varstr value(tuple->get_value_start(), tuple->size);
-      schema_kv::value schema_value_temp;
-      const schema_kv::value *schema_not_ready =
-          Decode(value, schema_value_temp);
-      schema_kv::value schema_ready(*schema_not_ready);
-      schema_ready.state = schema_state_type::READY;
-      schema_ready.csn = xc->end;
+    varstr value(tuple->get_value_start(), tuple->size);
+    schema_kv::value schema_value_temp;
+    const schema_kv::value *schema_not_ready = Decode(value, schema_value_temp);
+    schema_kv::value schema_ready(*schema_not_ready);
+    schema_ready.state = schema_state_type::READY;
+    schema_ready.csn = xc->end;
 
-      t->string_allocator().reset();
-      varstr *new_value = t->string_allocator().next(Size(schema_ready));
+    t->string_allocator().reset();
+    varstr *new_value = t->string_allocator().next(Size(schema_ready));
 
-      ALWAYS_ASSERT(
-          t->DDLSchemaReady(schema_td, w.oid, &Encode(*new_value, schema_ready))
-              ._val == RC_TRUE);
+    ALWAYS_ASSERT(
+        t->DDLSchemaReady(schema_td, w.oid, &Encode(*new_value, schema_ready))
+            ._val == RC_TRUE);
 
-      object = w.get_object();
-      tuple = (dbtuple *)object->GetPayload();
+    object = w.get_object();
+    tuple = (dbtuple *)object->GetPayload();
 
-      // Populate log block and obtain persistent address
-      uint32_t off = lb->payload_size;
-      if (w.is_insert) {
-        auto ret_off =
-            dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, w.size);
-        ALWAYS_ASSERT(ret_off == off);
-      } else {
-        auto ret_off =
-            dlog::log_update(lb, w.fid, w.oid, (char *)tuple, w.size);
-        ALWAYS_ASSERT(ret_off == off);
-      }
-      ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
-
-      // This aligned_size should match what was calculated during
-      // add_to_write_set, and the size_code calculated based on this aligned
-      // size will be part of the persistent address, which a read can
-      // directly use to load the log record from the log (i.e., knowing how
-      // many bytes to read to obtain the log record header + dbtuple header +
-      // record data).
-      auto aligned_size = align_up(w.size + sizeof(dlog::log_record));
-      auto size_code = encode_size_aligned(aligned_size);
-
-      // lb_lsn points to the start of the log block which has a header,
-      // followed by individual log records, so the log record's direct
-      // address would be lb_lsn + sizeof(log_block) + off
-      fat_ptr pdest =
-          LSN::make(log->get_id(), *lb_lsn + sizeof(dlog::log_block) + off,
-                    *segnum, size_code)
-              .to_ptr();
-      object->SetPersistentAddress(pdest);
-      ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
-
-      // Set CSN
-      fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
-      object->SetCSN(csn_ptr);
-      ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
+    // Populate log block and obtain persistent address
+    uint32_t off = lb->payload_size;
+    if (w.is_insert) {
+      auto ret_off = dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, w.size);
+      ALWAYS_ASSERT(ret_off == off);
+    } else {
+      auto ret_off = dlog::log_update(lb, w.fid, w.oid, (char *)tuple, w.size);
+      ALWAYS_ASSERT(ret_off == off);
     }
-    cur_write_record_block = cur_write_record_block->next;
+    ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
+
+    // This aligned_size should match what was calculated during
+    // add_to_write_set, and the size_code calculated based on this aligned
+    // size will be part of the persistent address, which a read can
+    // directly use to load the log record from the log (i.e., knowing how
+    // many bytes to read to obtain the log record header + dbtuple header +
+    // record data).
+    auto aligned_size = align_up(w.size + sizeof(dlog::log_record));
+    auto size_code = encode_size_aligned(aligned_size);
+
+    // lb_lsn points to the start of the log block which has a header,
+    // followed by individual log records, so the log record's direct
+    // address would be lb_lsn + sizeof(log_block) + off
+    fat_ptr pdest =
+        LSN::make(log->get_id(), *lb_lsn + sizeof(dlog::log_block) + off,
+                  *segnum, size_code)
+            .to_ptr();
+    object->SetPersistentAddress(pdest);
+    ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG);
+
+    // Set CSN
+    fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
+    object->SetCSN(csn_ptr);
+    ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
   }
 
 #if defined(SIDDL) || defined(BLOCKDDL)

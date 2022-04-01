@@ -52,6 +52,23 @@ struct write_record_t {
   inline Object *get_object() { return (Object *)entry->offset(); }
 };
 
+struct write_set_t {
+  static const uint32_t kMaxEntries = 256;
+  uint32_t num_entries;
+  write_record_t entries[kMaxEntries];
+  write_set_t() : num_entries(0) {}
+  inline void emplace_back(fat_ptr *oe, FID fid, OID oid, uint32_t size, bool insert) {
+    ALWAYS_ASSERT(num_entries < kMaxEntries);
+    new (&entries[num_entries]) write_record_t(oe, fid, oid, size, insert);
+    ++num_entries;
+    ASSERT(entries[num_entries - 1].entry == oe);
+  }
+  inline uint32_t size() { return num_entries; }
+  inline void clear() { num_entries = 0; }
+  inline write_record_t &operator[](uint32_t idx) { return entries[idx]; }
+};
+
+#if defined(SIDDL) || defined(BLOCKDDL)
 struct write_record_block {
   static const uint32_t kMaxEntries = 256;
   write_record_t entries[kMaxEntries];
@@ -70,7 +87,6 @@ struct write_record_block {
   inline write_record_t &operator[](uint32_t idx) { return entries[idx]; }
 };
 
-#if defined(SIDDL) || defined(BLOCKDDL)
 struct write_record_block_info {
   write_record_block *first_block;
   write_record_block *cur_block;
@@ -332,12 +348,7 @@ class transaction {
       // Each write set entry still just records the size of the actual "data"
       // to be inserted to the log excluding dlog::log_record, which will be
       // prepended by log_insert/update etc.
-      if (cur_write_record_block->size() == write_record_block::kMaxEntries) {
-        cur_write_record_block->next = new write_record_block();
-        cur_write_record_block = cur_write_record_block->next;
-      }
-      cur_write_record_block->emplace_back(entry, fid, oid,
-                                           size + sizeof(dbtuple), insert);
+      write_set.emplace_back(entry, fid, oid, size + sizeof(dbtuple), insert);
     }
   }
 
@@ -353,12 +364,8 @@ class transaction {
 
   inline table_set_t *get_table_set() { return &table_set; }
 
-  inline write_record_block *get_cur_write_record_block() {
-    return cur_write_record_block;
-  }
-
-  inline write_record_block *get_write_set() {
-    return &write_set;
+  inline write_set_t &get_write_set() {
+    return write_set;
   };
 
   inline void add_to_table_set(TableDescriptor *td, FID table_fid, OID schema_oid, uint32_t version,
@@ -390,8 +397,7 @@ class transaction {
   table_set_t table_set;
   bool wait_for_new_schema;
   util::timer timer;
-  write_record_block *cur_write_record_block;
-  write_record_block write_set;
+  write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t read_set;
 #endif
