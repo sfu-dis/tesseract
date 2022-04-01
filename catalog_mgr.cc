@@ -56,8 +56,8 @@ retry:
     if (schema->ddl_type != ddl::ddl_type::COPY_ONLY || config::enable_cdc_schema_lock) {
       goto retry;
     }
-    ddl::ddl_flags *flags = ddl::get_ddl_flags(*out_schema_oid, schema->version);
-    if (!flags || !flags->ddl_td_set) {
+    TableDescriptor *td = Catalog::GetTable(schema->fid);
+    if (!td->IsReady()) {
       goto retry;
     } else {
       t->SetWaitForNewSchema(true);
@@ -88,11 +88,6 @@ rc_t write_schema(transaction *t, ConcurrentMasstreeIndex *schema_table_index,
   OID oid = INVALID_OID;
   rc_t rc = is_insert ? schema_table_index->InsertRecord(t, table_name, schema_value, &oid)
                       : schema_table_index->UpdateRecord(t, table_name, schema_value);
-  if (rc._val == RC_TRUE) {
-    schema_kv::value schema_value_temp;
-    const schema_kv::value *schema = Decode(schema_value, schema_value_temp);
-    ddl_exe->add_ddl_flags(oid, schema->version);
-  }
 
 #ifdef BLOCKDDL
   // Under blocking DDL this will always succeed

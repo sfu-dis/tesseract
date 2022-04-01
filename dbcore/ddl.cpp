@@ -14,23 +14,6 @@ volatile bool cdc_test = false;
 
 std::vector<Reformat> reformats;
 std::vector<Constraint> constraints;
-std::vector<ddl_flags_wrapper> ddl_flags_set;
-mcs_lock lock;
-
-// Not thread-safe
-ddl_flags *get_ddl_flags(OID oid, uint32_t version) {
-  for (auto &f : ddl_flags_set) {
-    if (f.oid == oid && f.version == version) {
-      return f.flags;
-    }
-  }
-  return nullptr;
-}
-
-void ddl_executor::add_ddl_flags(OID oid, uint32_t version) {
-  CRITICAL_SECTION(cs, lock);
-  ddl_flags_set.emplace_back(oid, version, &flags);
-}
 
 rc_t ddl_executor::scan(str_arena *arena) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
@@ -120,7 +103,6 @@ rc_t ddl_executor::scan(str_arena *arena) {
   if (config::enable_cdc_verification_test) {
     cdc_test = true;
   }
-  flags.ddl_td_set = false;
 #else
   join_scan_workers();
   if (flags.ddl_failed) {
@@ -617,8 +599,10 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
         (*it)->SetTableDescriptor(v.second);
         (*it)->SetArrays(false);
       }
+
+      // Set td status to be ready
+      v.second->SetReady(true);
     }
-    flags.ddl_td_set = true;
   }
 #endif
 
