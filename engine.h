@@ -34,6 +34,8 @@ class Table;
 
 extern TableDescriptor *schema_td;
 
+str_arena *GetArena();
+
 class Engine {
  private:
   void LogIndexCreation(bool primary, FID table_fid, FID index_fid,

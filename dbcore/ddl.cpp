@@ -77,7 +77,8 @@ rc_t ddl_executor::scan(str_arena *arena) {
     scan_workers.push_back(thread);
     auto parallel_scan = [=](char *) {
       dlog::log_block *lb = nullptr;
-      str_arena *arena = new str_arena(config::arena_size_mb);
+      str_arena *arena = GetArena();
+      arena->reset();
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
         rc_t r = scan_impl(arena, oid, fid, xc, old_tuple_array, key_array, lb, i, this);
         if (r._val != RC_TRUE || flags.ddl_failed) {
@@ -267,7 +268,8 @@ uint32_t ddl_executor::changed_data_capture() {
 
     auto parallel_changed_data_capture = [=](char *) {
       bool ddl_end_local = false;
-      str_arena *arena = new str_arena(config::arena_size_mb);
+      str_arena *arena = GetArena();
+      arena->reset();
       rc_t rc;
       while (flags.cdc_running) {
         rc = changed_data_capture_impl(i, ddl_thread_id, begin_log, end_log,

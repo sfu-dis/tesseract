@@ -8,6 +8,12 @@ namespace ermia {
 
 TableDescriptor *schema_td = NULL;
 
+thread_local str_arena tarena(config::arena_size_mb);
+
+str_arena *GetArena() {
+  return &tarena;
+}
+
 thread_local dlog::tls_log tlog;
 std::mutex tlog_lock;
 
