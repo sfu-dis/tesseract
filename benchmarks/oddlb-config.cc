@@ -144,7 +144,7 @@ void oddlb_schematable_loader::load() {
       open_tables.at("USERTABLE")->GetTableDescriptor()->GetTupleFid());
 
   struct ermia::schema_record usertable_schema;
-  usertable_schema.state = ermia::ddl::schema_state_type::READY;
+  usertable_schema.state = ermia::ddl::schema_state_type::COMPLETE;
   usertable_schema.old_td = nullptr;
   int i = 0;
   usertable_schema.reformat_idx = i;

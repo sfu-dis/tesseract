@@ -10,6 +10,7 @@
 namespace ermia {
 
 class OrderedIndex;
+struct write_set_t;
 #if defined(SIDDL) || defined(BLOCKDDL)
 struct ddl_write_set_t;
 #endif
@@ -52,6 +53,7 @@ enum ddl_type {
 enum schema_state_type {
   READY,
   NOT_READY,
+  COMPLETE,
 };
 
 // struct of DDL executor parameters
@@ -233,6 +235,9 @@ class ddl_executor {
 
   // DDL operations in commit
   rc_t commit_op(dlog::log_block *lb, uint64_t *lb_lsn, uint64_t *segnum);
+
+  // Set schema records' states
+  void set_schema_state(dlog::log_block *lb, uint64_t *lb_lsn, uint64_t *segnum, schema_state_type state);
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
   // CDC

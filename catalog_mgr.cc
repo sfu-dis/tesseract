@@ -51,13 +51,16 @@ retry:
   schema_kv::value schema_value_temp;
   const schema_kv::value *schema = Decode(out_schema_value, schema_value_temp);
 #ifdef COPYDDL
+  if (unlikely(t->is_ddl() && schema->state != ddl::schema_state_type::COMPLETE)) {
+    goto retry;
+  }
   if (schema->state == ddl::schema_state_type::NOT_READY) {
 #ifndef LAZYDDL
     if (schema->ddl_type != ddl::ddl_type::COPY_ONLY || config::enable_cdc_schema_lock) {
       goto retry;
     }
     TableDescriptor *td = Catalog::GetTable(schema->fid);
-    if (!td->IsReady()) {
+    if (!td || !td->IsReady()) {
       goto retry;
     } else {
       t->SetWaitForNewSchema(true);
