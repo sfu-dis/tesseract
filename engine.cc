@@ -158,7 +158,7 @@ ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
       AWAIT masstree_.rsearch_range_call(
           start_key, end_key ? &lowervk : nullptr, cb, t->xc);
-      if (schema && schema->old_index) {
+      if (c.return_code._val == RC_FALSE && schema && schema->old_index) {
         cb.set_do_lazy_migration(true);
         cb.set_table_descriptor(schema->old_td);
         auto *index = GetIsPrimary() ? schema->old_index : schema->old_td->GetSecIndexes().front();
