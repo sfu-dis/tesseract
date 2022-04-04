@@ -128,7 +128,11 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
         : t(t),
           caller_callback(caller_callback),
           schema(schema),
-          table_descriptor(table_descriptor) {}
+          table_descriptor(table_descriptor)
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+          , do_lazy_migration(false)
+#endif
+          {}
 
     virtual void on_resp_node(
         const typename ConcurrentMasstree::node_opaque_t *n, uint64_t version);
@@ -138,11 +142,21 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
                         const typename ConcurrentMasstree::node_opaque_t *n,
                         uint64_t version, OID oid);
 
+    void set_table_descriptor(TableDescriptor *td) { table_descriptor = td; }
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    void set_do_lazy_migration(bool _do_lazy_migration) {
+      do_lazy_migration = _do_lazy_migration;
+    }
+#endif
+
    private:
     transaction *const t;
     SearchRangeCallback *const caller_callback;
     schema_record *schema;
     TableDescriptor *table_descriptor;
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    bool do_lazy_migration;
+#endif
   };
 
   struct PurgeTreeWalker : public ConcurrentMasstree::tree_walk_callback {

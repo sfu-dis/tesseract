@@ -115,6 +115,18 @@ ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
     if (GetIsPrimary() && schema && !schema->show_index) {
       t->table_scan_multi(table_descriptor, &start_key, end_key, cb);
     } else {
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+      AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
+                                        cb, t->xc);
+      if (c.return_code._val == RC_FALSE && schema && schema->old_index) {
+	cb.set_do_lazy_migration(true);
+	cb.set_table_descriptor(schema->old_td);
+        auto *index = GetIsPrimary() ? schema->old_index : schema->old_td->GetSecIndexes().front();
+	AWAIT ((ConcurrentMasstreeIndex *)index)->GetMasstree().search_range_call(
+            start_key, end_key ? end_key : nullptr, cb, t->xc);
+      }
+      RETURN c.return_code;
+#endif
       AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
                                         cb, t->xc);
     }
@@ -143,6 +155,18 @@ ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
       t->table_rscan_multi(table_descriptor, &start_key,
                            end_key ? &lowervk : nullptr, cb);
     } else {
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+      AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
+                                        cb, t->xc);
+      if (schema && schema->old_index) {
+	cb.set_do_lazy_migration(true);
+        cb.set_table_descriptor(schema->old_td);
+	auto *index = GetIsPrimary() ? schema->old_index : schema->old_td->GetSecIndexes().front();
+        AWAIT ((ConcurrentMasstreeIndex *)index)->GetMasstree().rsearch_range_call(
+            start_key, end_key ? &lowervk : nullptr, cb, t->xc);
+      }
+      RETURN c.return_code;
+#endif
       AWAIT masstree_.rsearch_range_call(
           start_key, end_key ? &lowervk : nullptr, cb, t->xc);
     }
@@ -662,6 +686,35 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     return false;
   }
   if (caller_callback->return_code._val == RC_TRUE) {
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    if (schema && do_lazy_migration) {
+      auto *key_array = schema->old_td->GetKeyArray();
+      fat_ptr *entry =
+          config::enable_ddl_keys ? key_array->get(oid) : nullptr;
+      varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
+      varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
+          key, vv, &(t->string_allocator()), schema->v,
+          schema->old_td->GetTupleFid(), oid);
+      if (!new_tuple_value) {
+        caller_callback->return_code = rc_t{RC_ABORT_INTERNAL};
+	return false;
+      }
+      rc_t rc = AWAIT schema->index->InsertRecord(t, *key, *new_tuple_value, &oid, schema);
+      if (rc._val == RC_TRUE) {
+        rc = AWAIT schema->index->LazyBuildSecondaryIndex(t, *key, oid, schema);
+      }
+      if (rc._val == RC_TRUE) {
+        dbtuple *tuple = AWAIT oidmgr->oid_get_version(schema->td->GetTupleArray(),
+                                                       oid, t->xc);
+        if (tuple && t->DoTupleRead(tuple, &vv)._val == RC_TRUE) {
+          caller_callback->return_code = rc_t{RC_TRUE};
+          return caller_callback->Invoke(k, vv);
+	}
+      }
+      caller_callback->return_code = rc_t{RC_ABORT_INTERNAL};
+      return false;
+    }
+#endif
 #if defined(COPYDDL) && !defined(LAZYDDL)
     if (t->IsWaitForNewSchema()) {
       ermia::transaction::table_record_t *table_record =
