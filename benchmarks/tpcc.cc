@@ -700,7 +700,7 @@ rc_t tpcc_worker::txn_delivery() {
         txn, Encode(str(Size(k_oo_0)), k_oo_0),
         &Encode(str(Size(k_oo_1)), k_oo_1), c, &order_line_schema));
 
-    if (order_line_schema.v == 0) {
+    if (order_line_schema.v != 0) {
       if (c.size() == 0) {
         TryCatch({RC_ABORT_USER});
       }
