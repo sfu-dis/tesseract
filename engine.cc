@@ -119,10 +119,10 @@ ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
       AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
                                         cb, t->xc);
       if (c.return_code._val == RC_FALSE && schema && schema->old_index) {
-	cb.set_do_lazy_migration(true);
-	cb.set_table_descriptor(schema->old_td);
+        cb.set_do_lazy_migration(true);
+        cb.set_table_descriptor(schema->old_td);
         auto *index = GetIsPrimary() ? schema->old_index : schema->old_td->GetSecIndexes().front();
-	AWAIT ((ConcurrentMasstreeIndex *)index)->GetMasstree().search_range_call(
+        AWAIT ((ConcurrentMasstreeIndex *)index)->GetMasstree().search_range_call(
             start_key, end_key ? end_key : nullptr, cb, t->xc);
       }
       RETURN c.return_code;
@@ -156,12 +156,12 @@ ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
                            end_key ? &lowervk : nullptr, cb);
     } else {
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
-      AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr,
-                                        cb, t->xc);
+      AWAIT masstree_.rsearch_range_call(
+          start_key, end_key ? &lowervk : nullptr, cb, t->xc);
       if (schema && schema->old_index) {
-	cb.set_do_lazy_migration(true);
+        cb.set_do_lazy_migration(true);
         cb.set_table_descriptor(schema->old_td);
-	auto *index = GetIsPrimary() ? schema->old_index : schema->old_td->GetSecIndexes().front();
+        auto *index = GetIsPrimary() ? schema->old_index : schema->old_td->GetSecIndexes().front();
         AWAIT ((ConcurrentMasstreeIndex *)index)->GetMasstree().rsearch_range_call(
             start_key, end_key ? &lowervk : nullptr, cb, t->xc);
       }
