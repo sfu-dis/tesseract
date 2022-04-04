@@ -772,17 +772,16 @@ void ddl_executor::set_schema_state(dlog::log_block *lb, uint64_t *lb_lsn, uint6
     if (state != schema_state_type::NOT_READY) {
       varstr value(tuple->get_value_start(), tuple->size);
       schema_kv::value schema_value_temp;
-      const schema_kv::value *schema_not_ready = Decode(value, schema_value_temp);
-      schema_kv::value schema_ready(*schema_not_ready);
-      schema_ready.state = state;
-      schema_ready.csn = xc->end;
+      const schema_kv::value *old_schema = Decode(value, schema_value_temp);
+      schema_kv::value new_schema(*old_schema);
+      new_schema.state = state;
+      new_schema.csn = xc->end;
 
       t->string_allocator().reset();
-      varstr *new_value = t->string_allocator().next(Size(schema_ready));
+      varstr *new_value = t->string_allocator().next(Size(new_schema));
 
-      ALWAYS_ASSERT(
-          t->SetSchemaState(schema_td, w.oid, &Encode(*new_value, schema_ready))
-              ._val == RC_TRUE);
+      rc_t rc = t->SetSchemaState(schema_td, w.oid, &Encode(*new_value, new_schema));
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
 
       object = w.get_object();
       tuple = (dbtuple *)object->GetPayload();
