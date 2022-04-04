@@ -671,8 +671,44 @@ retry:
 }
 #endif
 
+PROMISE(bool)
+transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
+                          OID oid) {
+  ASSERT(new_td);
+  auto *new_tuple_array = new_td->GetTupleArray();
+  ASSERT(old_td);
+  auto *old_tuple_array = old_td->GetTupleArray();
+  new_tuple_array->ensure_size(oid);
+  old_tuple_array->ensure_size(oid);
+
+  fat_ptr *new_entry_ptr = new_tuple_array->get(oid);
+  fat_ptr new_expected = *new_entry_ptr;
+  Object *new_obj = (Object *)new_expected.offset();
+  fat_ptr new_csn = new_obj ? new_obj->GetCSN() : NULL_PTR;
+
+  fat_ptr *old_entry_ptr = old_tuple_array->get(oid);
+  fat_ptr old_expected = *old_entry_ptr;
+  Object *old_obj = (Object *)old_expected.offset();
+  fat_ptr old_csn = old_obj ? old_obj->GetCSN() : NULL_PTR;
+
+  if (new_expected == NULL_PTR && old_expected != NULL_PTR) {
+    RETURN true;
+  }
+  if (new_expected != NULL_PTR && old_expected != NULL_PTR &&
+      (old_csn.asi_type() == fat_ptr::ASI_XID ||
+       new_csn.asi_type() == fat_ptr::ASI_XID ||
+       (old_csn.asi_type() == fat_ptr::ASI_CSN &&
+        new_csn.asi_type() == fat_ptr::ASI_CSN &&
+        CSN::from_ptr(old_csn).offset() > CSN::from_ptr(new_csn).offset()))) {
+    RETURN true;
+  }
+
+  RETURN false;
+}
+#endif
+
 PROMISE(rc_t)
-transaction::DDLSchemaReady(TableDescriptor *td, OID oid, varstr *value) {
+transaction::SetSchemaState(TableDescriptor *td, OID oid, varstr *value) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
@@ -716,42 +752,6 @@ retry:
 
   RETURN rc_t{RC_TRUE};
 }
-
-PROMISE(bool)
-transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
-                          OID oid) {
-  ASSERT(new_td);
-  auto *new_tuple_array = new_td->GetTupleArray();
-  ASSERT(old_td);
-  auto *old_tuple_array = old_td->GetTupleArray();
-  new_tuple_array->ensure_size(oid);
-  old_tuple_array->ensure_size(oid);
-
-  fat_ptr *new_entry_ptr = new_tuple_array->get(oid);
-  fat_ptr new_expected = *new_entry_ptr;
-  Object *new_obj = (Object *)new_expected.offset();
-  fat_ptr new_csn = new_obj ? new_obj->GetCSN() : NULL_PTR;
-
-  fat_ptr *old_entry_ptr = old_tuple_array->get(oid);
-  fat_ptr old_expected = *old_entry_ptr;
-  Object *old_obj = (Object *)old_expected.offset();
-  fat_ptr old_csn = old_obj ? old_obj->GetCSN() : NULL_PTR;
-
-  if (new_expected == NULL_PTR && old_expected != NULL_PTR) {
-    RETURN true;
-  }
-  if (new_expected != NULL_PTR && old_expected != NULL_PTR &&
-      (old_csn.asi_type() == fat_ptr::ASI_XID ||
-       new_csn.asi_type() == fat_ptr::ASI_XID ||
-       (old_csn.asi_type() == fat_ptr::ASI_CSN &&
-        new_csn.asi_type() == fat_ptr::ASI_CSN &&
-        CSN::from_ptr(old_csn).offset() > CSN::from_ptr(new_csn).offset()))) {
-    RETURN true;
-  }
-
-  RETURN false;
-}
-#endif
 
 PROMISE(rc_t)
 transaction::table_scan_single(TableDescriptor *td, const varstr *key,

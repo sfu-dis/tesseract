@@ -10,6 +10,7 @@
 namespace ermia {
 
 class OrderedIndex;
+struct write_set_t;
 #if defined(SIDDL) || defined(BLOCKDDL)
 struct ddl_write_set_t;
 #endif
@@ -18,8 +19,7 @@ namespace ddl {
 
 // In case table scan is too slow, stop it when a DDL starts
 extern volatile bool ddl_start;
-// For verification related DDL, if true, make some violations for 2nd round of
-// CDC
+// For verification related DDL, if true, make some violations for 2nd round of CDC
 extern volatile bool cdc_test;
 
 // Schema reformation function
@@ -35,23 +35,11 @@ struct ddl_flags {
   volatile bool cdc_second_phase = false;
   volatile bool ddl_failed = false;
   volatile bool cdc_running = false;
-  volatile bool ddl_td_set = false;
   std::atomic<uint64_t> cdc_end_total;
   uint64_t *_tls_durable_lsn CACHE_ALIGNED =
       (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
   ;
 };
-
-// DDL flags wrapper for each new table
-struct ddl_flags_wrapper {
-  OID oid;
-  uint32_t version;
-  ddl_flags *flags;
-  ddl_flags_wrapper(OID oid, uint32_t version, ddl_flags *flags)
-      : oid(oid), version(version), flags(flags) {}
-};
-
-ddl_flags *get_ddl_flags(OID oid, uint32_t version);
 
 // DDL type
 enum ddl_type {
@@ -65,6 +53,7 @@ enum ddl_type {
 enum schema_state_type {
   READY,
   NOT_READY,
+  COMPLETE,
 };
 
 // struct of DDL executor parameters
@@ -236,9 +225,6 @@ class ddl_executor {
 
   inline void set_transaction(transaction *_t) { t = _t; }
 
-  // Add a ddl_flags to ddl_flags_set
-  void add_ddl_flags(OID oid, uint32_t version);
-
   // Scan and do operations (copy, verification)
   rc_t scan(str_arena *arena);
 
@@ -249,6 +235,9 @@ class ddl_executor {
 
   // DDL operations in commit
   rc_t commit_op(dlog::log_block *lb, uint64_t *lb_lsn, uint64_t *segnum);
+
+  // Set schema records' states
+  void set_schema_state(dlog::log_block *lb, uint64_t *lb_lsn, uint64_t *segnum, schema_state_type state);
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
   // CDC
@@ -281,8 +270,6 @@ class ddl_executor {
 
 extern std::vector<Reformat> reformats;
 extern std::vector<Constraint> constraints;
-extern std::vector<ddl_flags_wrapper> ddl_flags_set;
-extern mcs_lock lock;
 
 }  // namespace ddl
 

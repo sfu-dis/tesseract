@@ -387,17 +387,17 @@ class tpcc_schematable_loader : public ermia::catalog::schematable_loader {
         ermia::Catalog::GetTable("customer")->GetTupleFid());
 
     struct ermia::schema_record order_line_schema;
-    order_line_schema.state = ermia::ddl::schema_state_type::READY;
+    order_line_schema.state = ermia::ddl::schema_state_type::COMPLETE;
     order_line_schema.old_td = nullptr;
     order_line_schema.old_index = nullptr;
 
     struct ermia::schema_record oorder_schema;
-    oorder_schema.state = ermia::ddl::schema_state_type::READY;
+    oorder_schema.state = ermia::ddl::schema_state_type::COMPLETE;
     oorder_schema.old_td = nullptr;
     oorder_schema.old_index = nullptr;
 
     struct ermia::schema_record customer_schema;
-    customer_schema.state = ermia::ddl::schema_state_type::READY;
+    customer_schema.state = ermia::ddl::schema_state_type::COMPLETE;
     customer_schema.old_td = nullptr;
     customer_schema.old_index = nullptr;
 

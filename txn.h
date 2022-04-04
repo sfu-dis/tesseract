@@ -274,14 +274,14 @@ class transaction {
             dlog::log_block *block = nullptr);
 #endif
 
-  // Set DDL schema state to be Ready
-  PROMISE(rc_t)
-  DDLSchemaReady(TableDescriptor *td, OID oid, varstr *value);
-
   // DML & DDL overlap check
   PROMISE(bool)
   OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td, OID oid);
 #endif
+
+  // Set DDL schema state
+  PROMISE(rc_t)
+  SetSchemaState(TableDescriptor *td, OID oid, varstr *value);
 
   PROMISE(rc_t)
   Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,
@@ -367,6 +367,8 @@ class transaction {
   inline write_set_t &get_write_set() {
     return write_set;
   };
+
+  inline uint64_t get_log_size() { return log_size; }
 
   inline void add_to_table_set(TableDescriptor *td, FID table_fid, OID schema_oid, uint32_t version,
 		               bool schema_ready, TableDescriptor *old_td) {

@@ -10,6 +10,7 @@ std::unordered_map<std::string, OrderedIndex *> Catalog::index_map;
 
 TableDescriptor::TableDescriptor(std::string &name)
     : name(name),
+      ready(false),
       primary_index(nullptr),
       tuple_fid(0),
       tuple_array(nullptr),
@@ -30,6 +31,9 @@ void TableDescriptor::Initialize(bool modify_hash_table) {
   tuple_fid = oidmgr->create_file(true);
   if (modify_hash_table) {
     Catalog::fid_map[tuple_fid] = this;
+    ready = true;
+  } else {
+    ready = false;
   }
   tuple_array = oidmgr->get_array(tuple_fid);
 

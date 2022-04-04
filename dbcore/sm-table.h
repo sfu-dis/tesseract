@@ -15,6 +15,8 @@ class OrderedIndex;
 class TableDescriptor {
  private:
   std::string name;
+  // Whether ready to use, always false when a DDL calles Initialize()
+  bool ready;
   OrderedIndex* primary_index;
   std::vector<OrderedIndex*> sec_indexes;
 
@@ -37,12 +39,14 @@ class TableDescriptor {
   void AddSecondaryIndex(OrderedIndex* index, const std::string& name);
   void Recover(FID tuple_fid, FID key_fid, OID himark = 0);
   inline std::string& GetName() { return name; }
+  inline bool IsReady() { return ready; }
   inline OrderedIndex* GetPrimaryIndex() { return primary_index; }
   inline FID GetTupleFid() { return tuple_fid; }
   inline FID GetKeyFid() { return aux_fid_; }
   inline oid_array* GetKeyArray() { return aux_array_; }
   inline oid_array* GetTupleArray() { return tuple_array; }
   inline std::vector<OrderedIndex*> GetSecIndexes() { return sec_indexes; }
+  inline void SetReady(bool _ready) { ready = _ready; }
   inline void SetTupleFid(FID fid) { tuple_fid = fid; }
   inline void SetOidArray(oid_array* array) { tuple_array = array; }
   inline void SetPrimaryIndex(OrderedIndex* index) {
