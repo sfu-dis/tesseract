@@ -292,6 +292,7 @@ rc_t ddl_executor::changed_data_capture_impl(
   uint64_t end_csn = xc->end;
   uint64_t block_sz = sizeof(dlog::log_block),
            logrec_sz = sizeof(dlog::log_record), tuple_sc = sizeof(dbtuple);
+  FID old_fid = old_td->GetTupleFid();
   for (uint32_t i = begin_log; i <= end_log; i++) {
     dlog::tls_log *tlog = dlog::tlogs[i];
     uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
@@ -334,7 +335,7 @@ rc_t ddl_executor::changed_data_capture_impl(
               FID f = logrec->fid;
               OID o = logrec->oid;
 
-              if (!old_td_map[f]) {
+              if (f != old_fid) {
                 offset_in_block += logrec->rec_size;
                 continue;
               }
@@ -348,31 +349,29 @@ rc_t ddl_executor::changed_data_capture_impl(
                 dbtuple *tuple = (dbtuple *)(logrec->data);
                 varstr tuple_value(tuple->get_value_start(), tuple->size);
 
-                for (std::vector<struct ddl_executor_paras *>::const_iterator
-                         it = ddl_executor_paras_list.begin();
-                     it != ddl_executor_paras_list.end(); ++it) {
-                  if (!(*it)->handle_insert ||
-                      (*it)->old_td->GetTupleFid() != f) {
+                for (auto &param : ddl_executor_paras_list) {
+                  if (!param->handle_insert ||
+                      param->old_td->GetTupleFid() != f) {
                     continue;
                   }
-                  if ((*it)->type == VERIFICATION_ONLY ||
-                      (*it)->type == COPY_VERIFICATION) {
-                    if (!constraints[(*it)->constraint_idx](tuple_value,
-                                                            (*it)->new_v)) {
+                  if (param->type == VERIFICATION_ONLY ||
+                      param->type == COPY_VERIFICATION) {
+                    if (!constraints[param->constraint_idx](tuple_value,
+                                                            param->new_v)) {
                       return rc_t{RC_ABORT_INTERNAL};
                     }
                   }
-                  if ((*it)->type == COPY_ONLY ||
-                      (*it)->type == COPY_VERIFICATION) {
+                  if (param->type == COPY_ONLY ||
+                      param->type == COPY_VERIFICATION) {
                     arena->reset();
-                    varstr *new_value = reformats[(*it)->reformat_idx](
-                        key, tuple_value, arena, (*it)->new_v, f, o);
+                    varstr *new_value = reformats[param->reformat_idx](
+                        key, tuple_value, arena, param->new_v, f, o);
 
                     insert_total++;
                     if (!new_value) {
                       continue;
                     }
-                    if (t->DDLInsert((*it)->new_td, o, new_value, logrec->csn)
+                    if (t->DDLInsert(param->new_td, o, new_value, logrec->csn)
                             ._val != RC_TRUE) {
                       insert_fail++;
                     }
@@ -383,31 +382,29 @@ rc_t ddl_executor::changed_data_capture_impl(
                 dbtuple *tuple = (dbtuple *)(logrec->data);
                 varstr tuple_value(tuple->get_value_start(), tuple->size);
 
-                for (std::vector<struct ddl_executor_paras *>::const_iterator
-                         it = ddl_executor_paras_list.begin();
-                     it != ddl_executor_paras_list.end(); ++it) {
-                  if (!(*it)->handle_update ||
-                      (*it)->old_td->GetTupleFid() != f) {
+                for (auto &param : ddl_executor_paras_list) {
+                  if (!param->handle_update ||
+                      param->old_td->GetTupleFid() != f) {
                     continue;
                   }
-                  if ((*it)->type == VERIFICATION_ONLY ||
-                      (*it)->type == COPY_VERIFICATION) {
-                    if (!constraints[(*it)->constraint_idx](tuple_value,
-                                                            (*it)->new_v)) {
+                  if (param->type == VERIFICATION_ONLY ||
+                      param->type == COPY_VERIFICATION) {
+                    if (!constraints[param->constraint_idx](tuple_value,
+                                                            param->new_v)) {
                       return rc_t{RC_ABORT_INTERNAL};
                     }
                   }
-                  if ((*it)->type == COPY_ONLY ||
-                      (*it)->type == COPY_VERIFICATION) {
+                  if (param->type == COPY_ONLY ||
+                      param->type == COPY_VERIFICATION) {
                     arena->reset();
-                    varstr *new_value = reformats[(*it)->reformat_idx](
-                        key, tuple_value, arena, (*it)->new_v, f, o);
+                    varstr *new_value = reformats[param->reformat_idx](
+                        key, tuple_value, arena, param->new_v, f, o);
 
                     update_total++;
                     if (!new_value) {
                       continue;
                     }
-                    if (t->DDLUpdate((*it)->new_td, o, new_value, logrec->csn)
+                    if (t->DDLUpdate(param->new_td, o, new_value, logrec->csn)
                             ._val != RC_TRUE) {
                       update_fail++;
                     }
