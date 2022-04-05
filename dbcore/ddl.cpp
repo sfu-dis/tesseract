@@ -168,16 +168,26 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
           }
         }
 #elif OPTLAZYDDL
-        t->DDLInsert(param->new_td, oid, new_tuple_value, xc->end, lb);
+        t->DDLInsert(param->new_td, oid, new_tuple_value, xc->end);
 #else
-        t->DDLInsert(param->new_td, oid, new_tuple_value, !xc->end ? xc->begin : xc->end, lb);
+        t->DDLInsert(param->new_td, oid, new_tuple_value, !xc->end ? xc->begin : xc->end);
 #endif
 #elif BLOCKDDL
-        rc_t r = t->Update(param->new_td, oid, nullptr, new_tuple_value, wid, ddl_exe);
-        ASSERT(r._val == RC_TRUE);
+	rc_t r;
+	if (param->new_td == param->old_td) {
+	  r = t->Update(param->new_td, oid, nullptr, new_tuple_value, wid, ddl_exe);
+	} else {
+	  r = t->DDLInsert(param->new_td, oid, new_tuple_value, 0, true, wid, ddl_exe);
+	}
+	ASSERT(r._val == RC_TRUE);
 #elif SIDDL
-        rc_t r = t->Update(param->new_td, oid, nullptr, new_tuple_value, wid, ddl_exe);
-        if (r._val != RC_TRUE) {
+        rc_t r;
+        if (param->new_td == param->old_td) {
+          r = t->Update(param->new_td, oid, nullptr, new_tuple_value, wid, ddl_exe);
+        } else {
+          r = t->DDLInsert(param->new_td, oid, new_tuple_value, 0, true, wid, ddl_exe);
+        }
+	if (r._val != RC_TRUE) {
           DLOG(INFO) << "DDL failed";
           flags.ddl_failed = true;
           return rc_t{RC_ABORT_INTERNAL};

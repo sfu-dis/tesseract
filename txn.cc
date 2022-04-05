@@ -573,7 +573,7 @@ retry:
 
 PROMISE(rc_t)
 transaction::DDLUpdate(TableDescriptor *td, OID oid, varstr *value,
-                       uint64_t tuple_csn, dlog::log_block *block) {
+                       uint64_t tuple_csn, bool allow_write_set) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
@@ -617,19 +617,19 @@ retry:
 
   if (!overwrite) {
     ASSERT(new_tuple->size == value->size());
-    add_to_write_set(tuple_fid == schema_td->GetTupleFid(),
-                     tuple_array->get(oid), tuple_fid, oid, new_tuple->size,
-                     dlog::log_record::logrec_type::INSERT);
+    add_to_write_set(allow_write_set, tuple_array->get(oid), tuple_fid, oid,
+                     new_tuple->size, dlog::log_record::logrec_type::INSERT);
   } else {
     MM::deallocate(new_head);
   }
 
   RETURN rc_t{RC_TRUE};
 }
+#endif
 
 PROMISE(rc_t)
-transaction::DDLInsert(TableDescriptor *td, OID oid, varstr *value,
-                       uint64_t tuple_csn, dlog::log_block *block) {
+transaction::DDLInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
+                       bool allow_write_set, int wid, ddl::ddl_executor *ddl_exe) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
@@ -662,14 +662,12 @@ retry:
 
   if (!overwrite) {
     ASSERT(new_tuple->size == value->size());
-    add_to_write_set(tuple_fid == schema_td->GetTupleFid(),
-                     tuple_array->get(oid), tuple_fid, oid, new_tuple->size,
-                     dlog::log_record::logrec_type::INSERT);
+    add_to_write_set(allow_write_set, tuple_array->get(oid), tuple_fid, oid,
+                     new_tuple->size, dlog::log_record::logrec_type::INSERT, wid, ddl_exe);
   }
 
   RETURN rc_t{RC_TRUE};
 }
-#endif
 
 PROMISE(bool)
 transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,

@@ -263,16 +263,16 @@ class transaction {
                     fat_ptr **out_entry = nullptr);
 #endif
 
-  // DDL CDC insert
-  PROMISE(rc_t)
-  DDLInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
-            dlog::log_block *block = nullptr);
-
   // DDL CDC update
   PROMISE(rc_t)
   DDLUpdate(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
-            dlog::log_block *block = nullptr);
+            bool allow_write_set = false);
 #endif
+
+  // DDL CDC insert
+  PROMISE(rc_t)
+  DDLInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tuple_csn,
+            bool allow_write_set = false, int wid = -1, ddl::ddl_executor *ddl_exe = nullptr);
 
   // DML & DDL overlap check
   PROMISE(bool)

@@ -205,6 +205,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
 
   ermia::catalog::read_schema(txn, schema_index, customer_table_index, *customer_key, valptr, &oid);
 
+  struct ermia::schema_record public_customer_schema;
   struct ermia::schema_record customer_schema;
   schema_kv::value schema_value_temp;
   const schema_kv::value *old_schema_value = Decode(valptr, schema_value_temp);
@@ -215,6 +216,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
   ermia::ddl::reformats.push_back(split_customer_private);
 
   customer_schema.secondary_index_key_create_idx = ermia::ddl::reformats.size();
+  public_customer_schema.secondary_index_key_create_idx = ermia::ddl::reformats.size();
   ermia::ddl::reformats.push_back(create_secondary_index_key);
 
   ddl_exe->set_ddl_type(customer_schema.ddl_type);
@@ -225,6 +227,54 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
   customer_schema.v = schema_version;
   customer_schema.old_td = customer_schema.td;
   customer_schema.show_index = true;
+
+  // Now let us build a new table for public customer records
+  char public_customer_table_name[20];
+  snprintf(public_customer_table_name, 20, "public_customer_%lu", schema_version);
+  db->CreateTable(public_customer_table_name, false);
+
+  public_customer_schema.ddl_type = get_example_ddl_type(ddl_example);;
+  public_customer_schema.v = schema_version;
+  public_customer_schema.old_v = customer_schema.v;
+  public_customer_schema.state = ermia::ddl::schema_state_type::NOT_READY;
+  public_customer_schema.old_td = customer_schema.td;
+  public_customer_schema.show_index = true;
+  public_customer_schema.old_tds_total = 0;
+  public_customer_schema.reformats_total = 0;
+  public_customer_schema.secondary_index_key_create_idx = -1;
+  public_customer_schema.constraint_idx = -1;
+  public_customer_schema.csn = 0;
+#ifdef LAZYDDL
+  public_customer_schema.old_tds[customer_schema.old_v] = customer_schema.old_td;
+  public_customer_schema.old_tds_total = customer_schema.v;
+#endif
+  public_customer_schema.reformat_idx = ermia::ddl::reformats.size();
+  ermia::ddl::reformats.push_back(split_customer_public);
+  public_customer_schema.td = ermia::Catalog::GetTable(public_customer_table_name);
+  public_customer_schema.old_index = customer_schema.index;
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+  db->CreateMasstreePrimaryIndex(public_customer_table_name, std::string(public_customer_table_name));
+#else
+  auto *public_customer_table_index = new ermia::ConcurrentMasstreeIndex(
+      "customer", customer_schema.index->IsPrimary(),
+      customer_schema.index->GetIndexFid());
+  public_customer_schema.td->SetPrimaryIndex(public_customer_table_index, public_customer_table_name);
+#endif
+  public_customer_schema.index = public_customer_schema.td->GetPrimaryIndex();
+
+  const schema_kv::key k1(public_customer_schema.td->GetTupleFid());
+  ermia::varstr *public_customer_key =
+      (ermia::varstr *)ermia::MM::allocate(sizeof(ermia::varstr) + sizeof(k1));
+  new (public_customer_key)
+      ermia::varstr((char *)public_customer_key + sizeof(ermia::varstr), sizeof(k1));
+  Encode(*public_customer_key, k1);
+
+  schema_kv::value new_public_schema_value;
+  public_customer_schema.record_to_value(new_public_schema_value);
+
+  auto rc = ermia::catalog::write_schema(txn, schema_index, *public_customer_key,
+      Encode(str(Size(new_public_schema_value)), new_public_schema_value), &oid, ddl_exe, true);
+  TryCatch(rc);
 
 #ifdef COPYDDL
   customer_schema.state = ermia::ddl::schema_state_type::NOT_READY;
@@ -256,6 +306,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
 
     ddl_exe->set_old_td(customer_schema.old_td);
     ddl_exe->add_new_td_map(customer_schema.td);
+    ddl_exe->add_new_td_map(public_customer_schema.td);
     ddl_exe->add_old_td_map(customer_schema.old_td);
   } else {
     customer_schema.reformats_total = customer_schema.v;
@@ -266,7 +317,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
   schema_kv::value new_schema_value;
   customer_schema.record_to_value(new_schema_value);
 
-  auto rc = ermia::catalog::write_schema(txn, schema_index, *customer_key,
+  rc = ermia::catalog::write_schema(txn, schema_index, *customer_key,
       Encode(str(Size(new_schema_value)), new_schema_value), &oid, ddl_exe);
   TryCatch(rc);
 
@@ -275,6 +326,12 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
       customer_schema.reformat_idx, customer_schema.constraint_idx,
       customer_schema.td, customer_schema.old_td, customer_schema.index,
       customer_schema.state, customer_schema.secondary_index_key_create_idx);
+  ddl_exe->add_ddl_executor_paras(
+      public_customer_schema.v, public_customer_schema.old_v,
+      public_customer_schema.ddl_type, public_customer_schema.reformat_idx,
+      public_customer_schema.constraint_idx, public_customer_schema.td,
+      public_customer_schema.old_td, public_customer_schema.index,
+      public_customer_schema.state);
 
   if (customer_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
 #if !defined(LAZYDDL)
@@ -287,18 +344,26 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
   schema_kv::value new_schema_value;
   customer_schema.record_to_value(new_schema_value);
 
-  TryCatch(ermia::catalog::write_schema(txn, schema_index, *customer_key,
-      Encode(str(Size(new_schema_value)), new_schema_value), &oid, ddl_exe));
+  rc = ermia::catalog::write_schema(txn, schema_index, *customer_key,
+      Encode(str(Size(new_schema_value)), new_schema_value), &oid, ddl_exe);
+  TryCatch(rc);
 
   ddl_exe->add_ddl_executor_paras(
       customer_schema.v, customer_schema.old_v, customer_schema.ddl_type,
       customer_schema.reformat_idx, customer_schema.constraint_idx,
       customer_schema.td, customer_schema.td, customer_schema.index,
       ermia::ddl::schema_state_type::READY);
+  ddl_exe->add_ddl_executor_paras(
+      public_customer_schema.v, public_customer_schema.old_v,
+      public_customer_schema.ddl_type, public_customer_schema.reformat_idx,
+      public_customer_schema.constraint_idx, public_customer_schema.td,
+      public_customer_schema.old_td, public_customer_schema.index,
+      ermia::ddl::schema_state_type::READY);
 
   ddl_exe->set_old_td(customer_schema.td);
   ddl_exe->add_old_td_map(customer_schema.td);
   ddl_exe->add_new_td_map(customer_schema.td);
+  ddl_exe->add_new_td_map(public_customer_schema.td);
 
   TryCatch(ddl_exe->scan(arena));
 #endif
