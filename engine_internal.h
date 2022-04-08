@@ -83,8 +83,8 @@ class OrderedIndex {
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
   virtual PROMISE(rc_t)
-      LazyBuildSecondaryIndex(transaction *t, const varstr &key, OID oid,
-                              schema_record *schema = nullptr) = 0;
+      LazyBuildSecondaryIndex(transaction *t, OID oid, const varstr &key,
+                              varstr &value, schema_record *schema = nullptr) = 0;
 #endif
 
   virtual size_t Size() = 0;

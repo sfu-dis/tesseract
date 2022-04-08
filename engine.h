@@ -92,6 +92,7 @@ class Table {
   TableDescriptor *td;
 
  public:
+  Table(TableDescriptor *td) : td(td) {}
   rc_t Insert(transaction &t, varstr *value, OID *out_oid);
   PROMISE(rc_t) Update(transaction &t, OID oid, varstr &value);
   rc_t Read(transaction &t, OID oid, varstr *out_value);
@@ -255,8 +256,8 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
   PROMISE(rc_t)
-  LazyBuildSecondaryIndex(transaction *t, const varstr &key,
-                          OID oid, schema_record *schema = nullptr) override;
+  LazyBuildSecondaryIndex(transaction *t, OID oid, const varstr &key,
+                          varstr &value, schema_record *schema = nullptr) override;
 #endif
 
   inline size_t Size() override { return masstree_.size(); }

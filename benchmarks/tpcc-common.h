@@ -411,6 +411,7 @@ class tpcc_schematable_loader : public ermia::catalog::schematable_loader {
     order_line_schema.td = ermia::Catalog::GetTable("order_line");
     order_line_schema.index = order_line_schema.td->GetPrimaryIndex();
     order_line_schema.show_index = ddl_examples[0] == 3 ? false : true;
+    order_line_schema.write_key = (ddl_examples[0] == 0 || ddl_examples[0] == 3 || ddl_examples[0] == 4) ? true : false;
     order_line_schema.reformats_total = 0;
     order_line_schema.old_tds_total = 0;
     schema_kv::value order_line_schema_value;
@@ -422,6 +423,7 @@ class tpcc_schematable_loader : public ermia::catalog::schematable_loader {
     oorder_schema.td = ermia::Catalog::GetTable("oorder");
     oorder_schema.index = oorder_schema.td->GetPrimaryIndex();
     oorder_schema.show_index = true;
+    oorder_schema.write_key = (ddl_examples[0] == 2) ? true : false;
     oorder_schema.reformats_total = 0;
     oorder_schema.old_tds_total = 0;
     schema_kv::value oorder_schema_value;
@@ -435,6 +437,7 @@ class tpcc_schematable_loader : public ermia::catalog::schematable_loader {
     customer_schema.td = ermia::Catalog::GetTable("customer");
     customer_schema.index = customer_schema.td->GetPrimaryIndex();
     customer_schema.show_index = true;
+    customer_schema.write_key = (ddl_examples[0] == 1) ? true : false;
     customer_schema.reformats_total = 0;
     customer_schema.old_tds_total = 0;
     schema_kv::value customer_schema_value;
@@ -893,6 +896,9 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 
     uint64_t total_sz = 0;
 
+    ermia::schema_record schema;
+    schema.write_key = true;
+    schema.td = tbl_customer(1)->GetTableDescriptor();
     for (uint w = w_start; w <= w_end; w++) {
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
         for (uint batch = 0; batch < nbatches;) {
@@ -948,7 +954,7 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
             ermia::OID c_oid =
                 0;  // Get the OID and put in customer_name_idx later
             TryVerifyStrict(tbl_customer(w)->InsertRecord(
-                txn, Encode(str(Size(k)), k), Encode(str(sz), v), &c_oid));
+                txn, Encode(str(Size(k)), k), Encode(str(sz), v), &c_oid, &schema));
             TryVerifyStrict(db->Commit(txn));
 
             // customer name index
@@ -1042,6 +1048,11 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
     const uint w_end = (warehouse_id == -1) ? NumWarehouses()
                                             : static_cast<uint>(warehouse_id);
 
+    ermia::schema_record schema, schema1;
+    schema.write_key = true;
+    schema1.write_key = true;
+    schema.td = tbl_oorder(1)->GetTableDescriptor();
+    schema1.td = tbl_order_line(1)->GetTableDescriptor();
     for (uint w = w_start; w <= w_end; w++) {
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
         std::set<uint> c_ids_s;
@@ -1078,7 +1089,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
               0;  // Get the OID and put it in oorder_c_id_idx later
           TryVerifyStrict(
               tbl_oorder(w)->InsertRecord(txn, Encode(str(Size(k_oo)), k_oo),
-                                          Encode(str(sz), v_oo), &v_oo_oid));
+                                          Encode(str(sz), v_oo), &v_oo_oid, &schema));
           TryVerifyStrict(db->Commit(txn));
           arena->reset();
           txn = db->NewTransaction(0, *arena, txn_buf());
@@ -1134,7 +1145,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
             arena->reset();
             txn = db->NewTransaction(0, *arena, txn_buf());
             TryVerifyStrict(tbl_order_line(w)->InsertRecord(
-                txn, Encode(str(Size(k_ol)), k_ol), Encode(str(sz), v_ol)));
+                txn, Encode(str(Size(k_ol)), k_ol), Encode(str(sz), v_ol), nullptr, &schema1));
             TryVerifyStrict(db->Commit(txn));
           }
           c++;
@@ -1327,7 +1338,8 @@ class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
 
 class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
  public:
-  order_line_scan_callback(uint64_t v) : n(0), schema_v(v) {}
+  order_line_scan_callback(uint64_t v, ermia::transaction *txn, ermia::Table *table)
+    : n(0), schema_v(v), txn(txn), table(table) {}
   virtual bool Invoke(const char *keyp, size_t keylen,
                       const ermia::varstr &value) {
     MARK_REFERENCED(keyp);
@@ -1351,7 +1363,12 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
       } else if (ermia::config::ddl_example == 4) {
         order_line_stock::value v_ol_temp;
         const order_line_stock::value *v_ol = Decode(value, v_ol_temp);
-        s_i_ids[v_ol->ol_i_id] = 1;
+	ermia::varstr valptr;
+	table->Read(*txn, v_ol->s_oid, &valptr);
+	const uint8_t *ptr = (const uint8_t *)valptr.data();
+        int16_t i16tmp;
+        ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
+	s_i_ids[v_ol->ol_i_id] = 1;
       }
     }
     n++;
@@ -1359,6 +1376,8 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
   }
   size_t n;
   uint64_t schema_v;
+  ermia::transaction *txn;
+  ermia::Table *table;
   std::unordered_map<uint, bool> s_i_ids;
 };
 

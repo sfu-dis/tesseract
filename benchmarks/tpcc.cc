@@ -1142,7 +1142,8 @@ rc_t tpcc_worker::txn_stock_level() {
                               : v_d->d_next_o_id;
 
   // manual joins are fun!
-  order_line_scan_callback c(order_line_schema.v);
+  ermia::Table table(tbl_stock(warehouse_id)->GetTableDescriptor());
+  order_line_scan_callback c(order_line_schema.v, txn, &table);
   const int32_t lower = cur_next_o_id >= 20 ? (cur_next_o_id - 20) : 0;
   const order_line::key k_ol_0(warehouse_id, districtID, lower, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, cur_next_o_id, 0);

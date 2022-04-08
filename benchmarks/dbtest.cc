@@ -183,7 +183,7 @@ int main(int argc, char **argv) {
   ermia::config::enable_parallel_scan_cdc = FLAGS_enable_parallel_scan_cdc;
 
   if (ermia::config::physical_workers_only) {
-#if defined(COPYDDL) && !defined(LAZYDDL) && !defined(DCOPYDDL)
+#ifdef DDL
     ermia::config::threads = ermia::config::worker_threads;
     if (ermia::config::cdc_physical_workers_only) {
       ermia::config::threads += ermia::config::cdc_threads;

@@ -101,7 +101,7 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, ermia::ddl::ddl_executor *
     TryCatch(rc);
 #endif
   }
-#elif BLOCKDDL
+#elif defined(BLOCKDDL)
   schema_kv::value new_schema_value;
   schema.record_to_value(new_schema_value);
 
@@ -340,7 +340,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
     TryCatch(rc);
 #endif
   }
-#elif BLOCKDDL
+#elif defined(BLOCKDDL)
   schema_kv::value new_schema_value;
   customer_schema.record_to_value(new_schema_value);
 
@@ -557,7 +557,9 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
     ddl_exe->set_old_td(oorder_schema.old_td);
     ddl_exe->add_new_td_map(oorder_schema.td);
     ddl_exe->add_old_td_map(oorder_schema.old_td);
+#if !defined(LAZYDDL)    
     ddl_exe->add_old_td_map(order_line_schema.td);
+#endif  
   } else {
     oorder_schema.reformats_total = oorder_schema.v;
     oorder_schema.reformats[oorder_schema.old_v] = scan_reformat_idx;
@@ -576,11 +578,13 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
       oorder_schema.td, oorder_schema.old_td, oorder_schema.index,
       oorder_schema.state, oorder_schema.secondary_index_key_create_idx, true,
       true, scan_reformat_idx);
+#if !defined(LAZYDDL)  
   ddl_exe->add_ddl_executor_paras(
       oorder_schema.v, oorder_schema.old_v, oorder_schema.ddl_type,
       order_line_schema.reformat_idx, oorder_schema.constraint_idx,
       oorder_schema.td, order_line_schema.td, oorder_schema.index,
       oorder_schema.state, -1, true, false, order_line_schema.reformat_idx);
+#endif
 
   if (oorder_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
 #if !defined(LAZYDDL)
@@ -589,7 +593,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
     TryCatch(rc);
 #endif
   }
-#elif BLOCKDDL
+#elif defined(BLOCKDDL)
   oorder_schema.reformat_idx = scan_reformat_idx;
 
   schema_kv::value new_schema_value;
@@ -784,7 +788,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *
     TryCatch(rc);
 #endif
   }
-#elif BLOCKDDL
+#elif defined(BLOCKDDL)
   schema_kv::value new_schema_value;
   schema.record_to_value(new_schema_value);
 

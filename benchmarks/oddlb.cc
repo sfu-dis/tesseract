@@ -176,7 +176,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 
 #ifdef BLOCKDDL
     TryCatch(ddl_exe->scan(arena));
-#elif SIDDL
+#elif defined(SIDDL)
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(arena);
     if (rc._val != RC_TRUE && running) {
