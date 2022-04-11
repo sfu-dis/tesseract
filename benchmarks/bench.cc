@@ -358,13 +358,50 @@ void bench_runner::start_measurement() {
     printf("Sec,Commits,Aborts\n");
   }
 
+  auto latency_stat = [=](char *) {
+    uint32_t sleep_time = ermia::config::latency_stat_interval_ms * 1000;
+    uint64_t slept = 0;
+    uint64_t last_commits = 0, last_latency_us = 0;
+    while (slept < ermia::config::benchmark_seconds * 1000000) {
+      usleep(sleep_time);
+      uint64_t sec_commits = 0, sec_latency_us = 0;
+      for (size_t i = 0; i < ermia::config::worker_threads; i++) {
+#ifdef COPYDDL
+        if (i == ddl_worker_id) {
+          continue;
+        }
+#endif
+        if (ermia::config::pcommit) {
+          sec_latency_us += workers[i]->get_log()->get_latency();
+        } else {
+          sec_latency_us += workers[i]->get_latency_numer_us();
+        }
+
+        sec_commits += workers[i]->get_ntxn_commits();
+      }
+      sec_commits -= last_commits;
+      last_commits += sec_commits;
+      sec_latency_us -= last_latency_us;
+      last_latency_us += sec_latency_us;
+      double avg_latency_us = double(sec_latency_us) / double(sec_commits);
+      double avg_latency_ms = avg_latency_us / 1000.0;
+      printf("avg_latency: %.2f ms\n", avg_latency_ms);
+      slept += sleep_time;
+    }
+  };
+
+  // Use a hyperthread to do latency statistics
+  ermia::thread::Thread *latency_stat_thread =
+      ermia::thread::GetThread(false);
+
   util::timer t, t_nosync;
   barrier_b.count_down();  // bombs away!
+
+  latency_stat_thread->StartTask(latency_stat);
 
   double total_util = 0;
   double sec_util = 0;
   uint32_t sleep_time = ermia::config::print_interval_ms * 1000;
-  uint32_t count = 0;
   auto gather_stats = [&]() {
     if (ddl_done < ermia::config::ddl_total &&
         slept == ddl_start_times[ddl_done] * 1000000) {
@@ -401,7 +438,6 @@ void bench_runner::start_measurement() {
              sec_commits, sec_aborts);
     }
     slept += sleep_time;
-    count++;
   };
 
   while (slept < ermia::config::benchmark_seconds * 1000000) {
@@ -413,6 +449,8 @@ void bench_runner::start_measurement() {
   for (size_t i = 0; i < ermia::config::worker_threads; i++) {
     workers[i]->Join();
   }
+
+  latency_stat_thread->Join();
 
   const unsigned long elapsed_nosync = t_nosync.lap();
 

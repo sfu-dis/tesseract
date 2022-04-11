@@ -20,7 +20,10 @@ mcs_lock *lazy_ddl_locks =
 std::vector<bitmap *> bitmaps;
 
 bool migrate_record(FID fid, OID oid) {
-  /*for (auto &bitmap : bitmaps) {
+  if (config::enable_lazy_on_conflict_do_nothing) {
+    return true;
+  }
+  for (auto &bitmap : bitmaps) {
     if (bitmap->fid == fid) {
       if (oid >= bitmap->size && (oid < bitmap->size && bitmap->data[oid])) {
         return false;
@@ -33,8 +36,6 @@ bool migrate_record(FID fid, OID oid) {
     }
   }
   return false;
-  */
-  return true;
 }
 #endif
 
@@ -688,7 +689,6 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
     log->set_doing_ddl(false);
     return rc_t{RC_TRUE};
   }
-  sleep(2);
   rc_t rc = scan(&(t->string_allocator()));
   if (rc.IsAbort()) {
     log->set_dirty(false);

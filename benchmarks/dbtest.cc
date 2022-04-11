@@ -135,6 +135,9 @@ DEFINE_bool(enable_late_scan_join, false,
 DEFINE_bool(enable_parallel_scan_cdc, true,
             "Whether enable doing scan and CDC together");
 DEFINE_uint64(client_load_per_core, 4000, "Client load per core per 100ms");
+DEFINE_uint64(latency_stat_interval_ms, 1000, "Latency statistics interval (ms)");
+DEFINE_bool(enable_lazy_on_conflict_do_nothing, false,
+            "Whether enable ON CONFLICT DO NOTHING for lazy DDL");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -183,6 +186,8 @@ int main(int argc, char **argv) {
   ermia::config::enable_late_scan_join = FLAGS_enable_late_scan_join;
   ermia::config::enable_parallel_scan_cdc = FLAGS_enable_parallel_scan_cdc;
   ermia::config::client_load_per_core = FLAGS_client_load_per_core;
+  ermia::config::latency_stat_interval_ms = FLAGS_latency_stat_interval_ms;
+  ermia::config::enable_lazy_on_conflict_do_nothing = FLAGS_enable_lazy_on_conflict_do_nothing;
 
   if (ermia::config::physical_workers_only) {
 #ifdef DDL
@@ -386,6 +391,10 @@ int main(int argc, char **argv) {
             << ermia::config::enable_parallel_scan_cdc << std::endl;
   std::cerr << "  client_load_per_core                  : "
             << ermia::config::client_load_per_core << std::endl;
+  std::cerr << "  latency_stat_interval_ms              : "
+            << ermia::config::latency_stat_interval_ms << std::endl;
+  std::cerr << "  enable_lazy_on_conflict_do_nothing    : "
+            << ermia::config::enable_lazy_on_conflict_do_nothing << std::endl;
 #endif
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");
