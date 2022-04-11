@@ -22,9 +22,21 @@ extern volatile bool ddl_start;
 // For verification related DDL, if true, make some violations for 2nd round of CDC
 extern volatile bool cdc_test;
 
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+struct bitmap {
+  FID fid;
+  OID size;
+  uint64_t *data CACHE_ALIGNED;
+  bitmap(FID fid, OID size, uint64_t *data) : fid(fid), size(size), data(data) {}
+};
+
+bool migrate_record(FID fid, OID oid);
+#endif
+
 // Schema reformation function
 typedef std::function<varstr *(varstr *key, varstr &value, str_arena *arena,
-                               uint64_t schema_version, FID fid, OID oid)>
+                               uint64_t schema_version, FID fid, OID oid,
+                               transaction *t)>
     Reformat;
 
 // Schema constraint function
@@ -270,6 +282,10 @@ class ddl_executor {
 
 extern std::vector<Reformat> reformats;
 extern std::vector<Constraint> constraints;
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+extern mcs_lock *lazy_ddl_locks CACHE_ALIGNED;
+extern std::vector<bitmap *> bitmaps;
+#endif
 
 }  // namespace ddl
 

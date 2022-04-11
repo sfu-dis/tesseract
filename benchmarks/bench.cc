@@ -67,6 +67,7 @@ uint32_t bench_worker::fetch_workload() {
 bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx,
                                    util::timer t, bool is_ddl) {
   std::vector<tx_stat> &counts = is_ddl ? ddl_txn_counts : txn_counts;
+  txn_counts_per_second[workload_idx]++;
   if (!ret.IsAbort()) {
     ++ntxn_commits;
     std::get<0>(counts[workload_idx])++;
@@ -131,6 +132,7 @@ void bench_worker::MyWork(char *) {
     ddl_workload = get_ddl_workload();
     txn_counts.resize(workload.size());
     ddl_txn_counts.resize(ddl_workload.size());
+    txn_counts_per_second.resize(workload.size());
     barrier_a->count_down();
     barrier_b->wait_for();
 
@@ -146,6 +148,10 @@ void bench_worker::MyWork(char *) {
         ermia::ddl::ddl_start = false;
       } else {
         uint32_t workload_idx = fetch_workload();
+        if (txn_counts_per_second[workload_idx] >
+            ermia::config::client_load_per_core * workload[workload_idx].frequency) {
+          continue;
+        }
         do_workload_function(workload_idx);
       }
     }
@@ -357,6 +363,7 @@ void bench_runner::start_measurement() {
   double total_util = 0;
   double sec_util = 0;
   uint32_t sleep_time = ermia::config::print_interval_ms * 1000;
+  uint32_t count = 0;
   auto gather_stats = [&]() {
     if (ddl_done < ermia::config::ddl_total &&
         slept == ddl_start_times[ddl_done] * 1000000) {
@@ -365,6 +372,15 @@ void bench_runner::start_measurement() {
     }
 
     usleep(sleep_time);
+
+    if (slept == count * 1000000) {
+      for (size_t i = 0; i < ermia::config::worker_threads; i++) {
+        std::vector<uint64_t> *txn_counts_per_second = workers[i]->get_txn_counts_per_second();
+        for (auto &t : *txn_counts_per_second) {
+          t = 0;
+        }
+      }
+    }
 
     uint64_t sec_commits = 0, sec_aborts = 0;
     for (size_t i = 0; i < ermia::config::worker_threads; i++) {
@@ -386,6 +402,7 @@ void bench_runner::start_measurement() {
              sec_commits, sec_aborts);
     }
     slept += sleep_time;
+    count++;
   };
 
   while (slept < ermia::config::benchmark_seconds * 1000000) {

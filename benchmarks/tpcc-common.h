@@ -361,7 +361,7 @@ class tpcc_schematable_loader : public ermia::catalog::schematable_loader {
 
     auto add_column = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
-                          ermia::FID fid, ermia::OID oid) {
+                          ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
       order_line::value v_ol_temp;
       const order_line::value *v_ol = Decode(value, v_ol_temp);
 
@@ -1363,12 +1363,13 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
       } else if (ermia::config::ddl_example == 4) {
         order_line_stock::value v_ol_temp;
         const order_line_stock::value *v_ol = Decode(value, v_ol_temp);
-	ermia::varstr valptr;
-	table->Read(*txn, v_ol->s_oid, &valptr);
-	const uint8_t *ptr = (const uint8_t *)valptr.data();
-        int16_t i16tmp;
-        ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
-	s_i_ids[v_ol->ol_i_id] = 1;
+        ermia::varstr valptr;
+        if (table->Read(*txn, v_ol->s_oid, &valptr)._val == RC_TRUE) {
+          const uint8_t *ptr = (const uint8_t *)valptr.data();
+          int16_t i16tmp;
+          ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
+        }
+        s_i_ids[v_ol->ol_i_id] = 1;
       }
     }
     n++;

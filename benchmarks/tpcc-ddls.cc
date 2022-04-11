@@ -57,7 +57,7 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, ermia::ddl::ddl_executor *
 
   if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
     char table_name[20];
-    snprintf(table_name, 20, "order_line_%lu", schema_version);
+    snprintf(table_name, 20, "order_line_ddl_%lu", schema_version);
 
     db->CreateTable(table_name, false);
 
@@ -71,7 +71,7 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, ermia::ddl::ddl_executor *
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
     db->CreateMasstreePrimaryIndex(table_name, std::string(table_name));
 #else
-    schema.td->SetPrimaryIndex(schema.old_index, table_name);
+    schema.td->SetPrimaryIndex(schema.old_index);
 #endif
     schema.index = schema.td->GetPrimaryIndex();
 
@@ -99,6 +99,12 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, ermia::ddl::ddl_executor *
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(arena);
     TryCatch(rc);
+#elif defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    auto *alloc = ermia::oidmgr->get_allocator(schema.td->GetTupleFid());
+    uint32_t himark = alloc->head.hiwater_mark;
+    himark += himark / 100;
+    uint64_t *bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
+    ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(schema.td->GetTupleFid(), himark, bitmap_data));
 #endif
   }
 #elif defined(BLOCKDDL)
@@ -127,7 +133,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
                               uint32_t ddl_example) {
   auto split_customer_private =
       [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
-          uint64_t schema_version, ermia::FID fid, ermia::OID oid) {
+          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
         customer::value v_c_temp;
         const customer::value *v_c = Decode(value, v_c_temp);
 
@@ -152,7 +158,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
 
   auto create_secondary_index_key =
       [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
-          uint64_t schema_version, ermia::FID fid, ermia::OID oid) {
+          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
         const char *keyp = (const char *)(key->p);
         customer::key k_c_temp;
         const customer::key *k_c = Decode(keyp, k_c_temp);
@@ -173,7 +179,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
 
   auto split_customer_public =
       [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
-          uint64_t schema_version, ermia::FID fid, ermia::OID oid) {
+          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
         customer::value v_c_temp;
         const customer::value *v_c = Decode(value, v_c_temp);
 
@@ -229,7 +235,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
   customer_schema.show_index = true;
 
   // Now let us build a new table for public customer records
-  char public_customer_table_name[20];
+  /*char public_customer_table_name[20];
   snprintf(public_customer_table_name, 20, "public_customer_%lu", schema_version);
   db->CreateTable(public_customer_table_name, false);
 
@@ -258,7 +264,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
   auto *public_customer_table_index = new ermia::ConcurrentMasstreeIndex(
       "customer", customer_schema.index->IsPrimary(),
       customer_schema.index->GetIndexFid());
-  public_customer_schema.td->SetPrimaryIndex(public_customer_table_index, public_customer_table_name);
+  public_customer_schema.td->SetPrimaryIndex(public_customer_table_index);
 #endif
   public_customer_schema.index = public_customer_schema.td->GetPrimaryIndex();
 
@@ -274,14 +280,14 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
 
   auto rc = ermia::catalog::write_schema(txn, schema_index, *public_customer_key,
       Encode(str(Size(new_public_schema_value)), new_public_schema_value), &oid, ddl_exe, true);
-  TryCatch(rc);
+  TryCatch(rc);*/
 
 #ifdef COPYDDL
   customer_schema.state = ermia::ddl::schema_state_type::NOT_READY;
 
   if (customer_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
     char table_name[20];
-    snprintf(table_name, 20, "customer_%lu", schema_version);
+    snprintf(table_name, 20, "customer_ddl_%lu", schema_version);
 
     db->CreateTable(table_name, false);
 
@@ -293,10 +299,13 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
 #endif
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    char sec_index_name[24];
+    snprintf(sec_index_name, 24, "customer_name_idx_ddl_%lu", schema_version);
+
     db->CreateMasstreePrimaryIndex(table_name, std::string(table_name));
-    db->CreateMasstreeSecondaryIndex(table_name, std::string(table_name));
+    db->CreateMasstreeSecondaryIndex(table_name, std::string(sec_index_name));
 #else
-    customer_schema.td->SetPrimaryIndex(customer_schema.old_index, table_name);
+    customer_schema.td->SetPrimaryIndex(customer_schema.old_index);
     customer_schema.td->AddSecondaryIndex(
         customer_schema.old_td->GetSecIndexes().at(0));
     ALWAYS_ASSERT(tbl_customer_name_idx(1) ==
@@ -306,7 +315,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
 
     ddl_exe->set_old_td(customer_schema.old_td);
     ddl_exe->add_new_td_map(customer_schema.td);
-    ddl_exe->add_new_td_map(public_customer_schema.td);
+    //ddl_exe->add_new_td_map(public_customer_schema.td);
     ddl_exe->add_old_td_map(customer_schema.old_td);
   } else {
     customer_schema.reformats_total = customer_schema.v;
@@ -317,7 +326,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
   schema_kv::value new_schema_value;
   customer_schema.record_to_value(new_schema_value);
 
-  rc = ermia::catalog::write_schema(txn, schema_index, *customer_key,
+  auto rc = ermia::catalog::write_schema(txn, schema_index, *customer_key,
       Encode(str(Size(new_schema_value)), new_schema_value), &oid, ddl_exe);
   TryCatch(rc);
 
@@ -326,25 +335,38 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
       customer_schema.reformat_idx, customer_schema.constraint_idx,
       customer_schema.td, customer_schema.old_td, customer_schema.index,
       customer_schema.state, customer_schema.secondary_index_key_create_idx);
-  ddl_exe->add_ddl_executor_paras(
+  /*ddl_exe->add_ddl_executor_paras(
       public_customer_schema.v, public_customer_schema.old_v,
       public_customer_schema.ddl_type, public_customer_schema.reformat_idx,
       public_customer_schema.constraint_idx, public_customer_schema.td,
       public_customer_schema.old_td, public_customer_schema.index,
       public_customer_schema.state);
-
+*/
   if (customer_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
 #if !defined(LAZYDDL)
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(arena);
     TryCatch(rc);
+#elif defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    auto *alloc = ermia::oidmgr->get_allocator(customer_schema.td->GetTupleFid());
+    uint32_t himark = alloc->head.hiwater_mark;
+    himark += himark / 100;
+    uint64_t *bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
+    ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(customer_schema.td->GetTupleFid(), himark, bitmap_data));
+
+    /*alloc = ermia::oidmgr->get_allocator(public_customer_schema.td->GetTupleFid());
+    himark = alloc->head.hiwater_mark;
+    himark += himark / 100;
+    bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
+    ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(public_customer_schema.td->GetTupleFid(), himark, bitmap_data));
+*/
 #endif
   }
 #elif defined(BLOCKDDL)
   schema_kv::value new_schema_value;
   customer_schema.record_to_value(new_schema_value);
 
-  rc = ermia::catalog::write_schema(txn, schema_index, *customer_key,
+  auto rc = ermia::catalog::write_schema(txn, schema_index, *customer_key,
       Encode(str(Size(new_schema_value)), new_schema_value), &oid, ddl_exe);
   TryCatch(rc);
 
@@ -353,17 +375,17 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
       customer_schema.reformat_idx, customer_schema.constraint_idx,
       customer_schema.td, customer_schema.td, customer_schema.index,
       ermia::ddl::schema_state_type::READY);
-  ddl_exe->add_ddl_executor_paras(
+  /*ddl_exe->add_ddl_executor_paras(
       public_customer_schema.v, public_customer_schema.old_v,
       public_customer_schema.ddl_type, public_customer_schema.reformat_idx,
       public_customer_schema.constraint_idx, public_customer_schema.td,
       public_customer_schema.old_td, public_customer_schema.index,
       ermia::ddl::schema_state_type::READY);
-
+*/
   ddl_exe->set_old_td(customer_schema.td);
   ddl_exe->add_old_td_map(customer_schema.td);
   ddl_exe->add_new_td_map(customer_schema.td);
-  ddl_exe->add_new_td_map(public_customer_schema.td);
+  //ddl_exe->add_new_td_map(public_customer_schema.td);
 
   TryCatch(ddl_exe->scan(arena));
 #endif
@@ -375,7 +397,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
                                  uint32_t ddl_example) {
   auto precompute_aggregate_1 =
       [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
-          uint64_t schema_version, ermia::FID fid, ermia::OID oid) {
+          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
         const char *keyp = (const char *)(key->p);
         oorder::key k_oo_temp;
         const oorder::key *k_oo = Decode(keyp, k_oo_temp);
@@ -391,7 +413,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
         ermia::varstr *k_ol_0_str = arena->next(Size(k_ol_0));
         ermia::varstr *k_ol_1_str = arena->next(Size(k_ol_1));
 
-        tbl_order_line(1)->Scan(txn, Encode(*k_ol_0_str, k_ol_0),
+        tbl_order_line(1)->Scan(t, Encode(*k_ol_0_str, k_ol_0),
                                 &Encode(*k_ol_1_str, k_ol_1), c_ol);
 
         oorder_precompute_aggregate::value v_oo_pa;
@@ -411,7 +433,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
 
   auto create_secondary_index_key =
       [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
-          uint64_t schema_version, ermia::FID fid, ermia::OID oid) {
+          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
         const char *keyp = (const char *)(key->p);
         oorder::key k_oo_temp;
         const oorder::key *k_oo = Decode(keyp, k_oo_temp);
@@ -456,7 +478,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
   auto precompute_aggregate_2 = [=](ermia::varstr *key, ermia::varstr &value,
                                     ermia::str_arena *arena,
                                     uint64_t schema_version, ermia::FID fid,
-                                    ermia::OID oid) {
+                                    ermia::OID oid, ermia::transaction *t) {
     thread_local std::unordered_map<key_tuple<int, int, int>, float,
                                     key_tuple<int, int, int>::hash>
         key_sum_map;
@@ -533,7 +555,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
 
   if (oorder_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
     char table_name[20];
-    snprintf(table_name, 20, "oorder_%lu", schema_version);
+    snprintf(table_name, 20, "oorder_ddl_%lu", schema_version);
 
     db->CreateTable(table_name, false);
 
@@ -545,10 +567,13 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
 #endif
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    char sec_index_name[24];
+    snprintf(sec_index_name, 24, "oorder_c_id_idx_ddl_%lu", schema_version);
+
     db->CreateMasstreePrimaryIndex(table_name, std::string(table_name));
-    db->CreateMasstreeSecondaryIndex(table_name, std::string(table_name));
+    db->CreateMasstreeSecondaryIndex(table_name, std::string(sec_index_name));
 #else
-    oorder_schema.td->SetPrimaryIndex(oorder_schema.old_index, table_name);
+    oorder_schema.td->SetPrimaryIndex(oorder_schema.old_index);
     oorder_schema.td->AddSecondaryIndex(
         oorder_schema.old_td->GetSecIndexes().at(0));
 #endif
@@ -591,6 +616,12 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(arena);
     TryCatch(rc);
+#elif defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    auto *alloc = ermia::oidmgr->get_allocator(oorder_schema.td->GetTupleFid());
+    uint32_t himark = alloc->head.hiwater_mark;
+    himark += himark / 100;
+    uint64_t *bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
+    ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(oorder_schema.td->GetTupleFid(), himark, bitmap_data));
 #endif
   }
 #elif defined(BLOCKDDL)
@@ -646,7 +677,7 @@ rc_t tpcc_worker::create_index(ermia::transaction *txn, ermia::ddl::ddl_executor
 
   auto add_index = [=](ermia::varstr *key, ermia::varstr &value,
                        ermia::str_arena *arena, uint64_t schema_version,
-                       ermia::FID fid, ermia::OID oid) {
+                       ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
     if (!key) return nullptr;
     new_order_line_table_index->InsertOID(txn, *key, oid);
     return nullptr;
@@ -686,7 +717,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *
                              uint32_t ddl_example) {
   auto order_line_stock_join =
       [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
-          uint64_t schema_version, ermia::FID fid, ermia::OID oid) {
+          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
         const char *keyp = (const char *)(key->p);
         order_line::key k_ol_temp;
         const order_line::key *k_ol = Decode(keyp, k_ol_temp);
@@ -699,7 +730,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *
         const stock::key k_s(k_ol->ol_w_id, v_ol->ol_i_id);
         const size_t stock_sz = ::Size(k_s);
         ermia::varstr *stock_key = arena->next(stock_sz);
-        AWAIT tbl_stock(1)->GetOID(*stock_key, rc, txn->GetXIDContext(), o);
+        AWAIT tbl_stock(1)->GetOID(*stock_key, rc, t->GetXIDContext(), o);
 
         order_line_stock::value v_ol_stock;
         v_ol_stock.ol_i_id = v_ol->ol_i_id;
@@ -744,7 +775,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *
 
   if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
     char table_name[20];
-    snprintf(table_name, 20, "order_line_%lu", schema_version);
+    snprintf(table_name, 20, "order_line_ddl_%lu", schema_version);
 
     db->CreateTable(table_name, false);
 
@@ -758,7 +789,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
     db->CreateMasstreePrimaryIndex(table_name, std::string(table_name));
 #else
-    schema.td->SetPrimaryIndex(schema.old_index, table_name);
+    schema.td->SetPrimaryIndex(schema.old_index);
 #endif
     schema.index = schema.td->GetPrimaryIndex();
 
@@ -786,6 +817,12 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(arena);
     TryCatch(rc);
+#elif defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    auto *alloc = ermia::oidmgr->get_allocator(schema.td->GetTupleFid());
+    uint32_t himark = alloc->head.hiwater_mark;
+    himark += himark / 100;
+    uint64_t *bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
+    ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(schema.td->GetTupleFid(), himark, bitmap_data));
 #endif
   }
 #elif defined(BLOCKDDL)

@@ -76,6 +76,7 @@ bool enable_ddl_keys = false;
 bool enable_lazy_background = false;
 bool enable_late_scan_join = false;
 bool enable_parallel_scan_cdc = true;
+uint32_t client_load_per_core = 50000;
 bool always_load = false;
 bool kStateRunning = false;
 bool iouring_read_log = false;

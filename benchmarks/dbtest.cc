@@ -134,6 +134,7 @@ DEFINE_bool(enable_late_scan_join, false,
             "Whether enable join scan workers after commit");
 DEFINE_bool(enable_parallel_scan_cdc, true,
             "Whether enable doing scan and CDC together");
+DEFINE_uint64(client_load_per_core, 50000, "Client load per core");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -181,6 +182,7 @@ int main(int argc, char **argv) {
   ermia::config::enable_lazy_background = FLAGS_enable_lazy_background;
   ermia::config::enable_late_scan_join = FLAGS_enable_late_scan_join;
   ermia::config::enable_parallel_scan_cdc = FLAGS_enable_parallel_scan_cdc;
+  ermia::config::client_load_per_core = FLAGS_client_load_per_core;
 
   if (ermia::config::physical_workers_only) {
 #ifdef DDL
@@ -382,6 +384,8 @@ int main(int argc, char **argv) {
             << ermia::config::enable_late_scan_join << std::endl;
   std::cerr << "  enable_parallel_scan_cdc              : "
             << ermia::config::enable_parallel_scan_cdc << std::endl;
+  std::cerr << "  client_load_per_core                  : "
+            << ermia::config::client_load_per_core << std::endl;
 #endif
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");

@@ -199,6 +199,8 @@ class bench_worker : public ermia::thread::Runner {
     return double(latency_numer_us) / double(ntxn_commits);
   }
 
+  inline std::vector<uint64_t> *get_txn_counts_per_second() { return &txn_counts_per_second; }
+
   const tx_stat_map get_txn_counts() const;
   const tx_stat_map get_ddl_txn_counts() const;
 
@@ -245,6 +247,7 @@ class bench_worker : public ermia::thread::Runner {
  protected:
   std::vector<tx_stat> txn_counts;  // commits and aborts breakdown
   std::vector<tx_stat> ddl_txn_counts; // DDL commits and aborts breakdown
+  std::vector<uint64_t> txn_counts_per_second;
 
   ermia::transaction *txn_obj_buf;
   ermia::str_arena *arena;

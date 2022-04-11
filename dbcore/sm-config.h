@@ -85,6 +85,7 @@ extern bool enable_ddl_keys;
 extern bool enable_lazy_background;
 extern bool enable_late_scan_join;
 extern bool enable_parallel_scan_cdc;
+extern uint32_t client_load_per_core;
 
 extern uint64_t print_interval_ms;
 
