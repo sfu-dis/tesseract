@@ -134,7 +134,7 @@ DEFINE_bool(enable_late_scan_join, false,
             "Whether enable join scan workers after commit");
 DEFINE_bool(enable_parallel_scan_cdc, true,
             "Whether enable doing scan and CDC together");
-DEFINE_uint64(client_load_per_core, 40000, "Client load per core per second");
+DEFINE_uint64(client_load_per_core, 4000, "Client load per core per 100ms");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;

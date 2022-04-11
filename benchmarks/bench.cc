@@ -149,7 +149,8 @@ void bench_worker::MyWork(char *) {
       } else {
         uint32_t workload_idx = fetch_workload();
         if (txn_counts_per_second[workload_idx] >
-            ermia::config::client_load_per_core * workload[workload_idx].frequency) {
+            ((ermia::config::print_interval_ms * ermia::config::client_load_per_core) / 100) *
+	    workload[workload_idx].frequency) {
           continue;
         }
         do_workload_function(workload_idx);
@@ -373,12 +374,10 @@ void bench_runner::start_measurement() {
 
     usleep(sleep_time);
 
-    if (slept == count * 1000000) {
-      for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-        std::vector<uint64_t> *txn_counts_per_second = workers[i]->get_txn_counts_per_second();
-        for (auto &t : *txn_counts_per_second) {
-          t = 0;
-        }
+    for (size_t i = 0; i < ermia::config::worker_threads; i++) {
+      std::vector<uint64_t> *txn_counts_per_second = workers[i]->get_txn_counts_per_second();
+      for (auto &t : *txn_counts_per_second) {
+        t = 0;
       }
     }
 
