@@ -6,15 +6,16 @@
 #include "sm-table.h"
 
 #define SCHEMA_KEY_FIELDS(x, y) x(uint32_t, schema_key)
-#define SCHEMA_VALUE_FIELDS(x, y)                                              \
-  x(uint32_t, version) y(uint32_t, csn) y(uint32_t, reformat_idx)              \
-      y(uint32_t, constraint_idx) y(uint32_t, secondary_index_key_create_idx)  \
-          y(uint32_t, ddl_type) y(uint64_t, index) y(uint32_t, fid)            \
-              y(bool, show_index) y(uint32_t, old_fid) y(uint32_t, state)      \
-                  y(uint32_t, old_version) y(uint64_t, old_index)              \
-                      y(uint32_t, old_fids_total) y(uint32_t, reformats_total) \
-                          y(inline_str_16<400>, old_fids)                      \
-                              y(inline_str_16<400>, reformats)
+#define SCHEMA_VALUE_FIELDS(x, y)                                                  \
+  x(uint32_t, version) y(uint32_t, csn) y(uint32_t, reformat_idx)                  \
+      y(uint32_t, constraint_idx) y(uint32_t, secondary_index_key_create_idx)      \
+          y(uint32_t, ddl_type) y(uint64_t, index) y(uint32_t, fid)                \
+              y(bool, show_index) y(bool, write_key)                               \
+                  y(uint32_t, old_fid) y(uint32_t, state)                          \
+                      y(uint32_t, old_version) y(uint64_t, old_index)              \
+                          y(uint32_t, old_fids_total) y(uint32_t, reformats_total) \
+                              y(inline_str_16<400>, old_fids)                      \
+                                  y(inline_str_16<400>, reformats)
 DO_STRUCT(schema_kv, SCHEMA_KEY_FIELDS, SCHEMA_VALUE_FIELDS);
 
 namespace ermia {
@@ -34,6 +35,7 @@ struct schema_base {
 };
 
 struct schema_record : public schema_base {
+  bool write_key;
   TableDescriptor *old_td;
   ddl::schema_state_type state;
   uint32_t old_v;
@@ -55,6 +57,7 @@ struct schema_record : public schema_base {
     schema_value.index = (uint64_t)index;
     schema_value.fid = td->GetTupleFid();
     schema_value.show_index = show_index;
+    schema_value.write_key = write_key;
     schema_value.state = state;
     schema_value.old_fid = old_td ? old_td->GetTupleFid() : 0;
     schema_value.old_version = old_v;
@@ -83,6 +86,7 @@ struct schema_record : public schema_base {
     index = (OrderedIndex *)schema_value->index;
     td = ermia::Catalog::GetTable(schema_value->fid);
     show_index = schema_value->show_index;
+    write_key = schema_value->write_key;
     state = (ddl::schema_state_type)schema_value->state;
     old_td = schema_value->old_fid
                  ? ermia::Catalog::GetTable(schema_value->old_fid)

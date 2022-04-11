@@ -14,6 +14,29 @@ volatile bool cdc_test = false;
 
 std::vector<Reformat> reformats;
 std::vector<Constraint> constraints;
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+mcs_lock *lazy_ddl_locks =
+    (mcs_lock *)malloc(sizeof(mcs_lock) * 256);
+std::vector<bitmap *> bitmaps;
+
+bool migrate_record(FID fid, OID oid) {
+  /*for (auto &bitmap : bitmaps) {
+    if (bitmap->fid == fid) {
+      if (oid >= bitmap->size && (oid < bitmap->size && bitmap->data[oid])) {
+        return false;
+      }
+      CRITICAL_SECTION(cs, lazy_ddl_locks[oid % 256]);
+      if (oid < bitmap->size && !bitmap->data[oid]) {
+        bitmap->data[oid] = 1;
+        return true;
+      }
+    }
+  }
+  return false;
+  */
+  return true;
+}
+#endif
 
 rc_t ddl_executor::scan(str_arena *arena) {
 #if defined(COPYDDL) && !defined(LAZYDDL)
@@ -140,39 +163,47 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
         uint64_t reformat_idx = param->scan_reformat_idx == -1
                                     ? param->reformat_idx
                                     : param->scan_reformat_idx;
-        varstr *new_tuple_value = reformats[reformat_idx](key, tuple_value, arena, param->new_v, old_fid, oid);
+        varstr *new_tuple_value = reformats[reformat_idx](key, tuple_value, arena, param->new_v, old_fid, oid, t);
         if (!new_tuple_value) {
           continue;
         }
 #ifdef COPYDDL
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
-        fat_ptr *out_entry = nullptr;
+	if (!migrate_record(param->new_td->GetTupleFid(), oid)) {
+	  continue;
+	}
+	fat_ptr *out_entry = nullptr;
         OID o = t->LazyDDLInsert(param->new_td, new_tuple_value, &out_entry);
         if (!o) {
           continue;
         }
         if (!AWAIT param->index->InsertOID(t, *key, o)) {
+        lazy_abort:
           Object *obj = (Object *)out_entry->offset();
           fat_ptr entry = *out_entry;
           obj->SetCSN(NULL_PTR);
+          oidmgr->UnlinkTuple(out_entry);
           ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
           MM::deallocate(entry);
+          continue;
         } else {
           if (param->new_td->GetSecIndexes().size()) {
             auto *secondary_index = (ConcurrentMasstreeIndex *)(param->new_td->GetSecIndexes().front());
             varstr *new_secondary_index_key = reformats[param->secondary_index_key_create_idx](
-                    key, tuple_value, arena, param->new_v, old_fid, oid);
+                    key, tuple_value, arena, param->new_v, old_fid, oid, t);
             if (!AWAIT secondary_index->InsertOID(t, *new_secondary_index_key, o)) {
-              continue;
-            }
+              goto lazy_abort;
+	    }
           }
         }
-#elif OPTLAZYDDL
-        t->DDLInsert(param->new_td, oid, new_tuple_value, xc->end);
+#elif defined(OPTLAZYDDL)
+        if (param->new_td->GetTupleArray()->get(oid) == NULL_PTR) {
+	  t->DDLInsert(param->new_td, oid, new_tuple_value, xc->end);
+        }
 #else
         t->DDLInsert(param->new_td, oid, new_tuple_value, !xc->end ? xc->begin : xc->end);
 #endif
-#elif BLOCKDDL
+#elif defined(BLOCKDDL)
 	rc_t r;
 	if (param->new_td == param->old_td) {
 	  r = t->Update(param->new_td, oid, nullptr, new_tuple_value, wid, ddl_exe);
@@ -180,7 +211,7 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
 	  r = t->DDLInsert(param->new_td, oid, new_tuple_value, 0, true, wid, ddl_exe);
 	}
 	ASSERT(r._val == RC_TRUE);
-#elif SIDDL
+#elif defined(SIDDL)
         rc_t r;
         if (param->new_td == param->old_td) {
           r = t->Update(param->new_td, oid, nullptr, new_tuple_value, wid, ddl_exe);
@@ -365,7 +396,7 @@ rc_t ddl_executor::changed_data_capture_impl(
                       param->type == COPY_VERIFICATION) {
                     arena->reset();
                     varstr *new_value = reformats[param->reformat_idx](
-                        key, tuple_value, arena, param->new_v, f, o);
+                        key, tuple_value, arena, param->new_v, f, o, t);
 
                     insert_total++;
                     if (!new_value) {
@@ -398,7 +429,7 @@ rc_t ddl_executor::changed_data_capture_impl(
                       param->type == COPY_VERIFICATION) {
                     arena->reset();
                     varstr *new_value = reformats[param->reformat_idx](
-                        key, tuple_value, arena, param->new_v, f, o);
+                        key, tuple_value, arena, param->new_v, f, o, t);
 
                     update_total++;
                     if (!new_value) {
@@ -586,6 +617,10 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
       // Add new table descriptor to fid_map
       Catalog::fid_map[v.second->GetTupleFid()] = v.second;
 
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+      // Set td status to be ready
+      v.second->SetReady(true);
+#else
       // Switch table descriptor for primary index
       OrderedIndex *index = v.second->GetPrimaryIndex();
       index->SetTableDescriptor(v.second);
@@ -601,6 +636,7 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
 
       // Set td status to be ready
       v.second->SetReady(true);
+#endif
     }
   }
 #endif
@@ -652,6 +688,7 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
     log->set_doing_ddl(false);
     return rc_t{RC_TRUE};
   }
+  sleep(2);
   rc_t rc = scan(&(t->string_allocator()));
   if (rc.IsAbort()) {
     log->set_dirty(false);
@@ -684,7 +721,7 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
       auto ddl_log = [=](char *) {
         dlog::tls_log *log = GetLog();
         log->set_normal(false);
-        log->resize_logbuf(2);
+        log->resize_logbuf(1);
         dlog::log_block *lb = nullptr;
         dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
         uint64_t segnum = -1;
@@ -694,7 +731,7 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
         lb = log->allocate_log_block(max_log_size, &lb_lsn, &segnum, xc->end);
         for (uint32_t oid = 0; oid <= himark; ++oid) {
           if (oid % ddl_log_threads != i) continue;
-          // for (uint32_t oid = begin; oid <= end; ++oid) {
+          //for (uint32_t oid = begin; oid <= end; ++oid) {
           fat_ptr *entry = new_tuple_array->get(oid);
           fat_ptr ptr = volatile_read(*entry);
           while (ptr.offset()) {

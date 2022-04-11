@@ -480,11 +480,9 @@ rc_t tpcc_worker::txn_payment() {
           txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
           &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c, &customer_schema));
 
-#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
       if (c.size() <= 0) {
         TryCatch(rc_t{RC_ABORT_USER});
       }
-#endif
     }
 
     ALWAYS_ASSERT(c.size() > 0);
@@ -931,11 +929,9 @@ rc_t tpcc_worker::txn_order_status() {
         txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
         &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c, &customer_schema));
 
-#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
     if (c.size() <= 0) {
       TryCatch(rc_t{RC_ABORT_USER});
     }
-#endif
 
     ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
@@ -1012,11 +1008,9 @@ rc_t tpcc_worker::txn_order_status() {
             &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), c_oorder,
             &oorder_schema));
 
-#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
         if (!c_oorder.size()) {
           TryCatch(rc_t{RC_ABORT_USER});
         }
-#endif
       }
     }
     ALWAYS_ASSERT(c_oorder.size());
@@ -1039,11 +1033,9 @@ rc_t tpcc_worker::txn_order_status() {
           txn, Encode(str(Size(k_oo_idx_hi)), k_oo_idx_hi), nullptr, c_oorder,
           &oorder_schema));
 
-#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
       if (c_oorder.size() != 1) {
         TryCatch(rc_t{RC_ABORT_USER});
       }
-#endif
     }
     ALWAYS_ASSERT(c_oorder.size() == 1);
   }
@@ -1142,7 +1134,8 @@ rc_t tpcc_worker::txn_stock_level() {
                               : v_d->d_next_o_id;
 
   // manual joins are fun!
-  order_line_scan_callback c(order_line_schema.v);
+  ermia::Table table(tbl_stock(warehouse_id)->GetTableDescriptor());
+  order_line_scan_callback c(order_line_schema.v, txn, &table);
   const int32_t lower = cur_next_o_id >= 20 ? (cur_next_o_id - 20) : 0;
   const order_line::key k_ol_0(warehouse_id, districtID, lower, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, cur_next_o_id, 0);
