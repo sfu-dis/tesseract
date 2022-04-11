@@ -182,8 +182,10 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
           Object *obj = (Object *)out_entry->offset();
           fat_ptr entry = *out_entry;
           obj->SetCSN(NULL_PTR);
+          oidmgr->UnlinkTuple(out_entry);
           ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
           MM::deallocate(entry);
+          continue;
         } else {
           if (param->new_td->GetSecIndexes().size()) {
             auto *secondary_index = (ConcurrentMasstreeIndex *)(param->new_td->GetSecIndexes().front());
