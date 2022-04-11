@@ -126,7 +126,6 @@ DEFINE_uint64(ddl_total, 1, "Number of DDL txns");
 DEFINE_uint64(no_copy_verification_version_add, 1,
               "To which version we want to add to version when doing no copy "
               "verification");
-DEFINE_uint64(ddl_example, 0, "DDL example");
 DEFINE_bool(enable_ddl_keys, false, "Whether need maintain key arrays");
 DEFINE_bool(enable_lazy_background, false,
             "Whether enable background migration for lazy DDL");
@@ -180,7 +179,6 @@ int main(int argc, char **argv) {
   ermia::config::ddl_total = FLAGS_ddl_total;
   ermia::config::no_copy_verification_version_add =
       FLAGS_no_copy_verification_version_add;
-  ermia::config::ddl_example = FLAGS_ddl_example;
   ermia::config::enable_ddl_keys = FLAGS_enable_ddl_keys;
   ermia::config::enable_lazy_background = FLAGS_enable_lazy_background;
   ermia::config::enable_late_scan_join = FLAGS_enable_late_scan_join;
@@ -379,8 +377,6 @@ int main(int argc, char **argv) {
             << ermia::config::ddl_total << std::endl;
   std::cerr << "  no_copy_verification_version_add	: "
             << ermia::config::no_copy_verification_version_add << std::endl;
-  std::cerr << "  ddl_example			        : "
-            << ermia::config::ddl_example << std::endl;
   std::cerr << "  enable_ddl_keys			: "
             << ermia::config::enable_ddl_keys << std::endl;
   std::cerr << "  enable_lazy_background		: "

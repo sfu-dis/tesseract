@@ -228,7 +228,7 @@ rc_t tpcc_worker::txn_new_order() {
           txn, Encode(str(Size(k_ol)), k_ol), Encode(str(order_line_sz), v_ol),
           nullptr, &order_line_schema));
     } else {
-      if (ermia::config::ddl_example == 0) {
+      if (ddl_example == 0) {
         const order_line_1::key k_ol_1(warehouse_id, districtID, k_no.no_o_id,
                                        ol_number);
 
@@ -246,7 +246,7 @@ rc_t tpcc_worker::txn_new_order() {
         TryCatch(order_line_table_index->InsertRecord(
             txn, Encode(str(Size(k_ol_1)), k_ol_1),
             Encode(str(order_line_sz), v_ol_1), nullptr, &order_line_schema));
-      } else if (ermia::config::ddl_example == 4) {
+      } else if (ddl_example == 4) {
         ermia::OID o = 0;
         rc_t rc = {RC_INVALID};
         const stock::key k_s_(warehouse_id, ol_i_id);
@@ -725,7 +725,7 @@ rc_t tpcc_worker::txn_delivery() {
             txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new),
             &order_line_schema));
       } else {
-        if (ermia::config::ddl_example == 0) {
+        if (ddl_example == 0) {
           order_line_1::value v_ol_temp;
           const order_line_1::value *v_ol =
               Decode(*c.values[i].second, v_ol_temp);
@@ -745,7 +745,7 @@ rc_t tpcc_worker::txn_delivery() {
           TryCatch(order_line_table_index->UpdateRecord(
               txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new),
               &order_line_schema));
-        } else if (ermia::config::ddl_example == 4) {
+        } else if (ddl_example == 4) {
           order_line_stock::value v_ol_temp;
           const order_line_stock::value *v_ol =
               Decode(*c.values[i].second, v_ol_temp);
@@ -1154,7 +1154,7 @@ rc_t tpcc_worker::txn_stock_level() {
       TryCatch({RC_ABORT_USER});
     }
   }
-  if (order_line_schema.v != 0 && ermia::config::ddl_example == 4) {
+  if (order_line_schema.v != 0 && ddl_example == 4) {
     goto exit;
   }
   {

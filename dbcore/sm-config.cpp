@@ -71,7 +71,6 @@ bool enable_cdc_schema_lock = true;
 bool enable_cdc_verification_test = false;
 uint32_t ddl_total = 0;
 uint32_t no_copy_verification_version_add = 1;
-uint32_t ddl_example = 0;
 bool enable_ddl_keys = false;
 bool enable_lazy_background = false;
 bool enable_late_scan_join = false;

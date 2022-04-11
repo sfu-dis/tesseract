@@ -19,6 +19,7 @@ uint g_microbench_rows = 10;  // this many rows
 int g_microbench_wr_rows = 0;  // this number of rows to write
 int g_nr_suppliers = 100;
 int g_hybrid = 0;
+int ddl_example = 0;
 
 // TPC-C workload mix
 // 0: NewOrder
@@ -399,7 +400,10 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
           unsigned e = strtoul(toks[i].c_str(), nullptr, 10);
           ALWAYS_ASSERT(e >= 0);
           ddl_examples[i] = e;
-          s++;
+          if (e == 4) {
+	    ddl_example = 4;
+	  }
+	  s++;
         }
         ALWAYS_ASSERT(s == ermia::config::ddl_total);
       } break;
