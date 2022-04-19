@@ -90,17 +90,20 @@ void tls_committer::dequeue_committed_xcts() {
   uint32_t n = volatile_read(_commit_queue->start);
   uint32_t size = _commit_queue->size();
   uint32_t dequeue = 0;
+  uint64_t total_latency = 0;
   for (uint32_t j = 0; j < size; ++j) {
     uint32_t idx = (n + j) % _commit_queue->length;
     auto &entry = _commit_queue->queue[idx];
     if (volatile_read(entry.csn) > upto_csn) {
       break;
     }
-    _commit_queue->total_latency_us += end_time - entry.start_time;
+    total_latency += end_time - entry.start_time;
     dequeue++;
   }
   _commit_queue->items -= dequeue;
+  _commit_queue->commits += dequeue;
   volatile_write(_commit_queue->start, (n + dequeue) % _commit_queue->length);
+  _commit_queue->total_latency_us += total_latency;
 }
 
 }  // namespace pcommit

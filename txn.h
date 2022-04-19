@@ -56,16 +56,38 @@ struct write_set_t {
   static const uint32_t kMaxEntries = 256;
   uint32_t num_entries;
   write_record_t entries[kMaxEntries];
+#ifdef LAZYDDL
+  write_record_t *_entries = &entries[0];
+  uint32_t len = kMaxEntries;
+#endif
   write_set_t() : num_entries(0) {}
   inline void emplace_back(fat_ptr *oe, FID fid, OID oid, uint32_t size, bool insert) {
+#ifdef LAZYDDL
+    // For some DDL workloads, 256 is not enough
+    if (num_entries >= len && len != 2048) {
+      write_record_t *new_entries = new write_record_t[2048];
+      memcpy(new_entries, _entries, sizeof(write_record_t) * len);
+      len = 2048;
+      _entries = new_entries;
+    }
+    new (&_entries[num_entries]) write_record_t(oe, fid, oid, size, insert);
+    ++num_entries;
+#else
     ALWAYS_ASSERT(num_entries < kMaxEntries);
     new (&entries[num_entries]) write_record_t(oe, fid, oid, size, insert);
     ++num_entries;
     ASSERT(entries[num_entries - 1].entry == oe);
+#endif
   }
   inline uint32_t size() { return num_entries; }
   inline void clear() { num_entries = 0; }
-  inline write_record_t &operator[](uint32_t idx) { return entries[idx]; }
+  inline write_record_t &operator[](uint32_t idx) {
+#ifdef LAZYDDL
+    return _entries[idx];
+#else
+    return entries[idx];
+#endif
+  }
 };
 
 #if defined(SIDDL) || defined(BLOCKDDL)

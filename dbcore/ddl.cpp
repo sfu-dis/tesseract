@@ -145,6 +145,9 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
   varstr tuple_value;
   fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
   varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
+  if (!key && config::enable_ddl_keys) {
+    return rc_t{RC_TRUE};
+  }
   if (tuple && t->DoTupleRead(tuple, &tuple_value)._val == RC_TRUE) {
     for (auto &param : ddl_executor_paras_list) {
       if (param->old_td->GetTupleFid() != old_fid) {
@@ -170,11 +173,17 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
         }
 #ifdef COPYDDL
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
-	if (!migrate_record(param->new_td->GetTupleFid(), oid)) {
-	  continue;
-	}
-	fat_ptr *out_entry = nullptr;
-        OID o = t->LazyDDLInsert(param->new_td, new_tuple_value, &out_entry);
+        if (!migrate_record(param->new_td->GetTupleFid(), oid)) {
+          continue;
+        }
+        OID o;
+        rc_t rc;
+        /*AWAIT param->index->GetOID(*key, rc, xc, o);
+        if (rc._val == RC_TRUE) {
+          continue;
+        }*/
+        fat_ptr *out_entry = nullptr;
+        o = t->LazyDDLInsert(param->new_td, new_tuple_value, &out_entry);
         if (!o) {
           continue;
         }
@@ -198,9 +207,7 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
           }
         }
 #elif defined(OPTLAZYDDL)
-        if (param->new_td->GetTupleArray()->get(oid) == NULL_PTR) {
-	  t->DDLInsert(param->new_td, oid, new_tuple_value, xc->end);
-        }
+        t->DDLInsert(param->new_td, oid, new_tuple_value, xc->end);
 #else
         t->DDLInsert(param->new_td, oid, new_tuple_value, !xc->end ? xc->begin : xc->end);
 #endif
@@ -331,7 +338,11 @@ rc_t ddl_executor::changed_data_capture_impl(
     if (tlog && csn && tlog != GetLog() && i != ddl_thread_id) {
       bool re_check = false;
     double_check:
-      tlog->last_flush();
+    uint32_t count_per_tlog = 0;
+    retry_last_flush:
+      if (!tlog->last_flush() && count_per_tlog++ < 5) {
+        goto retry_last_flush;
+      }
       std::vector<dlog::segment> *segments = tlog->get_segments();
       bool stop_log_scan = false;
       uint64_t offset_in_seg = volatile_read(flags._tls_durable_lsn[i]);
@@ -376,6 +387,11 @@ rc_t ddl_executor::changed_data_capture_impl(
               fat_ptr *entry =
                   config::enable_ddl_keys ? key_array->get(o) : nullptr;
               varstr *key = entry ? (varstr *)((*entry).offset()) : nullptr;
+
+              if (!key && config::enable_ddl_keys) {
+                offset_in_block += logrec->rec_size;
+                continue;
+              }
 
               if (logrec->type == dlog::log_record::logrec_type::INSERT) {
                 dbtuple *tuple = (dbtuple *)(logrec->data);
@@ -689,6 +705,7 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
     log->set_doing_ddl(false);
     return rc_t{RC_TRUE};
   }
+  usleep(config::late_background_start_ms * 1000);
   rc_t rc = scan(&(t->string_allocator()));
   if (rc.IsAbort()) {
     log->set_dirty(false);
@@ -721,7 +738,7 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
       auto ddl_log = [=](char *) {
         dlog::tls_log *log = GetLog();
         log->set_normal(false);
-        log->resize_logbuf(1);
+        log->resize_logbuf(2);
         dlog::log_block *lb = nullptr;
         dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
         uint64_t segnum = -1;
@@ -779,7 +796,7 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
             ptr = tentative_next;
           }
         }
-        log->last_flush();
+	log->last_flush();
       };
       thread->StartTask(ddl_log);
     }

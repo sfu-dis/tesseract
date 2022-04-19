@@ -243,7 +243,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         const oddlb_kv_1::value *record1_test = Decode(v2, record1_temp);
 
         ALWAYS_ASSERT(record1_test->o_value_a == a);
-        ALWAYS_ASSERT(record1_test->o_value_b == a || record1_test->o_value_b == 20000000);
+        ALWAYS_ASSERT(record1_test->o_value_b == a || record1_test->o_value_b == 200000000);
       } else {
 #ifdef DDL
         switch (schema.ddl_type) {
@@ -264,7 +264,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
             const oddlb_kv_1::value *record1_test = Decode(v2, record1_temp);
 
             ALWAYS_ASSERT(record1_test->o_value_a == a);
-            ALWAYS_ASSERT(record1_test->o_value_b == a || record1_test->o_value_b == 20000000);
+            ALWAYS_ASSERT(record1_test->o_value_b == a || record1_test->o_value_b == 200000000);
             break;
           }
           case ermia::ddl::ddl_type::NO_COPY_VERIFICATION:
@@ -333,7 +333,7 @@ class oddlb_sequential_worker : public oddlb_base_worker {
         record1.o_value_version = schema_version;
         record1.o_value_a = a;
         if (unlikely(ermia::ddl::cdc_test)) {
-          record1.o_value_b = 20000000;
+          record1.o_value_b = 200000000;
         } else {
           record1.o_value_b = a;
         }

@@ -47,7 +47,7 @@ struct ddl_flags {
   volatile bool cdc_second_phase = false;
   volatile bool ddl_failed = false;
   volatile bool cdc_running = false;
-  std::atomic<uint64_t> cdc_end_total;
+  std::atomic<uint64_t> cdc_end_total{0};
   uint64_t *_tls_durable_lsn CACHE_ALIGNED =
       (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
   ;
@@ -170,7 +170,6 @@ class ddl_executor {
  public:
   // Constructor and destructor
   ddl_executor() : dt(ddl_type::INVALID) {
-    flags.cdc_end_total = 0;
 #if defined(SIDDL) || defined(BLOCKDDL)
     init_ddl_write_set();
 #endif

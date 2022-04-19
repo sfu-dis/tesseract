@@ -25,6 +25,8 @@ static ermia::ddl::ddl_type get_example_ddl_type(uint32_t ddl_example) {
       return ermia::ddl::NO_COPY_VERIFICATION;
     case 7:
       return ermia::ddl::NO_COPY_VERIFICATION;
+    case 8:
+      return ermia::ddl::NO_COPY_VERIFICATION;
     default:
       return ermia::ddl::COPY_ONLY;
   }
@@ -100,11 +102,13 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, ermia::ddl::ddl_executor *
     rc = ddl_exe->scan(arena);
     TryCatch(rc);
 #elif defined(LAZYDDL) && !defined(OPTLAZYDDL)
-    auto *alloc = ermia::oidmgr->get_allocator(schema.td->GetTupleFid());
-    uint32_t himark = alloc->head.hiwater_mark;
-    himark += himark / 100;
-    uint64_t *bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
-    ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(schema.td->GetTupleFid(), himark, bitmap_data));
+    if (!ermia::config::enable_lazy_on_conflict_do_nothing) {
+      auto *alloc = ermia::oidmgr->get_allocator(schema.td->GetTupleFid());
+      uint32_t himark = alloc->head.hiwater_mark;
+      himark += himark / 100;
+      uint64_t *bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
+      ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(schema.td->GetTupleFid(), himark, bitmap_data));
+    }
 #endif
   }
 #elif defined(BLOCKDDL)
@@ -348,18 +352,19 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
     rc = ddl_exe->scan(arena);
     TryCatch(rc);
 #elif defined(LAZYDDL) && !defined(OPTLAZYDDL)
-    auto *alloc = ermia::oidmgr->get_allocator(customer_schema.td->GetTupleFid());
-    uint32_t himark = alloc->head.hiwater_mark;
-    himark += himark / 100;
-    uint64_t *bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
-    ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(customer_schema.td->GetTupleFid(), himark, bitmap_data));
+    if (!ermia::config::enable_lazy_on_conflict_do_nothing) {
+      auto *alloc = ermia::oidmgr->get_allocator(customer_schema.td->GetTupleFid());
+      uint32_t himark = alloc->head.hiwater_mark;
+      himark += himark / 100;
+      uint64_t *bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
+      ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(customer_schema.td->GetTupleFid(), himark, bitmap_data));
 
-    alloc = ermia::oidmgr->get_allocator(public_customer_schema.td->GetTupleFid());
-    himark = alloc->head.hiwater_mark;
-    himark += himark / 100;
-    bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
-    ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(public_customer_schema.td->GetTupleFid(), himark, bitmap_data));
-
+      alloc = ermia::oidmgr->get_allocator(public_customer_schema.td->GetTupleFid());
+      himark = alloc->head.hiwater_mark;
+      himark += himark / 100;
+      bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
+      ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(public_customer_schema.td->GetTupleFid(), himark, bitmap_data));
+    }
 #endif
   }
 #elif defined(BLOCKDDL)
@@ -398,6 +403,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
   auto precompute_aggregate_1 =
       [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
           uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
+        ermia::varstr *new_value = nullptr;
         const char *keyp = (const char *)(key->p);
         oorder::key k_oo_temp;
         const oorder::key *k_oo = Decode(keyp, k_oo_temp);
@@ -413,8 +419,12 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
         ermia::varstr *k_ol_0_str = arena->next(Size(k_ol_0));
         ermia::varstr *k_ol_1_str = arena->next(Size(k_ol_1));
 
-        tbl_order_line(1)->Scan(t, Encode(*k_ol_0_str, k_ol_0),
-                                &Encode(*k_ol_1_str, k_ol_1), c_ol);
+        rc_t rc = tbl_order_line(1)->Scan(t, Encode(*k_ol_0_str, k_ol_0),
+                                          &Encode(*k_ol_1_str, k_ol_1), c_ol);
+
+	if (rc.IsAbort()) {
+	  return new_value;
+	}
 
         oorder_precompute_aggregate::value v_oo_pa;
         v_oo_pa.o_c_id = v_oo->o_c_id;
@@ -425,8 +435,8 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
         v_oo_pa.o_total_amount = c_ol.sum;
 
         const size_t oorder_precompute_aggregate_sz = ::Size(v_oo_pa);
-        ermia::varstr *new_value = arena->next(oorder_precompute_aggregate_sz);
-        new_value = &Encode(*new_value, v_oo_pa);
+        new_value = arena->next(oorder_precompute_aggregate_sz);
+	new_value = &Encode(*new_value, v_oo_pa);
 
         return new_value;
       };
@@ -617,11 +627,13 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
     rc = ddl_exe->scan(arena);
     TryCatch(rc);
 #elif defined(LAZYDDL) && !defined(OPTLAZYDDL)
-    auto *alloc = ermia::oidmgr->get_allocator(oorder_schema.td->GetTupleFid());
-    uint32_t himark = alloc->head.hiwater_mark;
-    himark += himark / 100;
-    uint64_t *bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
-    ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(oorder_schema.td->GetTupleFid(), himark, bitmap_data));
+    if (!ermia::config::enable_lazy_on_conflict_do_nothing) {
+      auto *alloc = ermia::oidmgr->get_allocator(oorder_schema.td->GetTupleFid());
+      uint32_t himark = alloc->head.hiwater_mark;
+      himark += himark / 100;
+      uint64_t *bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
+      ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(oorder_schema.td->GetTupleFid(), himark, bitmap_data));
+    }
 #endif
   }
 #elif defined(BLOCKDDL)
@@ -798,6 +810,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *
     ddl_exe->add_old_td_map(schema.old_td);
   } else {
     schema.reformats_total = schema.v;
+    schema.reformats[schema.old_v] = schema.reformat_idx;
   }
 
   schema_kv::value new_schema_value;
@@ -818,11 +831,13 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *
     rc = ddl_exe->scan(arena);
     TryCatch(rc);
 #elif defined(LAZYDDL) && !defined(OPTLAZYDDL)
-    auto *alloc = ermia::oidmgr->get_allocator(schema.td->GetTupleFid());
-    uint32_t himark = alloc->head.hiwater_mark;
-    himark += himark / 100;
-    uint64_t *bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
-    ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(schema.td->GetTupleFid(), himark, bitmap_data));
+    if (!ermia::config::enable_lazy_on_conflict_do_nothing) {
+      auto *alloc = ermia::oidmgr->get_allocator(schema.td->GetTupleFid());
+      uint32_t himark = alloc->head.hiwater_mark;
+      himark += himark / 100;
+      uint64_t *bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
+      ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(schema.td->GetTupleFid(), himark, bitmap_data));
+    }
 #endif
   }
 #elif defined(BLOCKDDL)

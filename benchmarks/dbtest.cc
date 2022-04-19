@@ -137,6 +137,7 @@ DEFINE_uint64(client_load_per_core, 4000, "Client load per core per 100ms");
 DEFINE_uint64(latency_stat_interval_ms, 1000, "Latency statistics interval (ms)");
 DEFINE_bool(enable_lazy_on_conflict_do_nothing, false,
             "Whether enable ON CONFLICT DO NOTHING for lazy DDL");
+DEFINE_uint64(late_background_start_ms, 1000, "When start background migration");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -186,6 +187,7 @@ int main(int argc, char **argv) {
   ermia::config::client_load_per_core = FLAGS_client_load_per_core;
   ermia::config::latency_stat_interval_ms = FLAGS_latency_stat_interval_ms;
   ermia::config::enable_lazy_on_conflict_do_nothing = FLAGS_enable_lazy_on_conflict_do_nothing;
+  ermia::config::late_background_start_ms = FLAGS_late_background_start_ms;
 
   if (ermia::config::physical_workers_only) {
 #ifdef DDL
@@ -391,6 +393,8 @@ int main(int argc, char **argv) {
             << ermia::config::latency_stat_interval_ms << std::endl;
   std::cerr << "  enable_lazy_on_conflict_do_nothing    : "
             << ermia::config::enable_lazy_on_conflict_do_nothing << std::endl;
+  std::cerr << "  late_background_start_ms              : "
+            << ermia::config::late_background_start_ms << std::endl;
 #endif
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");

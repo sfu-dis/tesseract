@@ -78,6 +78,7 @@ bool enable_parallel_scan_cdc = true;
 uint32_t client_load_per_core = 4000;
 uint32_t latency_stat_interval_ms = 1000;
 bool enable_lazy_on_conflict_do_nothing = false;
+uint32_t late_background_start_ms = 1000;
 bool always_load = false;
 bool kStateRunning = false;
 bool iouring_read_log = false;

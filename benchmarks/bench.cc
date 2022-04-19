@@ -258,6 +258,10 @@ void bench_runner::run() {
 }
 
 void bench_runner::start_measurement() {
+  // Use a hyperthread to do latency statistics
+  ermia::thread::Thread *latency_stat_thread =
+      ermia::thread::GetThread(false);
+
   workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
 #ifdef DDL
@@ -358,12 +362,16 @@ void bench_runner::start_measurement() {
     printf("Sec,Commits,Aborts\n");
   }
 
+  uint32_t latency_stat_arr_size = (ermia::config::benchmark_seconds * 1000) / ermia::config::latency_stat_interval_ms;
+  double *latency_stat_arr = new double[latency_stat_arr_size];
   auto latency_stat = [=](char *) {
+    uint32_t total = 0;
     uint32_t sleep_time = ermia::config::latency_stat_interval_ms * 1000;
     uint64_t slept = 0;
     uint64_t last_commits = 0, last_latency_us = 0;
     while (slept < ermia::config::benchmark_seconds * 1000000) {
       usleep(sleep_time);
+    retry:
       uint64_t sec_commits = 0, sec_latency_us = 0;
       for (size_t i = 0; i < ermia::config::worker_threads; i++) {
 #ifdef COPYDDL
@@ -377,22 +385,24 @@ void bench_runner::start_measurement() {
           sec_latency_us += workers[i]->get_latency_numer_us();
         }
 
-        sec_commits += workers[i]->get_ntxn_commits();
+        sec_commits += workers[i]->get_log()->get_commits();
       }
       sec_commits -= last_commits;
       last_commits += sec_commits;
       sec_latency_us -= last_latency_us;
       last_latency_us += sec_latency_us;
-      double avg_latency_us = double(sec_latency_us) / double(sec_commits);
-      double avg_latency_ms = avg_latency_us / 1000.0;
-      printf("avg_latency: %.2f ms\n", avg_latency_ms);
+      double avg_latency_us = sec_commits ? (double(sec_latency_us) / double(sec_commits)) : 0;
+      const double avg_latency_ms = avg_latency_us / 1000.0;
+      // This latency statistics reads committers' latencies without locking,
+      // sometimes the avg_latency_us would be extremely large especially after DDL,
+      // so just retry here to get a reasonable value
+      if (avg_latency_ms > ermia::config::benchmark_seconds * 1000) {
+        goto retry;
+      }
+      latency_stat_arr[total++] = avg_latency_ms;
       slept += sleep_time;
     }
   };
-
-  // Use a hyperthread to do latency statistics
-  ermia::thread::Thread *latency_stat_thread =
-      ermia::thread::GetThread(false);
 
   util::timer t, t_nosync;
   barrier_b.count_down();  // bombs away!
@@ -622,7 +632,10 @@ void bench_runner::start_measurement() {
               << std::get<3>(c.second) / (double)elapsed_sec
               << " user aborts/s\n";
   }
+  std::vector<double> latency_stat_vec(latency_stat_arr, latency_stat_arr + latency_stat_arr_size);
+  std::cout << "latency stat:\n" << latency_stat_vec << std::endl;
 #endif
+  delete[] latency_stat_arr;
   std::cout.flush();
 }
 

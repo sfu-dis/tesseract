@@ -132,11 +132,11 @@ void oddlb_schematable_loader::load() {
     if (schema_version == 1) {
       oddlb_kv_1::value record_temp;
       const oddlb_kv_1::value *record = Decode(value, record_temp);
-      return record->o_value_b < 10000000;
+      return record->o_value_b < 200000000;
     } else {
       oddlb_kv_2::value record_temp;
       const oddlb_kv_2::value *record = Decode(value, record_temp);
-      return record->o_value_b < 10000000;
+      return record->o_value_b < 200000000;
     }
   };
 

@@ -37,7 +37,10 @@ std::atomic<bool> pcommit_daemon_has_work(false);
 void flush_all() {
   // Flush rest blocks
   for (auto &tlog : tlogs) {
-    tlog->last_flush();
+  retry_last_flush:
+    if (!tlog->last_flush()) {
+      goto retry_last_flush;
+    }
   }
 }
 
@@ -144,11 +147,13 @@ void tls_log::resize_logbuf(uint64_t logbuf_mb) {
   active_logbuf = logbuf[0];
 }
 
-void tls_log::enqueue_flush() {
-retry:
+bool tls_log::enqueue_flush() {
+  if (is_dirty() && (flushing || logbuf_offset)) {
+    return false;
+  }
   CRITICAL_SECTION(cs, lock);
   if (is_dirty() && (flushing || logbuf_offset)) {
-    goto retry;
+    return false;
   }
 
   if (flushing) {
@@ -160,13 +165,17 @@ retry:
     issue_flush(active_logbuf, logbuf_offset);
     switch_log_buffers();
   }
+
+  return true;
 }
 
-void tls_log::last_flush() {
-retry:
+bool tls_log::last_flush() {
+  if (is_dirty() && (flushing || logbuf_offset)) {
+    return false;
+  }
   CRITICAL_SECTION(cs, lock);
   if (is_dirty() && (flushing || logbuf_offset)) {
-    goto retry;
+    return false;
   }
 
   if (flushing) {
@@ -180,6 +189,8 @@ retry:
     poll_flush();
     flushing = false;
   }
+
+  return true;
 }
 
 // TODO(tzwang) - fd should correspond to the actual segment
@@ -386,7 +397,11 @@ retry:
     for (uint i = 0; i < tlogs.size(); ++i) {
       tls_log *tlog = tlogs[i];
       if (tlog && volatile_read(pcommit::_tls_durable_csn[i])) {
-        tlog->enqueue_flush();
+      uint32_t count_per_tlog = 0;
+      enqueue_flush_retry:
+        if (!tlog->enqueue_flush() && count_per_tlog++ < 2) {
+	  goto enqueue_flush_retry;
+	}
       }
     }
 

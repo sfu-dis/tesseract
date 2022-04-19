@@ -157,9 +157,9 @@ class tls_log {
   inline uint32_t get_id() { return id; }
   inline segment *get_segment(uint32_t segnum) { return &segments[segnum]; }
 
-  inline bool is_dirty() { return dirty; }
+  inline bool is_dirty() { return volatile_read(dirty); }
 
-  inline void set_dirty(bool _dirty) { dirty = _dirty; }
+  inline void set_dirty(bool _dirty) { volatile_write(dirty, _dirty); }
 
   inline bool is_normal() { return normal; }
 
@@ -181,6 +181,8 @@ class tls_log {
 
   inline tlog_lsn get_durable_lsn() { return durable_lsn; }
 
+  inline uint32_t get_commits() { return tcommitter.get_commits(); }
+
   // reset this committer
   inline void reset_committer(bool set_zero) { tcommitter.reset(set_zero); }
 
@@ -199,10 +201,10 @@ class tls_log {
   }
 
   // Do flush when doing enqueue commits
-  void enqueue_flush();
+  bool enqueue_flush();
 
   // Last flush
-  void last_flush();
+  bool last_flush();
 
   inline void switch_log_buffers() {
     active_logbuf = (active_logbuf == logbuf[0]) ? logbuf[1] : logbuf[0];

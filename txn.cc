@@ -540,9 +540,9 @@ OID transaction::LazyDDLInsert(TableDescriptor *td, varstr *value,
   OID oid = oidmgr->alloc_oid(tuple_fid);
   ALWAYS_ASSERT(oid != INVALID_OID);
   tuple_array->ensure_size(oid);
-  oidmgr->oid_put_new(tuple_array, oid, new_head);
+  //oidmgr->oid_put_new(tuple_array, oid, new_head);
 
-/*retry:
+retry:
   fat_ptr *entry_ptr = tuple_array->get(oid);
   fat_ptr expected = *entry_ptr;
   Object *obj = (Object *)expected.offset();
@@ -564,7 +564,7 @@ OID transaction::LazyDDLInsert(TableDescriptor *td, varstr *value,
                      tuple_array->get(oid), tuple_fid, oid, tuple->size,
                      dlog::log_record::logrec_type::INSERT);
   }
-*/
+
   if (out_entry) {
     *out_entry = tuple_array->get(oid);
   }

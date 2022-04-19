@@ -1274,6 +1274,9 @@ rc_t tpcc_worker::txn_credit_check() {
   customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr,
                                   nullptr, &customer_schema);
   // TryVerifyRelaxed(rc);
+  if (unlikely(rc._val == RC_FALSE)) {
+    rc._val = RC_ABORT_USER;
+  }
   TryCatch(rc);
 
   customer::value v_c_temp;
@@ -1298,6 +1301,9 @@ rc_t tpcc_worker::txn_credit_check() {
   TryCatch(tbl_new_order(warehouse_id)
                ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
                       &Encode(str(Size(k_no_1)), k_no_1), c_no));
+  if (!c_no.output.size()) {
+    TryCatch({RC_ABORT_USER});
+  }
   ALWAYS_ASSERT(c_no.output.size());
 
   double sum = 0;
@@ -1660,6 +1666,8 @@ rc_t tpcc_worker::txn_ddl(uint32_t ddl_example) {
     case 7:
       preaggregation(txn, ddl_exe, ddl_example);
       break;
+    case 8:
+      table_join(txn, ddl_exe, ddl_example);
     default:
       break;
   }
@@ -1732,6 +1740,8 @@ static const std::string get_example_name(uint32_t ddl_example) {
       return "DDL_TABLE_SPLIT_NO_COPY";
     case 7:
       return "DDL_PREAGGREGATION_NO_COPY";
+    case 8:
+      return "DDL_TABLE_JOIN_NO_COPY";
     default:
       LOG(FATAL) << "Not supported";
   }

@@ -189,6 +189,10 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
   rc = {RC_INVALID};
   ConcurrentMasstree::versioned_node_t sinfo;
 
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+lazy_retry:
+#endif
+
   if (!t) {
     auto e = MM::epoch_enter();
     rc._val = AWAIT masstree_.search(key, oid, e, &sinfo) ? RC_TRUE : RC_FALSE;
@@ -206,7 +210,6 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
     dbtuple *tuple = nullptr;
 
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
-  lazy_retry:
     if (schema && schema->old_index && !found) {
       varstr old_value;
       ((ConcurrentMasstreeIndex *)(schema->old_index))
@@ -214,6 +217,7 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
       if (!ddl::migrate_record(schema->td->GetTupleFid(), oid)) {
         volatile_write(rc._val, RC_ABORT_INTERNAL);
         RETURN;
+        //goto lazy_retry;
       }
       if (rc._val == RC_TRUE) {
 	varstr k(key.p, key.l);
@@ -266,7 +270,9 @@ ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
       if (!tuple) {
         found = false;
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
-        goto lazy_retry;
+        volatile_write(rc._val, RC_ABORT_INTERNAL);
+        RETURN;
+	//goto lazy_retry;
 #endif
       }
     }
@@ -513,6 +519,10 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+lazy_retry:
+#endif
+
   // Search for OID
   OID oid = 0;
   rc_t rc = {RC_INVALID};
@@ -530,6 +540,7 @@ ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key,
         ->GetRecord(t, rc, key, old_value, &out_oid);
     if (!ddl::migrate_record(schema->td->GetTupleFid(), oid)) {
       RETURN rc_t{RC_ABORT_INTERNAL};
+      //goto lazy_retry;
     }
     if (rc._val == RC_TRUE) {
       rc = AWAIT InsertRecord(t, key, value, &out_oid, schema);

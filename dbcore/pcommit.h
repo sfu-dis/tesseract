@@ -21,12 +21,14 @@ struct commit_queue {
   uint32_t items;
   uint64_t total_latency_us;
   uint32_t length;
+  uint32_t commits;
   mcs_lock lock;
   commit_queue()
       : start(0),
         items(0),
         total_latency_us(0),
-        length(config::pcommit_queue_length) {
+        length(config::pcommit_queue_length),
+        commits(0) {
     queue = new Entry[length];
   }
   ~commit_queue() { delete[] queue; }
@@ -48,6 +50,8 @@ class tls_committer {
   inline uint32_t get_queue_size() { return _commit_queue->size(); }
 
   inline uint64_t get_latency() { return _commit_queue->total_latency_us; }
+
+  inline uint32_t get_commits() { return _commit_queue->commits; }
 
   // Mark committer as ongoing: some log blocks have not been durable
   inline void set_dirty_flag() {
