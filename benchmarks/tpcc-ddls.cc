@@ -981,6 +981,9 @@ rc_t tpcc_worker::add_constraint(ermia::transaction *txn, ermia::ddl::ddl_execut
   ddl_exe->add_old_td_map(schema.td);
 
   rc = ddl_exe->scan(arena);
+  if (rc._val != RC_TRUE) {
+    return rc;
+  }
 #elif defined(BLOCKDDL)
   schema_kv::value new_schema_value;
   schema.record_to_value(new_schema_value);
@@ -1000,6 +1003,9 @@ rc_t tpcc_worker::add_constraint(ermia::transaction *txn, ermia::ddl::ddl_execut
   ddl_exe->add_old_td_map(schema.td);
 
   rc = ddl_exe->scan(arena);
+  if (rc._val != RC_TRUE) {
+    return rc;
+  }
 #endif
   return rc_t{RC_TRUE};
 }

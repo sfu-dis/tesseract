@@ -1671,31 +1671,31 @@ rc_t tpcc_worker::txn_ddl(uint32_t ddl_example) {
 
   switch (ddl_example) {
     case 0:
-      add_column(txn, ddl_exe, ddl_example);
+      TryCatch(add_column(txn, ddl_exe, ddl_example));
       break;
     case 1:
-      table_split(txn, ddl_exe, ddl_example);
+      TryCatch(table_split(txn, ddl_exe, ddl_example));
       break;
     case 2:
-      preaggregation(txn, ddl_exe, ddl_example);
+      TryCatch(preaggregation(txn, ddl_exe, ddl_example));
       break;
     case 3:
-      create_index(txn, ddl_exe, ddl_example);
+      TryCatch(create_index(txn, ddl_exe, ddl_example));
       break;
     case 4:
-      table_join(txn, ddl_exe, ddl_example);
+      TryCatch(table_join(txn, ddl_exe, ddl_example));
       break;
     case 5:
-      add_column(txn, ddl_exe, ddl_example);
+      TryCatch(add_column(txn, ddl_exe, ddl_example));
       break;
     case 6:
-      table_split(txn, ddl_exe, ddl_example);
+      TryCatch(table_split(txn, ddl_exe, ddl_example));
       break;
     case 7:
-      preaggregation(txn, ddl_exe, ddl_example);
+      TryCatch(preaggregation(txn, ddl_exe, ddl_example));
       break;
     case 8:
-      table_join(txn, ddl_exe, ddl_example);
+      TryCatch(table_join(txn, ddl_exe, ddl_example));
       break;
     case 9:
       TryCatch(add_constraint(txn, ddl_exe, ddl_example));
