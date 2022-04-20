@@ -40,7 +40,8 @@ typedef std::function<varstr *(varstr *key, varstr &value, str_arena *arena,
     Reformat;
 
 // Schema constraint function
-typedef std::function<bool(varstr &value, uint64_t schema_version)> Constraint;
+typedef std::function<bool(varstr *key, varstr &value, str_arena *arena,
+                           uint64_t schema_version, uint64_t csn)> Constraint;
 
 // DDL flags
 struct ddl_flags {

@@ -272,6 +272,22 @@ rc_t tpcc_worker::txn_new_order() {
             txn, Encode(str(Size(k_ol_stock)), k_ol_stock),
             Encode(str(order_line_sz), v_ol_stock), nullptr,
             &order_line_schema));
+      } else if (ddl_example == 9) {
+        const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id,
+                                   ol_number);
+        order_line::value v_ol;
+        v_ol.ol_i_id = int32_t(ol_i_id);
+        v_ol.ol_delivery_d = 0;  // not delivered yet
+        v_ol.ol_amount = float(ol_quantity) * v_i->i_price;
+        v_ol.ol_supply_w_id = int32_t(ol_supply_w_id);
+        v_ol.ol_quantity = int8_t(ol_quantity);
+
+        sum += v_ol.ol_amount;
+
+        const size_t order_line_sz = Size(v_ol);
+        TryCatch(order_line_table_index->InsertRecord(
+            txn, Encode(str(Size(k_ol)), k_ol), Encode(str(order_line_sz), v_ol),
+            nullptr, &order_line_schema));
       }
     }
   }
@@ -768,7 +784,19 @@ rc_t tpcc_worker::txn_delivery() {
           TryCatch(order_line_table_index->UpdateRecord(
               txn, *c.values[i].first,
               Encode(str(Size(v_ol_stock)), v_ol_stock), &order_line_schema));
-        }
+        } else if (ddl_example == 9) {
+	  order_line::value v_ol_temp;
+          const order_line::value *v_ol = Decode(*c.values[i].second, v_ol_temp);
+
+          sum += v_ol->ol_amount;
+          order_line::value v_ol_new(*v_ol);
+          v_ol_new.ol_delivery_d = ts;
+          ASSERT(s_arena.get()->manages(c.values[i].first));
+
+          TryCatch(order_line_table_index->UpdateRecord(
+              txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new),
+              &order_line_schema));
+	}
       }
     }
 
@@ -1668,6 +1696,10 @@ rc_t tpcc_worker::txn_ddl(uint32_t ddl_example) {
       break;
     case 8:
       table_join(txn, ddl_exe, ddl_example);
+      break;
+    case 9:
+      TryCatch(add_constraint(txn, ddl_exe, ddl_example));
+      break;
     default:
       break;
   }
@@ -1742,6 +1774,8 @@ static const std::string get_example_name(uint32_t ddl_example) {
       return "DDL_PREAGGREGATION_NO_COPY";
     case 8:
       return "DDL_TABLE_JOIN_NO_COPY";
+    case 9:
+      return "DDL_ADD_CONSTRAINT";
     default:
       LOG(FATAL) << "Not supported";
   }

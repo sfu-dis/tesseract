@@ -121,6 +121,9 @@ rc_t ddl_executor::scan(str_arena *arena) {
         param->new_td->GetTupleArray()->destroy(param->new_td->GetTupleArray());
       }
     }
+    dlog::tls_log *log = t->get_log();
+    log->set_dirty(false);
+    log->set_doing_ddl(false);
     return rc_t{RC_ABORT_INTERNAL};
   }
   DLOG(INFO) << "First CDC ends, now go to grab a t4";
@@ -130,6 +133,9 @@ rc_t ddl_executor::scan(str_arena *arena) {
 #else
   join_scan_workers();
   if (flags.ddl_failed) {
+    dlog::tls_log *log = t->get_log();
+    log->set_dirty(false);
+    log->set_doing_ddl(false);
     return rc_t{RC_ABORT_INTERNAL};
   }
 #endif
@@ -153,9 +159,9 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
       if (param->old_td->GetTupleFid() != old_fid) {
         continue;
       }
-
+      arena->reset();
       if (param->type == VERIFICATION_ONLY || param->type == COPY_VERIFICATION) {
-        if (!constraints[param->constraint_idx](tuple_value, param->new_v)) {
+        if (!constraints[param->constraint_idx](key, tuple_value, arena, param->new_v, xc->begin)) {
           DLOG(INFO) << "DDL failed";
           flags.ddl_failed = true;
           flags.cdc_running = false;
@@ -163,7 +169,6 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
         }
       }
       if (param->type == COPY_ONLY || param->type == COPY_VERIFICATION) {
-        arena->reset();
         uint64_t reformat_idx = param->scan_reformat_idx == -1
                                     ? param->reformat_idx
                                     : param->scan_reformat_idx;
@@ -249,6 +254,9 @@ uint32_t ddl_executor::changed_data_capture() {
     cdc_threads = config::cdc_threads;
   } else {
     cdc_threads = config::cdc_threads + config::scan_threads - 1;
+  }
+  if (!cdc_threads) {
+    return cdc_threads;
   }
   DLOG(INFO) << "cdc_threads: " << cdc_threads;
   uint32_t logs_per_cdc_thread = (config::worker_threads - 1) / cdc_threads;
@@ -402,16 +410,17 @@ rc_t ddl_executor::changed_data_capture_impl(
                       param->old_td->GetTupleFid() != f) {
                     continue;
                   }
+		  arena->reset();
                   if (param->type == VERIFICATION_ONLY ||
                       param->type == COPY_VERIFICATION) {
-                    if (!constraints[param->constraint_idx](tuple_value,
-                                                            param->new_v)) {
+                    if (!constraints[param->constraint_idx](key, tuple_value,
+                                                            arena, param->new_v,
+							    logrec->csn)) {
                       return rc_t{RC_ABORT_INTERNAL};
                     }
                   }
                   if (param->type == COPY_ONLY ||
                       param->type == COPY_VERIFICATION) {
-                    arena->reset();
                     varstr *new_value = reformats[param->reformat_idx](
                         key, tuple_value, arena, param->new_v, f, o, t);
 
@@ -435,16 +444,17 @@ rc_t ddl_executor::changed_data_capture_impl(
                       param->old_td->GetTupleFid() != f) {
                     continue;
                   }
+		  arena->reset();
                   if (param->type == VERIFICATION_ONLY ||
                       param->type == COPY_VERIFICATION) {
-                    if (!constraints[param->constraint_idx](tuple_value,
-                                                            param->new_v)) {
+                    if (!constraints[param->constraint_idx](key, tuple_value,
+                                                            arena, param->new_v,
+							    logrec->csn)) {
                       return rc_t{RC_ABORT_INTERNAL};
                     }
                   }
                   if (param->type == COPY_ONLY ||
                       param->type == COPY_VERIFICATION) {
-                    arena->reset();
                     varstr *new_value = reformats[param->reformat_idx](
                         key, tuple_value, arena, param->new_v, f, o, t);
 

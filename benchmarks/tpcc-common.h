@@ -412,7 +412,8 @@ class tpcc_schematable_loader : public ermia::catalog::schematable_loader {
     order_line_schema.td = ermia::Catalog::GetTable("order_line");
     order_line_schema.index = order_line_schema.td->GetPrimaryIndex();
     order_line_schema.show_index = ddl_examples[0] == 3 ? false : true;
-    order_line_schema.write_key = (ddl_examples[0] == 0 || ddl_examples[0] == 3 || ddl_examples[0] == 4) ? true : false;
+    order_line_schema.write_key = (ddl_examples[0] == 0 || ddl_examples[0] == 2 ||
+        ddl_examples[0] == 3 || ddl_examples[0] == 4 || ddl_examples[0] == 9) ? true : false;
     order_line_schema.reformats_total = 0;
     order_line_schema.old_tds_total = 0;
     schema_kv::value order_line_schema_value;
@@ -1534,6 +1535,8 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
                     uint32_t ddl_example);
   rc_t table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *ddl_exe,
                   uint32_t ddl_example);
+  rc_t add_constraint(ermia::transaction *txn, ermia::ddl::ddl_executor *ddl_exe,
+                      uint32_t ddl_example);
 
   virtual workload_desc_vec get_workload() const override;
   virtual ddl_workload_desc_vec get_ddl_workload() const override;

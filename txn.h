@@ -244,6 +244,7 @@ class transaction {
   MasstreeAbsentSet masstree_absent_set;
 
  public:
+  transaction(uint64_t flags) : flags(flags) {};
   transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx,
               ddl::ddl_executor *ddl_exe);
   ~transaction() {}
@@ -375,6 +376,8 @@ class transaction {
   }
 
   inline TXN::xid_context *GetXIDContext() { return xc; }
+
+  inline void SetXIDContext(TXN::xid_context *_xc) { xc = _xc; }
 
   inline void SetWaitForNewSchema(bool _wait_for_new_schema) {
     wait_for_new_schema = _wait_for_new_schema;

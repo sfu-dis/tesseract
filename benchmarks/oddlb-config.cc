@@ -127,8 +127,9 @@ void oddlb_schematable_loader::load() {
     return &Encode(*new_value, record2);
   };
 
-  auto column_verification = [=](ermia::varstr &value,
-                                 uint64_t schema_version) {
+  auto column_verification = [=](ermia::varstr *key, ermia::varstr &value,
+                                 ermia::str_arena *arena, uint64_t schema_version,
+				 uint64_t csn) {
     if (schema_version == 1) {
       oddlb_kv_1::value record_temp;
       const oddlb_kv_1::value *record = Decode(value, record_temp);
