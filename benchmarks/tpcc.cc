@@ -247,13 +247,6 @@ rc_t tpcc_worker::txn_new_order() {
             txn, Encode(str(Size(k_ol_1)), k_ol_1),
             Encode(str(order_line_sz), v_ol_1), nullptr, &order_line_schema));
       } else if (ddl_example == 4) {
-        ermia::OID o = 0;
-        rc_t rc = {RC_INVALID};
-        const stock::key k_s_(warehouse_id, ol_i_id);
-        AWAIT tbl_stock(warehouse_id)
-            ->GetOID(Encode(str(Size(k_s_)), k_s_), rc, txn->GetXIDContext(),
-                     o);
-
         const order_line_stock::key k_ol_stock(warehouse_id, districtID,
                                                k_no.no_o_id, ol_number);
 
@@ -263,7 +256,10 @@ rc_t tpcc_worker::txn_new_order() {
         v_ol_stock.ol_amount = float(ol_quantity) * v_i->i_price;
         v_ol_stock.ol_supply_w_id = int32_t(ol_supply_w_id);
         v_ol_stock.ol_quantity = int8_t(ol_quantity);
-        v_ol_stock.s_oid = o;
+        v_ol_stock.s_quantity = v_s_new.s_quantity;
+        v_ol_stock.s_ytd = v_s_new.s_ytd;
+	v_ol_stock.s_order_cnt = v_s_new.s_order_cnt;
+	v_ol_stock.s_remote_cnt = v_s_new.s_remote_cnt;
 
         sum += v_ol_stock.ol_amount;
 
@@ -762,28 +758,18 @@ rc_t tpcc_worker::txn_delivery() {
               txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new),
               &order_line_schema));
         } else if (ddl_example == 4) {
-          order_line_stock::value v_ol_temp;
-          const order_line_stock::value *v_ol =
-              Decode(*c.values[i].second, v_ol_temp);
+          order_line_stock::value v_ol_s_temp;
+          const order_line_stock::value *v_ol_s =
+              Decode(*c.values[i].second, v_ol_s_temp);
 
-          order_line::key k_ol_temp;
-          const order_line::key *k_ol = Decode(*c.values[i].first, k_ol_temp);
-
-          ermia::OID o = 0;
-          rc_t rc = {RC_INVALID};
-          const stock::key k_s(k_ol->ol_w_id, v_ol->ol_i_id);
-          AWAIT tbl_stock(warehouse_id)
-              ->GetOID(Encode(str(Size(k_s)), k_s), rc, txn->GetXIDContext(),
-                       o);
-
-          sum += v_ol->ol_amount;
-          order_line_stock::value v_ol_stock;
-          v_ol_stock.ol_delivery_d = ts;
+          sum += v_ol_s->ol_amount;
+          order_line_stock::value v_ol_s_new(*v_ol_s);
+          v_ol_s_new.ol_delivery_d = ts;
           ASSERT(s_arena.get()->manages(c.values[i].first));
 
           TryCatch(order_line_table_index->UpdateRecord(
               txn, *c.values[i].first,
-              Encode(str(Size(v_ol_stock)), v_ol_stock), &order_line_schema));
+              Encode(str(Size(v_ol_s_new)), v_ol_s_new), &order_line_schema));
         } else if (ddl_example == 9) {
 	  order_line::value v_ol_temp;
           const order_line::value *v_ol = Decode(*c.values[i].second, v_ol_temp);
@@ -1162,8 +1148,7 @@ rc_t tpcc_worker::txn_stock_level() {
                               : v_d->d_next_o_id;
 
   // manual joins are fun!
-  ermia::Table table(tbl_stock(warehouse_id)->GetTableDescriptor());
-  order_line_scan_callback c(order_line_schema.v, txn, &table);
+  order_line_scan_callback c(order_line_schema.v, threshold);
   const int32_t lower = cur_next_o_id >= 20 ? (cur_next_o_id - 20) : 0;
   const order_line::key k_ol_0(warehouse_id, districtID, lower, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, cur_next_o_id, 0);

@@ -592,7 +592,9 @@ transaction::DDLUpdate(TableDescriptor *td, OID oid, varstr *value,
 retry:
   fat_ptr *entry_ptr = tuple_array->get(oid);
   fat_ptr expected = *entry_ptr;
-  if (!tuple_csn) new_object->SetNextVolatile(expected);
+  if (!tuple_csn) {
+    new_object->SetNextVolatile(expected);
+  }
   Object *obj = (Object *)expected.offset();
   fat_ptr csn = NULL_PTR;
   bool overwrite = true;
@@ -647,10 +649,10 @@ transaction::DDLInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tup
 
 retry:
   fat_ptr *entry_ptr = tuple_array->get(oid);
-  fat_ptr expected = *entry_ptr;
+  fat_ptr expected = entry_ptr ? *entry_ptr : NULL_PTR;
   Object *obj = (Object *)expected.offset();
   bool overwrite = true;
-  if (expected == NULL_PTR) {
+  if (!obj) {
     overwrite = false;
     if (!__sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr,
                                       new_head._ptr)) {

@@ -101,7 +101,7 @@ rc_t tpcc_worker::add_column(ermia::transaction *txn, ermia::ddl::ddl_executor *
                                   schema.state);
 
   if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
-#if !defined(LAZYDDL)
+#ifndef LAZYDDL
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(arena);
     if (rc._val != RC_TRUE) {
@@ -146,7 +146,8 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
                               uint32_t ddl_example) {
   auto split_customer_private =
       [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
-          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
+          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t,
+          uint64_t begin) {
         customer::value v_c_temp;
         const customer::value *v_c = Decode(value, v_c_temp);
 
@@ -171,7 +172,8 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
 
   auto create_secondary_index_key =
       [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
-          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
+          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t,
+          uint64_t begin) {
         const char *keyp = (const char *)(key->p);
         customer::key k_c_temp;
         const customer::key *k_c = Decode(keyp, k_c_temp);
@@ -192,7 +194,8 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
 
   auto split_customer_public =
       [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
-          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
+          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t,
+          uint64_t begin) {
         customer::value v_c_temp;
         const customer::value *v_c = Decode(value, v_c_temp);
 
@@ -360,7 +363,7 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
       public_customer_schema.state);
 
   if (customer_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
-#if !defined(LAZYDDL)
+#ifndef LAZYDDL
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(arena);
     if (rc._val != RC_TRUE) {
@@ -420,9 +423,11 @@ rc_t tpcc_worker::table_split(ermia::transaction *txn, ermia::ddl::ddl_executor 
 rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
                                  ermia::ddl::ddl_executor *ddl_exe,
                                  uint32_t ddl_example) {
+  ermia::TXN::xid_context *old_xc = txn->GetXIDContext();
   auto precompute_aggregate_1 =
       [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
-          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
+          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t,
+          uint64_t begin) {
         ermia::varstr *new_value = nullptr;
         const char *keyp = (const char *)(key->p);
         oorder::key k_oo_temp;
@@ -439,8 +444,22 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
         ermia::varstr *k_ol_0_str = arena->next(Size(k_ol_0));
         ermia::varstr *k_ol_1_str = arena->next(Size(k_ol_1));
 
+#ifdef COPYDDL
+        thread_local ermia::transaction t_(ermia::transaction::TXN_FLAG_DDL);
+        thread_local ermia::TXN::xid_context xc;
+        xc.begin_epoch = old_xc->begin_epoch;
+	xc.owner = old_xc->owner;
+        xc.begin = begin;
+        xc.end = old_xc->end;
+        xc.xct = txn;
+        xc.state = old_xc->state;
+        t_.SetXIDContext(&xc);
+        rc_t rc = tbl_order_line(1)->Scan(&t_, Encode(*k_ol_0_str, k_ol_0),
+                                          &Encode(*k_ol_1_str, k_ol_1), c_ol);
+#else
         rc_t rc = tbl_order_line(1)->Scan(t, Encode(*k_ol_0_str, k_ol_0),
                                           &Encode(*k_ol_1_str, k_ol_1), c_ol);
+#endif
 
 	if (rc.IsAbort()) {
 	  return new_value;
@@ -463,7 +482,8 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
 
   auto create_secondary_index_key =
       [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
-          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
+          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t,
+          uint64_t begin) {
         const char *keyp = (const char *)(key->p);
         oorder::key k_oo_temp;
         const oorder::key *k_oo = Decode(keyp, k_oo_temp);
@@ -508,7 +528,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
   auto precompute_aggregate_2 = [=](ermia::varstr *key, ermia::varstr &value,
                                     ermia::str_arena *arena,
                                     uint64_t schema_version, ermia::FID fid,
-                                    ermia::OID oid, ermia::transaction *t) {
+                                    ermia::OID oid, ermia::transaction *t, uint64_t begin) {
     thread_local std::unordered_map<key_tuple<int, int, int>, float,
                                     key_tuple<int, int, int>::hash>
         key_sum_map;
@@ -562,7 +582,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
 #endif
   ermia::ddl::reformats.push_back(precompute_aggregate_1);
 
-#if !defined(LAZYDDL)
+#ifndef LAZYDDL
   oorder_schema.reformat_idx = ermia::ddl::reformats.size();
 #endif
   order_line_schema.reformat_idx = ermia::ddl::reformats.size();
@@ -612,9 +632,9 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
     ddl_exe->set_old_td(oorder_schema.old_td);
     ddl_exe->add_new_td_map(oorder_schema.td);
     ddl_exe->add_old_td_map(oorder_schema.old_td);
-#if !defined(LAZYDDL)    
+#ifndef LAZYDDL
     ddl_exe->add_old_td_map(order_line_schema.td);
-#endif  
+#endif
   } else {
     oorder_schema.reformats_total = oorder_schema.v;
     oorder_schema.reformats[oorder_schema.old_v] = scan_reformat_idx;
@@ -635,7 +655,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
       oorder_schema.td, oorder_schema.old_td, oorder_schema.index,
       oorder_schema.state, oorder_schema.secondary_index_key_create_idx, true,
       true, scan_reformat_idx);
-#if !defined(LAZYDDL)  
+#ifndef LAZYDDL
   ddl_exe->add_ddl_executor_paras(
       oorder_schema.v, oorder_schema.old_v, oorder_schema.ddl_type,
       order_line_schema.reformat_idx, oorder_schema.constraint_idx,
@@ -644,7 +664,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
 #endif
 
   if (oorder_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
-#if !defined(LAZYDDL)
+#ifndef LAZYDDL
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(arena);
     if (rc._val != RC_TRUE) {
@@ -718,7 +738,8 @@ rc_t tpcc_worker::create_index(ermia::transaction *txn, ermia::ddl::ddl_executor
 
   auto add_index = [=](ermia::varstr *key, ermia::varstr &value,
                        ermia::str_arena *arena, uint64_t schema_version,
-                       ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
+                       ermia::FID fid, ermia::OID oid, ermia::transaction *t,
+                       uint64_t begin) {
     if (!key) return nullptr;
     new_order_line_table_index->InsertOID(txn, *key, oid);
     return nullptr;
@@ -749,7 +770,7 @@ rc_t tpcc_worker::create_index(ermia::transaction *txn, ermia::ddl::ddl_executor
   ddl_exe->set_old_td(schema.td);
   ddl_exe->add_old_td_map(schema.td);
 
-#if !defined(LAZYDDL)
+#ifndef LAZYDDL
   rc = ddl_exe->scan(arena);
   if (rc._val != RC_TRUE) {
     return rc;
@@ -760,9 +781,12 @@ rc_t tpcc_worker::create_index(ermia::transaction *txn, ermia::ddl::ddl_executor
 
 rc_t tpcc_worker::table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *ddl_exe,
                              uint32_t ddl_example) {
-  auto order_line_stock_join =
+  ermia::TXN::xid_context *old_xc = txn->GetXIDContext();
+  auto order_line_stock_join_1 =
       [=](ermia::varstr *key, ermia::varstr &value, ermia::str_arena *arena,
-          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
+          uint64_t schema_version, ermia::FID fid, ermia::OID oid, ermia::transaction *t,
+	  uint64_t begin) {
+        ermia::varstr *new_value = nullptr;
         const char *keyp = (const char *)(key->p);
         order_line::key k_ol_temp;
         const order_line::key *k_ol = Decode(keyp, k_ol_temp);
@@ -775,18 +799,40 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *
         const stock::key k_s(k_ol->ol_w_id, v_ol->ol_i_id);
         const size_t stock_sz = ::Size(k_s);
         ermia::varstr *stock_key = arena->next(stock_sz);
-        AWAIT tbl_stock(1)->GetOID(*stock_key, rc, t->GetXIDContext(), o);
+	ermia::varstr valptr;
 
+#ifdef COPYDDL
+	thread_local ermia::transaction t_(ermia::transaction::TXN_FLAG_DDL);
+        thread_local ermia::TXN::xid_context xc;
+	xc.begin_epoch = old_xc->begin_epoch;
+	xc.owner = old_xc->owner;
+        xc.begin = begin;
+	xc.end = old_xc->end;
+        xc.xct = txn;
+        xc.state = old_xc->state;
+        t_.SetXIDContext(&xc);
+	AWAIT tbl_stock(1)->GetRecord(&t_, rc, Encode(*stock_key, k_s), valptr);
+#else
+        AWAIT tbl_stock(1)->GetRecord(t, rc, Encode(*stock_key, k_s), valptr);
+#endif	
+	if (rc.IsAbort() || rc._val == RC_FALSE) {
+	  return new_value;
+	}
+	stock::value v_s_temp;
+	const stock::value *v_s = Decode(valptr, v_s_temp);
         order_line_stock::value v_ol_stock;
         v_ol_stock.ol_i_id = v_ol->ol_i_id;
         v_ol_stock.ol_delivery_d = v_ol->ol_delivery_d;
         v_ol_stock.ol_amount = v_ol->ol_amount;
         v_ol_stock.ol_supply_w_id = v_ol->ol_supply_w_id;
         v_ol_stock.ol_quantity = v_ol->ol_quantity;
-        v_ol_stock.s_oid = o;
+        v_ol_stock.s_quantity = v_s->s_quantity;
+	v_ol_stock.s_ytd = v_s->s_ytd;
+	v_ol_stock.s_order_cnt = v_s->s_order_cnt;
+	v_ol_stock.s_remote_cnt = v_s->s_remote_cnt;
 
         const size_t order_line_sz = ::Size(v_ol_stock);
-        ermia::varstr *new_value = arena->next(order_line_sz);
+        new_value = arena->next(order_line_sz);
         new_value = &Encode(*new_value, v_ol_stock);
 
         return new_value;
@@ -804,8 +850,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *
   schema.ddl_type = get_example_ddl_type(ddl_example);
 
   schema.reformat_idx = ermia::ddl::reformats.size();
-  ermia::ddl::reformats.push_back(order_line_stock_join);
-
+  ermia::ddl::reformats.push_back(order_line_stock_join_1);
   ddl_exe->set_ddl_type(schema.ddl_type);
 
   schema.old_v = schema.v;
@@ -859,7 +904,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *
                                   schema.state);
 
   if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
-#if !defined(LAZYDDL)
+#ifndef LAZYDDL
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(arena);
     if (rc._val != RC_TRUE) {
@@ -905,7 +950,7 @@ rc_t tpcc_worker::add_constraint(ermia::transaction *txn, ermia::ddl::ddl_execut
   ermia::TXN::xid_context *old_xc = txn->GetXIDContext();
   auto column_verification = [=](ermia::varstr *key, ermia::varstr &value,
                                  ermia::str_arena *arena, uint64_t schema_version,
-				 uint64_t csn) {
+                                 uint64_t begin) {
       const char *keyp = (const char *)(key->p);
       order_line::key k_ol_temp;
       const order_line::key *k_ol = Decode(keyp, k_ol_temp);
@@ -916,15 +961,16 @@ rc_t tpcc_worker::add_constraint(ermia::transaction *txn, ermia::ddl::ddl_execut
       rc_t rc = rc_t{RC_INVALID};
       ermia::varstr *k_oo_str = arena->next(Size(k_oo));
 
-      thread_local ermia::transaction *t = new ermia::transaction(ermia::transaction::TXN_FLAG_DDL);
-      thread_local ermia::TXN::xid_context *xc = new ermia::TXN::xid_context;
-      xc->owner = old_xc->owner;
-      xc->begin = old_xc->end == 0 ? csn : old_xc->end;
-      xc->end = old_xc->end;
-      xc->xct = txn;
-      xc->state = old_xc->state;
-      t->SetXIDContext(xc);
-      tbl_oorder(1)->GetRecord(t, rc, Encode(*k_oo_str, k_oo), valptr);
+      thread_local ermia::transaction t(ermia::transaction::TXN_FLAG_DDL);
+      thread_local ermia::TXN::xid_context xc;
+      xc.begin_epoch = old_xc->begin_epoch;
+      xc.owner = old_xc->owner;
+      xc.begin = begin;
+      xc.end = old_xc->end;
+      xc.xct = txn;
+      xc.state = old_xc->state;
+      t.SetXIDContext(&xc);
+      tbl_oorder(1)->GetRecord(&t, rc, Encode(*k_oo_str, k_oo), valptr);
 
       if (rc.IsAbort() || rc._val == RC_FALSE) {
         return false;
