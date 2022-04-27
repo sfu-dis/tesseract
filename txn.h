@@ -282,7 +282,7 @@ class transaction {
 #ifdef COPYDDL
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
   // DDL insert used for unoptimized lazy DDL
-  OID LazyDDLInsert(TableDescriptor *td, varstr *value,
+  OID LazyDDLInsert(TableDescriptor *td, varstr *value, uint64_t tuple_csn,
                     fat_ptr **out_entry = nullptr);
 #endif
 

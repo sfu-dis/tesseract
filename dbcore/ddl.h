@@ -36,7 +36,7 @@ bool migrate_record(FID fid, OID oid);
 // Schema reformation function
 typedef std::function<varstr *(varstr *key, varstr &value, str_arena *arena,
                                uint64_t schema_version, FID fid, OID oid,
-                               transaction *t, uint64_t begin)>
+                               transaction *t, uint64_t begin, bool insert)>
     Reformat;
 
 // Schema constraint function

@@ -277,6 +277,9 @@ void bench_runner::start_measurement() {
     (*it)->Start();
   }
 
+  //ddl_examples[0] = 4;
+  //ddl_start_times[0] = 2;
+
   pid_t perf_pid;
   if (ermia::config::enable_perf) {
     std::cerr << "start perf..." << std::endl;

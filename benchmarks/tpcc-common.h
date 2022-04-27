@@ -363,7 +363,7 @@ class tpcc_schematable_loader : public ermia::catalog::schematable_loader {
     auto add_column = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
                           ermia::FID fid, ermia::OID oid, ermia::transaction *t,
-                          uint64_t begin) {
+                          uint64_t begin, bool insert) {
       order_line::value v_ol_temp;
       const order_line::value *v_ol = Decode(value, v_ol_temp);
 
@@ -737,6 +737,9 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
     const uint w_end = (warehouse_id == -1) ? NumWarehouses()
                                             : static_cast<uint>(warehouse_id);
 
+    ermia::schema_record schema;
+    schema.write_key = true;
+    schema.td = tbl_stock(1)->GetTableDescriptor();
     for (uint w = w_start; w <= w_end; w++) {
       const size_t batchsize = 10;
       for (size_t i = 0; i < NumItems();) {
@@ -785,7 +788,7 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
           stock_total_sz += sz;
           n_stocks++;
           TryVerifyStrict(tbl_stock(w)->InsertRecord(
-              txn, Encode(str(Size(k)), k), Encode(str(sz), v)));
+              txn, Encode(str(Size(k)), k), Encode(str(sz), v), nullptr, &schema));
           TryVerifyStrict(tbl_stock_data(w)->InsertRecord(
               txn, Encode(str(Size(k_data)), k_data),
               Encode(str(Size(v_data)), v_data)));

@@ -86,13 +86,13 @@ rc_t ddl_executor::scan(str_arena *arena) {
       dlog::log_block *lb = nullptr;
       str_arena *arena = GetArena();
       TXN::xid_context local_xc = *xc;
+#ifdef COPYDDL
+      if (config::enable_large_ddl_begin_timestamp) {
+        local_xc.begin += 10000000;
+      }
+#endif
       arena->reset();
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
-#if defined(COPYDDL) && !defined(LAZYDDL)
-        local_xc.begin = xc->end ? xc->end : dlog::current_csn.load(std::memory_order_relaxed);
-#elif defined(LAZYDDL)
-        local_xc.begin = dlog::current_csn.load(std::memory_order_relaxed);
-#endif
 	rc_t r = scan_impl(arena, oid, fid, &local_xc, old_tuple_array, key_array, lb, i, this);
         if (r._val != RC_TRUE || flags.ddl_failed) {
           break;
@@ -104,13 +104,13 @@ rc_t ddl_executor::scan(str_arena *arena) {
 
   dlog::log_block *lb = nullptr;
   TXN::xid_context local_xc = *xc;
+#ifdef COPYDDL
+  if (config::enable_large_ddl_begin_timestamp) {
+    local_xc.begin += 10000000;
+  }
+#endif
   OID end = scan_threads == 1 ? himark : total_per_scan_thread;
   for (OID oid = 0; oid <= end; oid++) {
-#if defined(COPYDDL) && !defined(LAZYDDL)
-    local_xc.begin = xc->end ? xc->end : dlog::current_csn.load(std::memory_order_relaxed);
-#elif defined(LAZYDDL)
-    local_xc.begin = dlog::current_csn.load(std::memory_order_relaxed);
-#endif
     r = scan_impl(arena, oid, fid, &local_xc, old_tuple_array, key_array, lb, 0, this);
     if (r._val != RC_TRUE || flags.ddl_failed) {
       break;
@@ -159,16 +159,6 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
                              TXN::xid_context *xc, oid_array *old_tuple_array,
                              oid_array *key_array, dlog::log_block *lb, int wid,
                              ddl_executor *ddl_exe) {
-  /*fat_ptr *entry_ptr = old_tuple_array->get(oid);
-  fat_ptr expected = *entry_ptr;
-  Object *obj = (Object *)expected.offset();
-  fat_ptr csn = obj ? obj->GetCSN() : NULL_PTR;
-  if (csn != NULL_PTR && csn.asi_type() == fat_ptr::ASI_XID) {
-    return rc_t{RC_TRUE};
-  }
-  if (csn != NULL_PTR && csn.asi_type() == fat_ptr::ASI_CSN && CSN::from_ptr(csn).offset() > xc->begin) {
-    return rc_t{RC_TRUE};
-  }*/
   dbtuple *tuple = AWAIT oidmgr->oid_get_version(old_tuple_array, oid, xc);
   varstr tuple_value;
   fat_ptr *entry = config::enable_ddl_keys ? key_array->get(oid) : nullptr;
@@ -194,7 +184,7 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
         uint64_t reformat_idx = param->scan_reformat_idx == -1
                                     ? param->reformat_idx
                                     : param->scan_reformat_idx;
-        varstr *new_tuple_value = reformats[reformat_idx](key, tuple_value, arena, param->new_v, old_fid, oid, t, xc->begin);
+        varstr *new_tuple_value = reformats[reformat_idx](key, tuple_value, arena, param->new_v, old_fid, oid, t, xc->begin, true);
         if (!new_tuple_value) {
           continue;
         }
@@ -210,7 +200,7 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
           continue;
         }*/
         fat_ptr *out_entry = nullptr;
-        o = t->LazyDDLInsert(param->new_td, new_tuple_value, &out_entry);
+        o = t->LazyDDLInsert(param->new_td, new_tuple_value, xc->end, &out_entry);
         if (!o) {
           continue;
         }
@@ -227,7 +217,7 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
           if (param->new_td->GetSecIndexes().size()) {
             auto *secondary_index = (ConcurrentMasstreeIndex *)(param->new_td->GetSecIndexes().front());
             varstr *new_secondary_index_key = reformats[param->secondary_index_key_create_idx](
-                    key, tuple_value, arena, param->new_v, old_fid, oid, t, xc->begin);
+                    key, tuple_value, arena, param->new_v, old_fid, oid, t, xc->begin, true);
             if (!AWAIT secondary_index->InsertOID(t, *new_secondary_index_key, o)) {
               goto lazy_abort;
 	    }
@@ -236,7 +226,7 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
 #elif defined(OPTLAZYDDL)
         t->DDLInsert(param->new_td, oid, new_tuple_value, xc->end);
 #else
-        t->DDLInsert(param->new_td, oid, new_tuple_value, !xc->end ? xc->begin : xc->end);
+        t->DDLInsert(param->new_td, oid, new_tuple_value, tuple->GetCSN());
 #endif
 #elif defined(BLOCKDDL)
 	rc_t r;
@@ -413,19 +403,6 @@ rc_t ddl_executor::changed_data_capture_impl(
                 continue;
               }
 
-	      /*fat_ptr *entry_ptr = old_td_map[f]->GetTupleArray()->get(o);
-              fat_ptr expected = *entry_ptr;
-              Object *obj = (Object *)expected.offset();
-              fat_ptr csn = obj ? obj->GetCSN() : NULL_PTR;
-              if (csn != NULL_PTR && csn.asi_type() == fat_ptr::ASI_XID) {
-                offset_in_block += logrec->rec_size;
-                continue;
-	      }
-              if (csn != NULL_PTR && csn.asi_type() == fat_ptr::ASI_CSN && CSN::from_ptr(csn).offset() > logrec->csn) {
-                offset_in_block += logrec->rec_size;
-                continue;
-	      }*/
-
               auto *key_array = old_td_map[f]->GetKeyArray();
               fat_ptr *entry =
                   config::enable_ddl_keys ? key_array->get(o) : nullptr;
@@ -450,14 +427,14 @@ rc_t ddl_executor::changed_data_capture_impl(
                       param->type == COPY_VERIFICATION) {
                     if (!constraints[param->constraint_idx](key, tuple_value,
                                                             arena, param->new_v,
-							    logrec->csn)) {
+							    logrec->begin)) {
                       return rc_t{RC_ABORT_INTERNAL};
                     }
                   }
                   if (param->type == COPY_ONLY ||
                       param->type == COPY_VERIFICATION) {
                     varstr *new_value = reformats[param->reformat_idx](
-                        key, tuple_value, arena, param->new_v, f, o, t, logrec->csn);
+                        key, tuple_value, arena, param->new_v, f, o, t, logrec->begin, true);
 
                     insert_total++;
                     if (!new_value) {
@@ -484,14 +461,14 @@ rc_t ddl_executor::changed_data_capture_impl(
                       param->type == COPY_VERIFICATION) {
                     if (!constraints[param->constraint_idx](key, tuple_value,
                                                             arena, param->new_v,
-							    logrec->csn)) {
+							    logrec->begin)) {
                       return rc_t{RC_ABORT_INTERNAL};
                     }
                   }
                   if (param->type == COPY_ONLY ||
                       param->type == COPY_VERIFICATION) {
                     varstr *new_value = reformats[param->reformat_idx](
-                        key, tuple_value, arena, param->new_v, f, o, t, logrec->csn);
+                        key, tuple_value, arena, param->new_v, f, o, t, logrec->begin, false);
 
                     update_total++;
                     if (!new_value) {
@@ -517,7 +494,7 @@ rc_t ddl_executor::changed_data_capture_impl(
           volatile_write(flags._tls_durable_lsn[i],
                          offset_in_seg + offset_increment);
         }
-        RCU::rcu_free(data_buf);
+        //RCU::rcu_free(data_buf);
         if (stop_log_scan || (flags.cdc_second_phase && insert_total == 0 &&
                               update_total == 0)) {
           if (!stop_log_scan && !re_check) {

@@ -223,7 +223,7 @@ lazy_retry:
 	varstr k(key.p, key.l);
         varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
             &k, old_value, &(t->string_allocator()), schema->v,
-            schema->old_td->GetTupleFid(), oid, t, t->xc->begin);
+            schema->old_td->GetTupleFid(), oid, t, t->xc->begin, true);
         if (!new_tuple_value) {
           volatile_write(rc._val, RC_ABORT_INTERNAL);
           RETURN;
@@ -310,7 +310,7 @@ lazy_retry:
         varstr k(key.p, key.l);
         varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
             &k, value, &(t->string_allocator()), schema->v,
-            old_table_descriptor->GetTupleFid(), oid, t, t->xc->begin);
+            old_table_descriptor->GetTupleFid(), oid, t, t->xc->begin, true);
         if (!new_tuple_value) {
           volatile_write(rc._val, RC_ABORT_INTERNAL);
           RETURN;
@@ -358,7 +358,7 @@ lazy_retry:
         for (int i = 0; i < schema->reformats_total; i++) {
           new_tuple_value = ddl::reformats[schema->reformats[i]](
               &k, *new_tuple_value, &(t->string_allocator()), schema->v,
-              table_descriptor->GetTupleFid(), oid, t, t->xc->begin);
+              table_descriptor->GetTupleFid(), oid, t, t->xc->begin, true);
         }
         if (!new_tuple_value) {
           volatile_write(rc._val, RC_ABORT_INTERNAL);
@@ -456,7 +456,7 @@ ConcurrentMasstreeIndex::LazyBuildSecondaryIndex(transaction *t, OID oid,
     varstr k(key.data(), key.size());
     varstr *new_secondary_index_key =
         ddl::reformats[schema->secondary_index_key_create_idx](
-            &k, value, &(t->string_allocator()), schema->v, 0, oid, t, t->xc->begin);
+            &k, value, &(t->string_allocator()), schema->v, 0, oid, t, t->xc->begin, true);
     if (!AWAIT secondary_index->InsertOID(t, *new_secondary_index_key, oid)) {
       RETURN rc_t{RC_ABORT_INTERNAL};
     }
@@ -713,7 +713,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
       varstr key(k.s, k.len);
       varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
           &key, vv, &(t->string_allocator()), schema->v,
-          schema->old_td->GetTupleFid(), oid, t, t->xc->begin);
+          schema->old_td->GetTupleFid(), oid, t, t->xc->begin, true);
       if (!new_tuple_value) {
         caller_callback->return_code = rc_t{RC_ABORT_INTERNAL};
 	return false;
@@ -752,7 +752,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
       for (int i = 0; i < schema->reformats_total; i++) {
         new_tuple_value = ddl::reformats[schema->reformats[i]](
             &key, *new_tuple_value, &(t->string_allocator()), schema->v,
-            table_descriptor->GetTupleFid(), oid, t, t->xc->begin);
+            table_descriptor->GetTupleFid(), oid, t, t->xc->begin, true);
       }
       if (!new_tuple_value) {
         return false;
@@ -792,7 +792,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
         varstr key(k.s, k.len);
         varstr *new_tuple_value = ddl::reformats[schema->reformat_idx](
             &key, vv, &(t->string_allocator()), schema->v,
-            old_table_descriptor->GetTupleFid(), oid, t, t->xc->begin);
+            old_table_descriptor->GetTupleFid(), oid, t, t->xc->begin, true);
         rc_t rc = AWAIT t->DDLInsert(schema->td, oid, new_tuple_value, 0);
         if (rc._val != RC_TRUE) {
           return false;

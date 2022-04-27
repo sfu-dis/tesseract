@@ -37,7 +37,7 @@ void oddlb_schematable_loader::load() {
   auto add_column = [=](ermia::varstr *key, ermia::varstr &value,
                         ermia::str_arena *arena, uint64_t schema_version,
                         ermia::FID fid, ermia::OID oid, ermia::transaction *t,
-                        uint64_t begin) {
+                        uint64_t begin, bool insert) {
     uint64_t a = 0;
     if (schema_version == 1) {
       oddlb_kv_1::value record_temp;
@@ -61,7 +61,7 @@ void oddlb_schematable_loader::load() {
   auto add_column_1 = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
                           ermia::FID fid, ermia::OID oid, ermia::transaction *t,
-                          uint64_t begin) {
+                          uint64_t begin, bool insert) {
     oddlb_kv_2::value record_temp;
     const oddlb_kv_2::value *record = Decode(value, record_temp);
 
@@ -78,7 +78,7 @@ void oddlb_schematable_loader::load() {
   auto add_column_2 = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
                           ermia::FID fid, ermia::OID oid, ermia::transaction *t,
-                          uint64_t begin) {
+                          uint64_t begin, bool insert) {
     oddlb_kv_3::value record_temp;
     const oddlb_kv_3::value *record = Decode(value, record_temp);
 
@@ -96,7 +96,7 @@ void oddlb_schematable_loader::load() {
   auto add_column_3 = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
                           ermia::FID fid, ermia::OID oid, ermia::transaction *t,
-                          uint64_t begin) {
+                          uint64_t begin, bool insert) {
     oddlb_kv_4::value record_temp;
     const oddlb_kv_4::value *record = Decode(value, record_temp);
 
@@ -115,7 +115,7 @@ void oddlb_schematable_loader::load() {
   auto add_column_4 = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
                           ermia::FID fid, ermia::OID oid, ermia::transaction *t,
-                          uint64_t begin) {
+                          uint64_t begin, bool insert) {
     oddlb_kv_5::value record_temp;
     const oddlb_kv_5::value *record = Decode(value, record_temp);
 
