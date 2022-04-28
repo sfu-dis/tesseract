@@ -162,6 +162,9 @@ class ddl_executor {
   // Old table descriptors
   std::unordered_map<FID, TableDescriptor *> old_td_map;
 
+  // Data bufs
+  std::vector<std::vector<char *> *> data_bufs;
+
 #if defined(SIDDL) || defined(BLOCKDDL)
   // DDL write set
   ddl_write_set_t *ddl_write_set;
@@ -235,6 +238,15 @@ class ddl_executor {
   }
 
   inline void set_transaction(transaction *_t) { t = _t; }
+
+  inline void free_data_bufs() {
+    for (auto &w : data_bufs) {
+      for (auto &d : *w) {
+        RCU::rcu_free(d);
+      }
+    }
+    data_bufs.clear();
+  }
 
   // Scan and do operations (copy, verification)
   rc_t scan(str_arena *arena);
