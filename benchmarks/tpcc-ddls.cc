@@ -532,7 +532,7 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
   ermia::FID old_oorder_fid = oorder_schema.td->GetTupleFid();
   ermia::FID old_order_line_fid = order_line_schema.td->GetTupleFid();
 
-ermia::oid_array *new_td_array = nullptr;
+  ermia::oid_array *new_td_array = nullptr;
 #ifdef COPYDDL
   char table_name[20];
   if (oorder_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
