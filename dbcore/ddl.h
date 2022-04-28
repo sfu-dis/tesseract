@@ -36,7 +36,7 @@ bool migrate_record(FID fid, OID oid);
 // Schema reformation function
 typedef std::function<varstr *(varstr *key, varstr &value, str_arena *arena,
                                uint64_t schema_version, FID fid, OID oid,
-                               transaction *t)>
+                               transaction *t, uint64_t begin, bool insert)>
     Reformat;
 
 // Schema constraint function
@@ -51,7 +51,6 @@ struct ddl_flags {
   std::atomic<uint64_t> cdc_end_total{0};
   uint64_t *_tls_durable_lsn CACHE_ALIGNED =
       (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
-  ;
 };
 
 // DDL type
@@ -163,6 +162,9 @@ class ddl_executor {
   // Old table descriptors
   std::unordered_map<FID, TableDescriptor *> old_td_map;
 
+  // Data bufs
+  std::vector<std::vector<char *> *> data_bufs;
+
 #if defined(SIDDL) || defined(BLOCKDDL)
   // DDL write set
   ddl_write_set_t *ddl_write_set;
@@ -236,6 +238,15 @@ class ddl_executor {
   }
 
   inline void set_transaction(transaction *_t) { t = _t; }
+
+  inline void free_data_bufs() {
+    for (auto &w : data_bufs) {
+      for (auto &d : *w) {
+        RCU::rcu_free(d);
+      }
+    }
+    data_bufs.clear();
+  }
 
   // Scan and do operations (copy, verification)
   rc_t scan(str_arena *arena);

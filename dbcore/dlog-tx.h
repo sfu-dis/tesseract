@@ -26,6 +26,7 @@ struct log_record {
 
   uint32_t rec_size;
   uint64_t csn;
+  uint64_t begin;
 
   char data[0];
 };
@@ -33,7 +34,8 @@ struct log_record {
 static uint32_t populate_log_record(log_record::logrec_type type,
                                     log_block *block, FID fid, OID oid,
                                     const char *after_image,
-                                    const uint32_t size) {
+                                    const uint32_t size,
+				    uint64_t begin = 0) {
   LOG_IF(FATAL, type != log_record::logrec_type::INSERT &&
                     type != log_record::logrec_type::UPDATE &&
                     type != log_record::logrec_type::INSERT_KEY &&
@@ -51,6 +53,7 @@ static uint32_t populate_log_record(log_record::logrec_type type,
   logrec->fid = fid;
   logrec->oid = oid;
   logrec->csn = block->csn;
+  logrec->begin = begin;
   memcpy(&logrec->data[0], after_image, size);
 
   // Account for the occupied space
@@ -62,13 +65,13 @@ static uint32_t populate_log_record(log_record::logrec_type type,
 }
 
 inline static uint32_t log_insert(log_block *block, FID fid, OID oid,
-                                  const char *image, const uint32_t size) {
-  return populate_log_record(log_record::INSERT, block, fid, oid, image, size);
+                                  const char *image, const uint32_t size, uint64_t begin = 0) {
+  return populate_log_record(log_record::INSERT, block, fid, oid, image, size, begin);
 }
 
 inline static uint32_t log_update(log_block *block, FID fid, OID oid,
-                                  const char *image, const uint32_t size) {
-  return populate_log_record(log_record::UPDATE, block, fid, oid, image, size);
+                                  const char *image, const uint32_t size, uint64_t begin = 0) {
+  return populate_log_record(log_record::UPDATE, block, fid, oid, image, size, begin);
 }
 
 inline static uint32_t log_insert_key(log_block *block, FID fid, OID oid,

@@ -267,10 +267,10 @@ rc_t transaction::si_commit(ddl::ddl_executor *ddl_exe) {
       off = lb->payload_size;
     }
     if (w.is_insert) {
-      auto ret_off = dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+      auto ret_off = dlog::log_insert(lb, w.fid, w.oid, (char *)tuple, log_tuple_size, xc->begin);
       ALWAYS_ASSERT(ret_off == off);
     } else {
-      auto ret_off = dlog::log_update(lb, w.fid, w.oid, (char *)tuple, log_tuple_size);
+      auto ret_off = dlog::log_update(lb, w.fid, w.oid, (char *)tuple, log_tuple_size, xc->begin);
       ALWAYS_ASSERT(ret_off == off);
     }
     ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
@@ -524,7 +524,7 @@ OID transaction::Insert(TableDescriptor *td, varstr *value,
 #ifdef COPYDDL
 #if defined(LAZYDDL) && !defined(OPTLAZYDDL)
 OID transaction::LazyDDLInsert(TableDescriptor *td, varstr *value,
-                               fat_ptr **out_entry) {
+                               uint64_t tuple_csn, fat_ptr **out_entry) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
 
@@ -535,8 +535,8 @@ OID transaction::LazyDDLInsert(TableDescriptor *td, varstr *value,
   auto *tuple = (dbtuple *)new_object->GetPayload();
   ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
   // tuple->GetObject()->SetCSN(xid.to_ptr());
-  ALWAYS_ASSERT(xc->end != 0);
-  tuple->GetObject()->SetCSN(new_object->GenerateCsnPtr(xc->end));
+  ALWAYS_ASSERT(tuple_csn != 0);
+  tuple->GetObject()->SetCSN(new_object->GenerateCsnPtr(tuple_csn));
   OID oid = oidmgr->alloc_oid(tuple_fid);
   ALWAYS_ASSERT(oid != INVALID_OID);
   tuple_array->ensure_size(oid);
@@ -592,7 +592,9 @@ transaction::DDLUpdate(TableDescriptor *td, OID oid, varstr *value,
 retry:
   fat_ptr *entry_ptr = tuple_array->get(oid);
   fat_ptr expected = *entry_ptr;
-  if (!tuple_csn) new_object->SetNextVolatile(expected);
+  if (!tuple_csn) {
+    new_object->SetNextVolatile(expected);
+  }
   Object *obj = (Object *)expected.offset();
   fat_ptr csn = NULL_PTR;
   bool overwrite = true;
@@ -647,10 +649,10 @@ transaction::DDLInsert(TableDescriptor *td, OID oid, varstr *value, uint64_t tup
 
 retry:
   fat_ptr *entry_ptr = tuple_array->get(oid);
-  fat_ptr expected = *entry_ptr;
+  fat_ptr expected = entry_ptr ? *entry_ptr : NULL_PTR;
   Object *obj = (Object *)expected.offset();
   bool overwrite = true;
-  if (expected == NULL_PTR) {
+  if (!obj) {
     overwrite = false;
     if (!__sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr,
                                       new_head._ptr)) {

@@ -362,7 +362,8 @@ class tpcc_schematable_loader : public ermia::catalog::schematable_loader {
 
     auto add_column = [=](ermia::varstr *key, ermia::varstr &value,
                           ermia::str_arena *arena, uint64_t schema_version,
-                          ermia::FID fid, ermia::OID oid, ermia::transaction *t) {
+                          ermia::FID fid, ermia::OID oid, ermia::transaction *t,
+                          uint64_t begin, bool insert) {
       order_line::value v_ol_temp;
       const order_line::value *v_ol = Decode(value, v_ol_temp);
 
@@ -736,6 +737,9 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
     const uint w_end = (warehouse_id == -1) ? NumWarehouses()
                                             : static_cast<uint>(warehouse_id);
 
+    ermia::schema_record schema;
+    schema.write_key = true;
+    schema.td = tbl_stock(1)->GetTableDescriptor();
     for (uint w = w_start; w <= w_end; w++) {
       const size_t batchsize = 10;
       for (size_t i = 0; i < NumItems();) {
@@ -784,7 +788,7 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
           stock_total_sz += sz;
           n_stocks++;
           TryVerifyStrict(tbl_stock(w)->InsertRecord(
-              txn, Encode(str(Size(k)), k), Encode(str(sz), v)));
+              txn, Encode(str(Size(k)), k), Encode(str(sz), v), nullptr, &schema));
           TryVerifyStrict(tbl_stock_data(w)->InsertRecord(
               txn, Encode(str(Size(k_data)), k_data),
               Encode(str(Size(v_data)), v_data)));
@@ -1340,8 +1344,7 @@ class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
 
 class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
  public:
-  order_line_scan_callback(uint64_t v, ermia::transaction *txn, ermia::Table *table)
-    : n(0), schema_v(v), txn(txn), table(table) {}
+  order_line_scan_callback(uint64_t v, const uint threshold) : n(0), schema_v(v), threshold(threshold) {}
   virtual bool Invoke(const char *keyp, size_t keylen,
                       const ermia::varstr &value) {
     MARK_REFERENCED(keyp);
@@ -1363,15 +1366,14 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
         const order_line_1::value *v_ol = Decode(value, v_ol_temp);
         s_i_ids[v_ol->ol_i_id] = 1;
       } else if (ddl_example == 4) {
-        order_line_stock::value v_ol_temp;
-        const order_line_stock::value *v_ol = Decode(value, v_ol_temp);
-        ermia::varstr valptr;
-        if (table->Read(*txn, v_ol->s_oid, &valptr)._val == RC_TRUE) {
-          const uint8_t *ptr = (const uint8_t *)valptr.data();
-          int16_t i16tmp;
-          ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
+        order_line_stock::value v_ol_s_temp;
+        const order_line_stock::value *v_ol_s = Decode(value, v_ol_s_temp);
+        const uint8_t *ptr = (const uint8_t *)value.data();
+        int16_t i16tmp;
+        ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
+        if (i16tmp < int(threshold)) {
+          s_i_ids[v_ol_s->ol_i_id] = 1;
         }
-        s_i_ids[v_ol->ol_i_id] = 1;
       }
     }
     n++;
@@ -1379,8 +1381,7 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
   }
   size_t n;
   uint64_t schema_v;
-  ermia::transaction *txn;
-  ermia::Table *table;
+  const uint threshold;
   std::unordered_map<uint, bool> s_i_ids;
 };
 

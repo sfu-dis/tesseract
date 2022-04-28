@@ -109,7 +109,8 @@ DO_STRUCT(order_line_1, ORDER_LINE_KEY_FIELDS, ORDER_LINE_VALUE_1_FIELDS)
 
 #define ORDER_LINE_VALUE_STOCK_FIELDS(x, y)                          \
   x(int32_t, ol_i_id) y(uint32_t, ol_delivery_d) y(float, ol_amount) \
-      y(int32_t, ol_supply_w_id) y(int8_t, ol_quantity) y(uint32_t, s_oid)
+      y(int32_t, ol_supply_w_id) y(int8_t, ol_quantity) y(int16_t, s_quantity) \
+          y(float, s_ytd) y(int32_t, s_order_cnt) y(int32_t, s_remote_cnt)
 DO_STRUCT(order_line_stock, ORDER_LINE_KEY_FIELDS,
           ORDER_LINE_VALUE_STOCK_FIELDS)
 

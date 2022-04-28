@@ -59,8 +59,8 @@ retry:
     if (schema->ddl_type != ddl::ddl_type::COPY_ONLY || config::enable_cdc_schema_lock) {
       goto retry;
     }
-    TableDescriptor *td = Catalog::GetTable(schema->fid);
-    if (!td || !td->IsReady()) {
+    target_td = target_table_index->GetMasstree().get_table_descriptor();
+    if (target_td->GetTupleFid() != schema->fid) {
       goto retry;
     } else {
       t->SetWaitForNewSchema(true);

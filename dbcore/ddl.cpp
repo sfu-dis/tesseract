@@ -85,9 +85,15 @@ rc_t ddl_executor::scan(str_arena *arena) {
     auto parallel_scan = [=](char *) {
       dlog::log_block *lb = nullptr;
       str_arena *arena = GetArena();
+      TXN::xid_context local_xc = *xc;
+#ifdef COPYDDL
+      if (config::enable_large_ddl_begin_timestamp) {
+        local_xc.begin += 100000000;
+      }
+#endif
       arena->reset();
       for (uint32_t oid = begin + 1; oid <= end; oid++) {
-        rc_t r = scan_impl(arena, oid, fid, xc, old_tuple_array, key_array, lb, i, this);
+	rc_t r = scan_impl(arena, oid, fid, &local_xc, old_tuple_array, key_array, lb, i, this);
         if (r._val != RC_TRUE || flags.ddl_failed) {
           break;
         }
@@ -97,9 +103,15 @@ rc_t ddl_executor::scan(str_arena *arena) {
   }
 
   dlog::log_block *lb = nullptr;
+  TXN::xid_context local_xc = *xc;
+#ifdef COPYDDL
+  if (config::enable_large_ddl_begin_timestamp) {
+    local_xc.begin += 100000000;
+  }
+#endif
   OID end = scan_threads == 1 ? himark : total_per_scan_thread;
   for (OID oid = 0; oid <= end; oid++) {
-    r = scan_impl(arena, oid, fid, xc, old_tuple_array, key_array, lb, 0, this);
+    r = scan_impl(arena, oid, fid, &local_xc, old_tuple_array, key_array, lb, 0, this);
     if (r._val != RC_TRUE || flags.ddl_failed) {
       break;
     }
@@ -172,7 +184,7 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
         uint64_t reformat_idx = param->scan_reformat_idx == -1
                                     ? param->reformat_idx
                                     : param->scan_reformat_idx;
-        varstr *new_tuple_value = reformats[reformat_idx](key, tuple_value, arena, param->new_v, old_fid, oid, t);
+        varstr *new_tuple_value = reformats[reformat_idx](key, tuple_value, arena, param->new_v, old_fid, oid, t, xc->begin, true);
         if (!new_tuple_value) {
           continue;
         }
@@ -188,7 +200,7 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
           continue;
         }*/
         fat_ptr *out_entry = nullptr;
-        o = t->LazyDDLInsert(param->new_td, new_tuple_value, &out_entry);
+        o = t->LazyDDLInsert(param->new_td, new_tuple_value, xc->end, &out_entry);
         if (!o) {
           continue;
         }
@@ -205,7 +217,7 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
           if (param->new_td->GetSecIndexes().size()) {
             auto *secondary_index = (ConcurrentMasstreeIndex *)(param->new_td->GetSecIndexes().front());
             varstr *new_secondary_index_key = reformats[param->secondary_index_key_create_idx](
-                    key, tuple_value, arena, param->new_v, old_fid, oid, t);
+                    key, tuple_value, arena, param->new_v, old_fid, oid, t, xc->begin, true);
             if (!AWAIT secondary_index->InsertOID(t, *new_secondary_index_key, o)) {
               goto lazy_abort;
 	    }
@@ -214,7 +226,7 @@ rc_t ddl_executor::scan_impl(str_arena *arena, OID oid, FID old_fid,
 #elif defined(OPTLAZYDDL)
         t->DDLInsert(param->new_td, oid, new_tuple_value, xc->end);
 #else
-        t->DDLInsert(param->new_td, oid, new_tuple_value, !xc->end ? xc->begin : xc->end);
+        t->DDLInsert(param->new_td, oid, new_tuple_value, tuple->GetCSN());
 #endif
 #elif defined(BLOCKDDL)
 	rc_t r;
@@ -305,6 +317,11 @@ uint32_t ddl_executor::changed_data_capture() {
       }
     }
 
+    if (i >= data_bufs.size()) {
+      data_bufs.push_back(new std::vector<char *>);
+      data_bufs[i]->reserve(1000);
+    }
+
     auto parallel_changed_data_capture = [=](char *) {
       bool ddl_end_local = false;
       str_arena *arena = GetArena();
@@ -337,9 +354,7 @@ rc_t ddl_executor::changed_data_capture_impl(
   TXN::xid_context *xc = t->GetXIDContext();
   uint64_t begin_csn = xc->begin;
   uint64_t end_csn = xc->end;
-  uint64_t block_sz = sizeof(dlog::log_block),
-           logrec_sz = sizeof(dlog::log_record), tuple_sc = sizeof(dbtuple);
-  FID old_fid = old_td->GetTupleFid();
+  uint64_t block_sz = sizeof(dlog::log_block);
   for (uint32_t i = begin_log; i <= end_log; i++) {
     dlog::tls_log *tlog = dlog::tlogs[i];
     uint64_t csn = volatile_read(pcommit::_tls_durable_csn[i]);
@@ -355,16 +370,18 @@ rc_t ddl_executor::changed_data_capture_impl(
       bool stop_log_scan = false;
       uint64_t offset_in_seg = volatile_read(flags._tls_durable_lsn[i]);
       uint64_t offset_increment = 0;
-      uint64_t last_csn = 0;
       int insert_total = 0, update_total = 0;
       int insert_fail = 0, update_fail = 0;
       for (std::vector<dlog::segment>::reverse_iterator seg =
                segments->rbegin();
            seg != segments->rend(); seg++) {
         uint64_t data_sz = seg->size;
-        char *data_buf = (char *)RCU::rcu_alloc(data_sz - offset_in_seg);
-        size_t m = os_pread(seg->fd, (char *)data_buf, data_sz - offset_in_seg,
-                            offset_in_seg);
+        char *data_buf = nullptr;
+        if (data_sz > offset_in_seg) {
+          data_buf = (char *)RCU::rcu_alloc(data_sz - offset_in_seg);
+          size_t m = os_pread(seg->fd, (char *)data_buf, data_sz - offset_in_seg,
+                              offset_in_seg);
+        }
 
         while (offset_increment < data_sz - offset_in_seg &&
                (flags.cdc_running || flags.cdc_second_phase) &&
@@ -373,7 +390,6 @@ rc_t ddl_executor::changed_data_capture_impl(
               (dlog::log_block *)(data_buf + offset_increment);
           if ((end_csn && begin_csn <= header->csn && header->csn <= end_csn) ||
               (!end_csn && begin_csn <= header->csn)) {
-            last_csn = header->csn;
             uint64_t offset_in_block = 0;
             while (offset_in_block < header->payload_size &&
                    !flags.ddl_failed) {
@@ -386,7 +402,7 @@ rc_t ddl_executor::changed_data_capture_impl(
               FID f = logrec->fid;
               OID o = logrec->oid;
 
-              if (f != old_fid) {
+              if (!old_td_map[f]) {
                 offset_in_block += logrec->rec_size;
                 continue;
               }
@@ -415,14 +431,14 @@ rc_t ddl_executor::changed_data_capture_impl(
                       param->type == COPY_VERIFICATION) {
                     if (!constraints[param->constraint_idx](key, tuple_value,
                                                             arena, param->new_v,
-							    logrec->csn)) {
+							    logrec->begin)) {
                       return rc_t{RC_ABORT_INTERNAL};
                     }
                   }
                   if (param->type == COPY_ONLY ||
                       param->type == COPY_VERIFICATION) {
                     varstr *new_value = reformats[param->reformat_idx](
-                        key, tuple_value, arena, param->new_v, f, o, t);
+                        key, tuple_value, arena, param->new_v, f, o, t, logrec->begin, true);
 
                     insert_total++;
                     if (!new_value) {
@@ -449,14 +465,14 @@ rc_t ddl_executor::changed_data_capture_impl(
                       param->type == COPY_VERIFICATION) {
                     if (!constraints[param->constraint_idx](key, tuple_value,
                                                             arena, param->new_v,
-							    logrec->csn)) {
+							    logrec->begin)) {
                       return rc_t{RC_ABORT_INTERNAL};
                     }
                   }
                   if (param->type == COPY_ONLY ||
                       param->type == COPY_VERIFICATION) {
                     varstr *new_value = reformats[param->reformat_idx](
-                        key, tuple_value, arena, param->new_v, f, o, t);
+                        key, tuple_value, arena, param->new_v, f, o, t, logrec->begin, false);
 
                     update_total++;
                     if (!new_value) {
@@ -482,8 +498,10 @@ rc_t ddl_executor::changed_data_capture_impl(
           volatile_write(flags._tls_durable_lsn[i],
                          offset_in_seg + offset_increment);
         }
-        RCU::rcu_free(data_buf);
-        if (stop_log_scan || (flags.cdc_second_phase && insert_total == 0 &&
+        if (data_buf && data_sz > offset_in_seg) {
+          data_bufs[thread_id]->push_back(data_buf);
+        }
+	if (stop_log_scan || (flags.cdc_second_phase && insert_total == 0 &&
                               update_total == 0)) {
           if (!stop_log_scan && !re_check) {
             re_check = true;
@@ -700,6 +718,10 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
   // Set states of schema records to be READY, logging enabled,
   // DMLs can proceed without conditions
   set_schema_state(lb, lb_lsn, segnum, schema_state_type::READY);
+
+#if defined(COPYDDL) && !defined(LAZYDDL)
+  free_data_bufs();
+#endif
 
 #if defined(SIDDL) || defined(BLOCKDDL)
   ddl_write_set_commit(lb, lb_lsn, segnum);
