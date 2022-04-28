@@ -709,7 +709,7 @@ transaction::OverlapCheck(TableDescriptor *new_td, TableDescriptor *old_td,
 #endif
 
 PROMISE(rc_t)
-transaction::SetSchemaState(TableDescriptor *td, OID oid, varstr *value) {
+transaction::SetSchemaState(TableDescriptor *td, OID oid, varstr *value, bool set_csn) {
   auto *tuple_array = td->GetTupleArray();
   FID tuple_fid = td->GetTupleFid();
   tuple_array->ensure_size(oid);
@@ -719,7 +719,11 @@ transaction::SetSchemaState(TableDescriptor *td, OID oid, varstr *value) {
   ASSERT(new_head.asi_type() == 0);
   Object *new_object = (Object *)new_head.offset();
   auto *new_tuple = (dbtuple *)new_object->GetPayload();
-  new_object->SetCSN(xid.to_ptr());
+  if (set_csn) {
+    new_object->SetCSN(new_object->GenerateCsnPtr(xc->end));
+  } else {
+    new_object->SetCSN(xid.to_ptr());
+  }
 
 retry:
   fat_ptr *entry_ptr = tuple_array->get(oid);

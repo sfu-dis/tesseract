@@ -719,7 +719,9 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
   set_schema_state(lb, lb_lsn, segnum, schema_state_type::READY);
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
-  free_data_bufs();
+  if (dt != ddl_type::NO_COPY_VERIFICATION) {
+    free_data_bufs();
+  }
 #endif
 
 #if defined(SIDDL) || defined(BLOCKDDL)
@@ -729,14 +731,17 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
   volatile_write(xc->state, TXN::TXN_CMMTD);
 #ifdef COPYDDL
 #ifdef LAZYDDL
-  // Background migration
   if (!config::enable_lazy_background) {
-    set_schema_state(lb, lb_lsn, segnum, schema_state_type::COMPLETE);
+    set_schema_state(lb, lb_lsn, segnum, schema_state_type::COMPLETE, true);
     log->set_dirty(false);
     log->set_doing_ddl(false);
     return rc_t{RC_TRUE};
   }
-  usleep(config::late_background_start_ms * 1000);
+  // Let DMLs do some work first
+  if (config::late_background_start_ms) {
+    usleep(config::late_background_start_ms * 1000);
+  }
+  // Background migration
   rc_t rc = scan(&(t->string_allocator()));
   if (rc.IsAbort()) {
     log->set_dirty(false);
@@ -842,13 +847,13 @@ rc_t ddl_executor::commit_op(dlog::log_block *lb, uint64_t *lb_lsn,
 #endif
   // Set states of schema records to be COMPLETE, logging enabled,
   // other DDLs can proceed without conditions
-  set_schema_state(lb, lb_lsn, segnum, schema_state_type::COMPLETE);
+  set_schema_state(lb, lb_lsn, segnum, schema_state_type::COMPLETE, true);
   log->set_dirty(false);
   log->set_doing_ddl(false);
   return rc_t{RC_TRUE};
 }
 
-void ddl_executor::set_schema_state(dlog::log_block *lb, uint64_t *lb_lsn, uint64_t *segnum, schema_state_type state) {
+void ddl_executor::set_schema_state(dlog::log_block *lb, uint64_t *lb_lsn, uint64_t *segnum, schema_state_type state, bool set_csn) {
   TXN::xid_context *xc = t->GetXIDContext();
   dlog::tls_log *log = t->get_log();
   write_set_t &write_set = t->get_write_set();
@@ -872,7 +877,7 @@ void ddl_executor::set_schema_state(dlog::log_block *lb, uint64_t *lb_lsn, uint6
       t->string_allocator().reset();
       varstr *new_value = t->string_allocator().next(Size(new_schema));
 
-      rc_t rc = t->SetSchemaState(schema_td, w.oid, &Encode(*new_value, new_schema));
+      rc_t rc = t->SetSchemaState(schema_td, w.oid, &Encode(*new_value, new_schema), set_csn);
       ALWAYS_ASSERT(rc._val == RC_TRUE);
 
       object = w.get_object();
@@ -916,9 +921,11 @@ void ddl_executor::set_schema_state(dlog::log_block *lb, uint64_t *lb_lsn, uint6
     }
 
     // Set CSN
-    fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
-    object->SetCSN(csn_ptr);
-    ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
+    if (!set_csn) {
+      fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
+      object->SetCSN(csn_ptr);
+      ASSERT(tuple->GetObject()->GetCSN().asi_type() == fat_ptr::ASI_CSN);
+    }
   }
 }
 

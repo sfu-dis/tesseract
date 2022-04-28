@@ -304,7 +304,7 @@ class transaction {
 
   // Set DDL schema state
   PROMISE(rc_t)
-  SetSchemaState(TableDescriptor *td, OID oid, varstr *value);
+  SetSchemaState(TableDescriptor *td, OID oid, varstr *value, bool set_csn);
 
   PROMISE(rc_t)
   Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v,

@@ -240,11 +240,14 @@ class ddl_executor {
   inline void set_transaction(transaction *_t) { t = _t; }
 
   inline void free_data_bufs() {
+    RCU::rcu_enter();
     for (auto &w : data_bufs) {
       for (auto &d : *w) {
         RCU::rcu_free(d);
       }
+      delete w;
     }
+    RCU::rcu_exit();
     data_bufs.clear();
   }
 
@@ -260,7 +263,7 @@ class ddl_executor {
   rc_t commit_op(dlog::log_block *lb, uint64_t *lb_lsn, uint64_t *segnum);
 
   // Set schema records' states
-  void set_schema_state(dlog::log_block *lb, uint64_t *lb_lsn, uint64_t *segnum, schema_state_type state);
+  void set_schema_state(dlog::log_block *lb, uint64_t *lb_lsn, uint64_t *segnum, schema_state_type state, bool set_csn = false);
 
 #if defined(COPYDDL) && !defined(LAZYDDL)
   // CDC
