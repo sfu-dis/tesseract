@@ -1069,6 +1069,7 @@ rc_t tpcc_worker::table_join(ermia::transaction *txn, ermia::ddl::ddl_executor *
 #endif
   }
 #elif defined(BLOCKDDL)
+  schema.reformat_idx = scan_reformat_idx;
   schema_kv::value new_schema_value;
   schema.record_to_value(new_schema_value);
 

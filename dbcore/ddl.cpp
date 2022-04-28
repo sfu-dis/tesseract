@@ -372,8 +372,7 @@ rc_t ddl_executor::changed_data_capture_impl(
       uint64_t offset_increment = 0;
       int insert_total = 0, update_total = 0;
       int insert_fail = 0, update_fail = 0;
-      for (std::vector<dlog::segment>::reverse_iterator seg =
-               segments->rbegin();
+      for (std::vector<dlog::segment>::reverse_iterator seg = segments->rbegin();
            seg != segments->rend(); seg++) {
         uint64_t data_sz = seg->size;
         char *data_buf = nullptr;
