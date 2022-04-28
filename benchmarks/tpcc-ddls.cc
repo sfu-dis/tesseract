@@ -522,8 +522,26 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
   oorder_schema.value_to_record(old_oorder_schema_value);
   oorder_schema.ddl_type = get_example_ddl_type(ddl_example);
 
+  oorder_schema.old_v = oorder_schema.v;
+  uint64_t schema_version = oorder_schema.old_v + 1;
+  DLOG(INFO) << "Change to a new schema, version: " << schema_version;
+  oorder_schema.v = schema_version;
+  oorder_schema.old_td = oorder_schema.td;
+  oorder_schema.show_index = true;
+
   ermia::FID old_oorder_fid = oorder_schema.td->GetTupleFid();
   ermia::FID old_order_line_fid = order_line_schema.td->GetTupleFid();
+
+ermia::oid_array *new_td_array = nullptr;
+#ifdef COPYDDL
+  char table_name[20];
+  if (oorder_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
+    snprintf(table_name, 20, "oorder_ddl_%lu", schema_version);
+
+    db->CreateTable(table_name, false);
+    new_td_array = ermia::Catalog::GetTable(table_name)->GetTupleArray();
+  }
+#endif
 
   auto precompute_aggregate_2 = [=](ermia::varstr *key, ermia::varstr &value,
                                     ermia::str_arena *arena,
@@ -553,31 +571,42 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
       if (it != key_sum_map.end() && insert) {
         v_oo_pa.o_total_amount = it->second;
       } else {
-        credit_check_order_line_scan_callback c_ol(schema_version - 1);
-        const order_line::key k_ol_0(k_oo->o_w_id, k_oo->o_d_id, k_oo->o_id, 0);
-        const order_line::key k_ol_1(k_oo->o_w_id, k_oo->o_d_id, k_oo->o_id,
-                                     std::numeric_limits<int32_t>::max());
+        ermia::dbtuple *tuple = nullptr;
+        ermia::fat_ptr *entry_ptr = new_td_array->get(oid);
+        ermia::fat_ptr expected = *entry_ptr;
+        ermia::Object *obj = (ermia::Object *)expected.offset();
+        if (obj && ermia::CSN::from_ptr(obj->GetCSN()).offset() < begin) {
+          tuple = obj->GetPinnedTuple();
+          oorder_precompute_aggregate::value v_oo_pa_temp;
+          const oorder_precompute_aggregate::value *v_oo_pa_1 = Decode((const char *)tuple->get_value_start(), v_oo_pa_temp);
+          v_oo_pa.o_total_amount = v_oo_pa_1->o_total_amount;
+	} else {
+          credit_check_order_line_scan_callback c_ol(schema_version - 1);
+          const order_line::key k_ol_0(k_oo->o_w_id, k_oo->o_d_id, k_oo->o_id, 0);
+          const order_line::key k_ol_1(k_oo->o_w_id, k_oo->o_d_id, k_oo->o_id,
+                                       std::numeric_limits<int32_t>::max());
 
-        ermia::varstr *k_ol_0_str = arena->next(Size(k_ol_0));
-        ermia::varstr *k_ol_1_str = arena->next(Size(k_ol_1));
+          ermia::varstr *k_ol_0_str = arena->next(Size(k_ol_0));
+          ermia::varstr *k_ol_1_str = arena->next(Size(k_ol_1));
 
-        thread_local ermia::transaction t_1(ermia::transaction::TXN_FLAG_DDL);
-        thread_local ermia::TXN::xid_context xc_1;
-        xc_1.begin_epoch = old_xc->begin_epoch;
-        xc_1.owner = old_xc->owner;
-        xc_1.begin = begin;
-        xc_1.end = old_xc->end;
-        xc_1.xct = txn;
-        xc_1.state = old_xc->state;
-        t_1.SetXIDContext(&xc_1);
-        rc_t rc = tbl_order_line(1)->Scan(&t_1, Encode(*k_ol_0_str, k_ol_0),
-                                          &Encode(*k_ol_1_str, k_ol_1), c_ol);
+          thread_local ermia::transaction t_1(ermia::transaction::TXN_FLAG_DDL);
+          thread_local ermia::TXN::xid_context xc_1;
+          xc_1.begin_epoch = old_xc->begin_epoch;
+          xc_1.owner = old_xc->owner;
+          xc_1.begin = begin;
+          xc_1.end = old_xc->end;
+          xc_1.xct = txn;
+          xc_1.state = old_xc->state;
+          t_1.SetXIDContext(&xc_1);
+          rc_t rc = tbl_order_line(1)->Scan(&t_1, Encode(*k_ol_0_str, k_ol_0),
+                                            &Encode(*k_ol_1_str, k_ol_1), c_ol);
 
-        if (rc.IsAbort()) {
-          return new_value;
+          if (rc.IsAbort()) {
+            return new_value;
+          }
+
+          v_oo_pa.o_total_amount = c_ol.sum;
         }
-
-        v_oo_pa.o_total_amount = c_ol.sum;
       }
 
       const size_t oorder_precompute_aggregate_sz = ::Size(v_oo_pa);
@@ -621,22 +650,10 @@ rc_t tpcc_worker::preaggregation(ermia::transaction *txn,
 
   ddl_exe->set_ddl_type(oorder_schema.ddl_type);
 
-  oorder_schema.old_v = oorder_schema.v;
-  uint64_t schema_version = oorder_schema.old_v + 1;
-  DLOG(INFO) << "Change to a new schema, version: " << schema_version;
-  oorder_schema.v = schema_version;
-  oorder_schema.old_td = oorder_schema.td;
-  oorder_schema.show_index = true;
-
 #ifdef COPYDDL
   oorder_schema.state = ermia::ddl::schema_state_type::NOT_READY;
 
   if (oorder_schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
-    char table_name[20];
-    snprintf(table_name, 20, "oorder_ddl_%lu", schema_version);
-
-    db->CreateTable(table_name, false);
-
     oorder_schema.td = ermia::Catalog::GetTable(table_name);
     oorder_schema.old_index = oorder_schema.index;
 #ifdef LAZYDDL
