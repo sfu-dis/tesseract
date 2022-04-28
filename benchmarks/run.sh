@@ -30,7 +30,7 @@ if [[ "$bench" != "oddl" && "$bench" != "tpce" && "$bench" != "ycsb" && "$bench"
 fi
 
 if [ -z ${logbuf_kb+x} ]; then
-  logbuf_kb=32
+  logbuf_kb=1024
   echo "logbuf_kb is unset, using $logbuf_kb";
 else
   echo "logbuf_kb is set to $logbuf_kb";
