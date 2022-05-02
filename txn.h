@@ -247,7 +247,13 @@ class transaction {
   transaction(uint64_t flags) : flags(flags) {};
   transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx,
               ddl::ddl_executor *ddl_exe);
-  ~transaction() {}
+  ~transaction() {
+#ifdef LAZYDDL
+    if (write_set.size() >= write_set.kMaxEntries) {
+      delete[] write_set._entries;
+    }
+#endif
+  }
 
   void uninitialize();
 
