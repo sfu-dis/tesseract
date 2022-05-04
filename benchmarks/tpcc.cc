@@ -56,34 +56,27 @@ rc_t tpcc_worker::txn_new_order() {
       db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 
+  uint64_t order_line_schema_version = 0;
+  uint64_t oorder_schema_version = 0;
+  uint64_t customer_schema_version = 0;
+  ermia::schema_record *order_line_schema_ptr = nullptr;
+  ermia::schema_record *oorder_schema_ptr = nullptr;
+  ermia::schema_record *customer_schema_ptr = nullptr;
+
+#ifdef DDL
   // Read schema tables first
-  ermia::varstr v1, v2, v3;
-  ermia::OID oid = ermia::INVALID_OID;
-
-  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, v1, &oid);
-
-  oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, oorder_table_index, *oorder_key, v2, &oid);
-
-  oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, customer_table_index, *customer_key, v3, &oid);
-
-  schema_kv::value schema_value_temp_1, schema_value_temp_2,
-      schema_value_temp_3;
-  const schema_kv::value *order_line_schema_value =
-      Decode(v1, schema_value_temp_1);
-  const schema_kv::value *oorder_schema_value = Decode(v2, schema_value_temp_2);
-  const schema_kv::value *customer_schema_value =
-      Decode(v3, schema_value_temp_3);
-
   ermia::schema_record order_line_schema;
-  order_line_schema.value_to_record(order_line_schema_value);
+  order_line_schema_version = tpcc_read_schema(txn, order_line_table_index, order_line_key, order_line_schema);
+  order_line_schema_ptr = &order_line_schema;
 
   ermia::schema_record oorder_schema;
-  oorder_schema.value_to_record(oorder_schema_value);
+  oorder_schema_version = tpcc_read_schema(txn, oorder_table_index, oorder_key, oorder_schema);
+  oorder_schema_ptr = &oorder_schema;
 
   ermia::schema_record customer_schema;
-  customer_schema.value_to_record(customer_schema_value);
+  customer_schema_version = tpcc_read_schema(txn, customer_table_index, customer_key, customer_schema);
+  customer_schema_ptr = &customer_schema;
+#endif
 
   const customer::key k_c(warehouse_id, districtID, customerID);
   ermia::varstr valptr;
@@ -93,12 +86,12 @@ rc_t tpcc_worker::txn_new_order() {
       (ermia::ConcurrentMasstreeIndex *)customer_schema.index;
 #endif
 
-  if (customer_schema.v == 0) {
+  if (customer_schema_version == 0) {
     customer::value v_c_temp;
 
     rc_t rc = rc_t{RC_INVALID};
     customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
-                                    valptr, nullptr, &customer_schema);
+                                    valptr, nullptr, customer_schema_ptr);
     // TryVerifyRelaxed(rc);
     TryCatch(rc);
 
@@ -111,7 +104,7 @@ rc_t tpcc_worker::txn_new_order() {
 
     rc_t rc = rc_t{RC_INVALID};
     customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
-                                    valptr, nullptr, &customer_schema);
+                                    valptr, nullptr, customer_schema_ptr);
     // TryVerifyRelaxed(rc);
     TryCatch(rc);
 
@@ -211,7 +204,7 @@ rc_t tpcc_worker::txn_new_order() {
         (ermia::ConcurrentMasstreeIndex *)order_line_schema.index;
 #endif
 
-    if (order_line_schema.v == 0) {
+    if (order_line_schema_version == 0) {
       const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id,
                                  ol_number);
       order_line::value v_ol;
@@ -226,7 +219,7 @@ rc_t tpcc_worker::txn_new_order() {
       const size_t order_line_sz = Size(v_ol);
       TryCatch(order_line_table_index->InsertRecord(
           txn, Encode(str(Size(k_ol)), k_ol), Encode(str(order_line_sz), v_ol),
-          nullptr, &order_line_schema));
+          nullptr, order_line_schema_ptr));
     } else {
       if (ddl_example == 0) {
         const order_line_1::key k_ol_1(warehouse_id, districtID, k_no.no_o_id,
@@ -245,7 +238,7 @@ rc_t tpcc_worker::txn_new_order() {
         const size_t order_line_sz = Size(v_ol_1);
         TryCatch(order_line_table_index->InsertRecord(
             txn, Encode(str(Size(k_ol_1)), k_ol_1),
-            Encode(str(order_line_sz), v_ol_1), nullptr, &order_line_schema));
+            Encode(str(order_line_sz), v_ol_1), nullptr, order_line_schema_ptr));
       } else if (ddl_example == 4) {
         const order_line_stock::key k_ol_stock(warehouse_id, districtID,
                                                k_no.no_o_id, ol_number);
@@ -267,7 +260,7 @@ rc_t tpcc_worker::txn_new_order() {
         TryCatch(order_line_table_index->InsertRecord(
             txn, Encode(str(Size(k_ol_stock)), k_ol_stock),
             Encode(str(order_line_sz), v_ol_stock), nullptr,
-            &order_line_schema));
+            order_line_schema_ptr));
       } else if (ddl_example == 9) {
         const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id,
                                    ol_number);
@@ -283,7 +276,7 @@ rc_t tpcc_worker::txn_new_order() {
         const size_t order_line_sz = Size(v_ol);
         TryCatch(order_line_table_index->InsertRecord(
             txn, Encode(str(Size(k_ol)), k_ol), Encode(str(order_line_sz), v_ol),
-            nullptr, &order_line_schema));
+            nullptr, order_line_schema_ptr));
       }
     }
   }
@@ -294,7 +287,7 @@ rc_t tpcc_worker::txn_new_order() {
 #endif
 
   const oorder::key k_oo(warehouse_id, districtID, k_no.no_o_id);
-  if (oorder_schema.v == 0) {
+  if (oorder_schema_version == 0) {
     oorder::value v_oo;
     v_oo.o_c_id = int32_t(customerID);
     v_oo.o_carrier_id = 0;  // seems to be ignored
@@ -306,7 +299,7 @@ rc_t tpcc_worker::txn_new_order() {
     ermia::OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
     TryCatch(oorder_table_index->InsertRecord(
         txn, Encode(str(Size(k_oo)), k_oo), Encode(str(oorder_sz), v_oo),
-        &v_oo_oid, &oorder_schema));
+        &v_oo_oid, oorder_schema_ptr));
 
     const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID,
                                         k_no.no_o_id);
@@ -326,7 +319,7 @@ rc_t tpcc_worker::txn_new_order() {
     ermia::OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
     TryCatch(oorder_table_index->InsertRecord(
         txn, Encode(str(Size(k_oo)), k_oo), Encode(str(oorder_sz), v_oo),
-        &v_oo_oid, &oorder_schema));
+        &v_oo_oid, oorder_schema_ptr));
 
     const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID,
                                         k_no.no_o_id);
@@ -372,26 +365,21 @@ rc_t tpcc_worker::txn_payment() {
       db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 
+  uint64_t order_line_schema_version = 0;
+  uint64_t customer_schema_version = 0;
+  ermia::schema_record *order_line_schema_ptr = nullptr;
+  ermia::schema_record *customer_schema_ptr = nullptr;
+
+#ifdef DDL
   // Read schema tables first
-  ermia::varstr v1, v2;
-  ermia::OID oid = ermia::INVALID_OID;
-
-  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, v1, &oid);
-
-  oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, customer_table_index, *customer_key, v2, &oid);
-
-  schema_kv::value schema_value_temp_1, schema_value_temp_2;
-  const schema_kv::value *order_line_schema_value =
-      Decode(v1, schema_value_temp_1);
-  const schema_kv::value *customer_schema_value =
-      Decode(v2, schema_value_temp_2);
-
   ermia::schema_record order_line_schema;
-  order_line_schema.value_to_record(order_line_schema_value);
+  order_line_schema_version = tpcc_read_schema(txn, order_line_table_index, order_line_key, order_line_schema);
+  order_line_schema_ptr = &order_line_schema;
 
   ermia::schema_record customer_schema;
-  customer_schema.value_to_record(customer_schema_value);
+  customer_schema_version = tpcc_read_schema(txn, customer_table_index, customer_key, customer_schema);
+  customer_schema_ptr = &customer_schema;
+#endif
 
 #ifdef COPYDDL
   ermia::ConcurrentMasstreeIndex *customer_table_index =
@@ -490,7 +478,7 @@ rc_t tpcc_worker::txn_payment() {
     } else {
       TryCatch(customer_table_secondary_index->Scan(
           txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-          &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c, &customer_schema));
+          &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c, customer_schema_ptr));
 
       if (c.size() <= 0) {
         TryCatch(rc_t{RC_ABORT_USER});
@@ -502,7 +490,7 @@ rc_t tpcc_worker::txn_payment() {
     int index = c.size() / 2;
     if (c.size() % 2 == 0) index--;
 
-    if (customer_schema.v == 0) {
+    if (customer_schema_version == 0) {
       Decode(*c.values[index].second, v_c);
       k_c.c_id = v_c.c_id;
     } else {
@@ -519,10 +507,10 @@ rc_t tpcc_worker::txn_payment() {
     k_c.c_id = customerID;
     rc = rc_t{RC_INVALID};
     customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
-                                    valptr, nullptr, &customer_schema);
+                                    valptr, nullptr, customer_schema_ptr);
     // TryVerifyRelaxed(rc);
     TryCatch(rc);
-    if (customer_schema.v == 0) {
+    if (customer_schema_version == 0) {
       Decode(valptr, v_c);
     } else {
       Decode(valptr, v_c_private);
@@ -531,7 +519,7 @@ rc_t tpcc_worker::txn_payment() {
 #ifndef NDEBUG
   // checker::SanityCheckCustomer(&k_c, &v_c);
 #endif
-  if (customer_schema.v == 0) {
+  if (customer_schema_version == 0) {
     customer::value v_c_new(v_c);
 
     v_c_new.c_balance -= paymentAmount;
@@ -549,7 +537,7 @@ rc_t tpcc_worker::txn_payment() {
 
     TryCatch(customer_table_index->UpdateRecord(
         txn, Encode(str(Size(k_c)), k_c), Encode(str(Size(v_c_new)), v_c_new),
-        &customer_schema));
+        customer_schema_ptr));
   } else {
     customer_private::value v_c_new(v_c_private);
 
@@ -568,7 +556,7 @@ rc_t tpcc_worker::txn_payment() {
 
     TryCatch(customer_table_index->UpdateRecord(
         txn, Encode(str(Size(k_c)), k_c), Encode(str(Size(v_c_new)), v_c_new),
-        &customer_schema));
+        customer_schema_ptr));
   }
 
   const history::key k_h(k_c.c_d_id, k_c.c_w_id, k_c.c_id, districtID,
@@ -616,34 +604,27 @@ rc_t tpcc_worker::txn_delivery() {
       db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 
+  uint64_t order_line_schema_version = 0;
+  uint64_t oorder_schema_version = 0;
+  uint64_t customer_schema_version = 0;
+  ermia::schema_record *order_line_schema_ptr = nullptr;
+  ermia::schema_record *oorder_schema_ptr = nullptr;
+  ermia::schema_record *customer_schema_ptr = nullptr;
+
+#ifdef DDL
   // Read schema tables first
-  ermia::varstr v1, v2, v3;
-  ermia::OID oid = ermia::INVALID_OID;
-
-  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, v1, &oid);
-
-  oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, oorder_table_index, *oorder_key, v2, &oid);
-
-  oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, customer_table_index, *customer_key, v3, &oid);
-
-  schema_kv::value schema_value_temp_1, schema_value_temp_2,
-      schema_value_temp_3;
-  const schema_kv::value *order_line_schema_value =
-      Decode(v1, schema_value_temp_1);
-  const schema_kv::value *oorder_schema_value = Decode(v2, schema_value_temp_2);
-  const schema_kv::value *customer_schema_value =
-      Decode(v3, schema_value_temp_3);
-
   ermia::schema_record order_line_schema;
-  order_line_schema.value_to_record(order_line_schema_value);
+  order_line_schema_version = tpcc_read_schema(txn, order_line_table_index, order_line_key, order_line_schema);
+  order_line_schema_ptr = &order_line_schema;
 
   ermia::schema_record oorder_schema;
-  oorder_schema.value_to_record(oorder_schema_value);
+  oorder_schema_version = tpcc_read_schema(txn, oorder_table_index, oorder_key, oorder_schema);
+  oorder_schema_ptr = &oorder_schema;
 
   ermia::schema_record customer_schema;
-  customer_schema.value_to_record(customer_schema_value);
+  customer_schema_version = tpcc_read_schema(txn, customer_table_index, customer_key, customer_schema);
+  customer_schema_ptr = &customer_schema;
+#endif
 
 #ifdef COPYDDL
   ermia::ConcurrentMasstreeIndex *oorder_table_index =
@@ -679,9 +660,9 @@ rc_t tpcc_worker::txn_delivery() {
     const oorder_precompute_aggregate::value *v_oo_pa = nullptr;
 
     rc_t rc = rc_t{RC_INVALID};
-    if (oorder_schema.v == 0) {
+    if (oorder_schema_version == 0) {
       oorder_table_index->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo),
-                                    valptr, nullptr, &oorder_schema);
+                                    valptr, nullptr, oorder_schema_ptr);
       TryCatchCondAbort(rc);
       v_oo = Decode(valptr, v_oo_temp);
 #ifndef NDEBUG
@@ -689,7 +670,7 @@ rc_t tpcc_worker::txn_delivery() {
 #endif
     } else {
       oorder_table_index->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo),
-                                    valptr, nullptr, &oorder_schema);
+                                    valptr, nullptr, oorder_schema_ptr);
       TryCatchCondAbort(rc);
       v_oo_pa = Decode(valptr, v_oo_pa_temp);
     }
@@ -708,9 +689,9 @@ rc_t tpcc_worker::txn_delivery() {
     // XXX(stephentu): mutable scans would help here
     TryCatch(order_line_table_index->Scan(
         txn, Encode(str(Size(k_oo_0)), k_oo_0),
-        &Encode(str(Size(k_oo_1)), k_oo_1), c, &order_line_schema));
+        &Encode(str(Size(k_oo_1)), k_oo_1), c, order_line_schema_ptr));
 
-    if (order_line_schema.v != 0) {
+    if (order_line_schema_version != 0) {
       if (c.size() == 0) {
         TryCatch({RC_ABORT_USER});
       }
@@ -718,7 +699,7 @@ rc_t tpcc_worker::txn_delivery() {
 
     float sum = 0.0;
     for (size_t i = 0; i < c.size(); i++) {
-      if (order_line_schema.v == 0) {
+      if (order_line_schema_version == 0) {
         order_line::value v_ol_temp;
         const order_line::value *v_ol = Decode(*c.values[i].second, v_ol_temp);
 
@@ -735,7 +716,7 @@ rc_t tpcc_worker::txn_delivery() {
 
         TryCatch(order_line_table_index->UpdateRecord(
             txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new),
-            &order_line_schema));
+            order_line_schema_ptr));
       } else {
         if (ddl_example == 0) {
           order_line_1::value v_ol_temp;
@@ -756,7 +737,7 @@ rc_t tpcc_worker::txn_delivery() {
 
           TryCatch(order_line_table_index->UpdateRecord(
               txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new),
-              &order_line_schema));
+              order_line_schema_ptr));
         } else if (ddl_example == 4) {
           order_line_stock::value v_ol_s_temp;
           const order_line_stock::value *v_ol_s =
@@ -769,7 +750,7 @@ rc_t tpcc_worker::txn_delivery() {
 
           TryCatch(order_line_table_index->UpdateRecord(
               txn, *c.values[i].first,
-              Encode(str(Size(v_ol_s_new)), v_ol_s_new), &order_line_schema));
+              Encode(str(Size(v_ol_s_new)), v_ol_s_new), order_line_schema_ptr));
         } else if (ddl_example == 9) {
 	  order_line::value v_ol_temp;
           const order_line::value *v_ol = Decode(*c.values[i].second, v_ol_temp);
@@ -781,7 +762,7 @@ rc_t tpcc_worker::txn_delivery() {
 
           TryCatch(order_line_table_index->UpdateRecord(
               txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new),
-              &order_line_schema));
+              order_line_schema_ptr));
 	}
       }
     }
@@ -791,23 +772,23 @@ rc_t tpcc_worker::txn_delivery() {
                  ->RemoveRecord(txn, Encode(str(Size(*k_no)), *k_no)));
 
     // update oorder
-    if (oorder_schema.v == 0) {
+    if (oorder_schema_version == 0) {
       oorder::value v_oo_new(*v_oo);
       v_oo_new.o_carrier_id = o_carrier_id;
       TryCatch(oorder_table_index->UpdateRecord(
           txn, Encode(str(Size(k_oo)), k_oo),
-          Encode(str(Size(v_oo_new)), v_oo_new), &oorder_schema));
+          Encode(str(Size(v_oo_new)), v_oo_new), oorder_schema_ptr));
     } else {
       oorder_precompute_aggregate::value v_oo_pa_new(*v_oo_pa);
       v_oo_pa_new.o_carrier_id = o_carrier_id;
       TryCatch(oorder_table_index->UpdateRecord(
           txn, Encode(str(Size(k_oo)), k_oo),
-          Encode(str(Size(v_oo_pa_new)), v_oo_pa_new), &oorder_schema));
+          Encode(str(Size(v_oo_pa_new)), v_oo_pa_new), oorder_schema_ptr));
     }
 
     uint c_id;
 
-    if (oorder_schema.v == 0) {
+    if (oorder_schema_version == 0) {
       c_id = v_oo->o_c_id;
     } else {
       c_id = v_oo_pa->o_c_id;
@@ -818,12 +799,12 @@ rc_t tpcc_worker::txn_delivery() {
     // update customer
     const customer::key k_c(warehouse_id, d, c_id);
 
-    if (customer_schema.v == 0) {
+    if (customer_schema_version == 0) {
       customer::value v_c_temp;
 
       rc = rc_t{RC_INVALID};
       customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
-                                      valptr, nullptr, &customer_schema);
+                                      valptr, nullptr, customer_schema_ptr);
       // TryVerifyRelaxed(rc);
       TryCatch(rc);
 
@@ -832,13 +813,13 @@ rc_t tpcc_worker::txn_delivery() {
       v_c_new.c_balance += ol_total;
       TryCatch(customer_table_index->UpdateRecord(
           txn, Encode(str(Size(k_c)), k_c), Encode(str(Size(v_c_new)), v_c_new),
-          &customer_schema));
+          customer_schema_ptr));
     } else {
       customer_private::value v_c_temp;
 
       rc = rc_t{RC_INVALID};
       customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
-                                      valptr, nullptr, &customer_schema);
+                                      valptr, nullptr, customer_schema_ptr);
       // TryVerifyRelaxed(rc);
       TryCatch(rc);
 
@@ -847,7 +828,7 @@ rc_t tpcc_worker::txn_delivery() {
       v_c_new.c_balance += ol_total;
       TryCatch(customer_table_index->UpdateRecord(
           txn, Encode(str(Size(k_c)), k_c), Encode(str(Size(v_c_new)), v_c_new),
-          &customer_schema));
+          customer_schema_ptr));
     }
   }
   TryCatch(db->Commit(txn));
@@ -876,34 +857,27 @@ rc_t tpcc_worker::txn_order_status() {
   // NB: since txn_order_status() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
 
+  uint64_t order_line_schema_version = 0;
+  uint64_t oorder_schema_version = 0;
+  uint64_t customer_schema_version = 0;
+  ermia::schema_record *order_line_schema_ptr = nullptr;
+  ermia::schema_record *oorder_schema_ptr = nullptr;
+  ermia::schema_record *customer_schema_ptr = nullptr;
+
+#ifdef DDL
   // Read schema tables first
-  ermia::varstr v1, v2, v3;
-  ermia::OID oid = ermia::INVALID_OID;
-
-  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, v1, &oid);
-
-  oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, oorder_table_index, *oorder_key, v2, &oid);
-
-  oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, customer_table_index, *customer_key, v3, &oid);
-
-  schema_kv::value schema_value_temp_1, schema_value_temp_2,
-      schema_value_temp_3;
-  const schema_kv::value *order_line_schema_value =
-      Decode(v1, schema_value_temp_1);
-  const schema_kv::value *oorder_schema_value = Decode(v2, schema_value_temp_2);
-  const schema_kv::value *customer_schema_value =
-      Decode(v3, schema_value_temp_3);
-
   ermia::schema_record order_line_schema;
-  order_line_schema.value_to_record(order_line_schema_value);
+  order_line_schema_version = tpcc_read_schema(txn, order_line_table_index, order_line_key, order_line_schema);
+  order_line_schema_ptr = &order_line_schema;
 
   ermia::schema_record oorder_schema;
-  oorder_schema.value_to_record(oorder_schema_value);
+  oorder_schema_version = tpcc_read_schema(txn, oorder_table_index, oorder_key, oorder_schema);
+  oorder_schema_ptr = &oorder_schema;
 
   ermia::schema_record customer_schema;
-  customer_schema.value_to_record(customer_schema_value);
+  customer_schema_version = tpcc_read_schema(txn, customer_table_index, customer_key, customer_schema);
+  customer_schema_ptr = &customer_schema;
+#endif
 
 #ifdef COPYDDL
   ermia::ConcurrentMasstreeIndex *customer_table_index =
@@ -941,7 +915,7 @@ rc_t tpcc_worker::txn_order_status() {
         s_arena.get(), true);  // probably a safe bet for now
     TryCatch(customer_table_secondary_index->Scan(
         txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-        &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c, &customer_schema));
+        &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c, customer_schema_ptr));
 
     if (c.size() <= 0) {
       TryCatch(rc_t{RC_ABORT_USER});
@@ -952,7 +926,7 @@ rc_t tpcc_worker::txn_order_status() {
     int index = c.size() / 2;
     if (c.size() % 2 == 0) index--;
 
-    if (customer_schema.v == 0) {
+    if (customer_schema_version == 0) {
       customer::value v_c;
       Decode(*c.values[index].second, v_c);
       k_c.c_id = v_c.c_id;
@@ -972,11 +946,11 @@ rc_t tpcc_worker::txn_order_status() {
 
     rc_t rc = rc_t{RC_INVALID};
     customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c),
-                                    valptr, nullptr, &customer_schema);
+                                    valptr, nullptr, customer_schema_ptr);
     // TryVerifyRelaxed(rc);
     TryCatch(rc);
 
-    if (customer_schema.v == 0) {
+    if (customer_schema_version == 0) {
       customer::value v_c;
       Decode(valptr, v_c);
     } else {
@@ -1006,11 +980,11 @@ rc_t tpcc_worker::txn_order_status() {
     const oorder_c_id_idx::key k_oo_idx_1(warehouse_id, districtID, k_c.c_id,
                                           std::numeric_limits<int32_t>::max());
     {
-      if (oorder_schema.v == 0) {
+      if (oorder_schema_version == 0) {
         TryCatch(tbl_oorder_c_id_idx(warehouse_id)
                      ->Scan(txn, Encode(str(Size(k_oo_idx_0)), k_oo_idx_0),
                             &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1),
-                            c_oorder, &oorder_schema));
+                            c_oorder, oorder_schema_ptr));
       } else {
 #ifdef COPYDDL
         ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index =
@@ -1020,7 +994,7 @@ rc_t tpcc_worker::txn_order_status() {
         TryCatch(oorder_table_secondary_index->Scan(
             txn, Encode(str(Size(k_oo_idx_0)), k_oo_idx_0),
             &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), c_oorder,
-            &oorder_schema));
+            oorder_schema_ptr));
 
         if (!c_oorder.size()) {
           TryCatch(rc_t{RC_ABORT_USER});
@@ -1032,11 +1006,11 @@ rc_t tpcc_worker::txn_order_status() {
     latest_key_callback c_oorder(*newest_o_c_id, 1);
     const oorder_c_id_idx::key k_oo_idx_hi(warehouse_id, districtID, k_c.c_id,
                                            std::numeric_limits<int32_t>::max());
-    if (oorder_schema.v == 0) {
+    if (oorder_schema_version == 0) {
       TryCatch(tbl_oorder_c_id_idx(warehouse_id)
                    ->ReverseScan(txn,
                                  Encode(str(Size(k_oo_idx_hi)), k_oo_idx_hi),
-                                 nullptr, c_oorder, &oorder_schema));
+                                 nullptr, c_oorder, oorder_schema_ptr));
     } else {
 #ifdef COPYDDL
       ermia::ConcurrentMasstreeIndex *oorder_table_secondary_index =
@@ -1045,7 +1019,7 @@ rc_t tpcc_worker::txn_order_status() {
 #endif
       TryCatch(oorder_table_secondary_index->ReverseScan(
           txn, Encode(str(Size(k_oo_idx_hi)), k_oo_idx_hi), nullptr, c_oorder,
-          &oorder_schema));
+          oorder_schema_ptr));
 
       if (c_oorder.size() != 1) {
         TryCatch(rc_t{RC_ABORT_USER});
@@ -1058,7 +1032,7 @@ rc_t tpcc_worker::txn_order_status() {
   const oorder_c_id_idx::key *k_oo_idx = Decode(*newest_o_c_id, k_oo_idx_temp);
   const uint o_id = k_oo_idx->o_o_id;
 
-  order_line_nop_callback c_order_line(order_line_schema.v);
+  order_line_nop_callback c_order_line(order_line_schema_version);
   const order_line::key k_ol_0(warehouse_id, districtID, o_id, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, o_id,
                                std::numeric_limits<int32_t>::max());
@@ -1068,10 +1042,10 @@ rc_t tpcc_worker::txn_order_status() {
       (ermia::ConcurrentMasstreeIndex *)order_line_schema.index;
 #endif
 
-  if (order_line_schema.v == 0) {
+  if (order_line_schema_version == 0) {
     TryCatch(order_line_table_index->Scan(
         txn, Encode(str(Size(k_ol_0)), k_ol_0),
-        &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line, &order_line_schema));
+        &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line, order_line_schema_ptr));
     if (c_order_line.n < 5 || c_order_line.n > 15) {
       TryCatch({RC_ABORT_USER});
     }
@@ -1079,7 +1053,7 @@ rc_t tpcc_worker::txn_order_status() {
   } else {
     TryCatch(order_line_table_index->Scan(
         txn, Encode(str(Size(k_ol_0)), k_ol_0),
-        &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line, &order_line_schema));
+        &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line, order_line_schema_ptr));
 
     if (c_order_line.n < 5 || c_order_line.n > 15) {
       TryCatch({RC_ABORT_USER});
@@ -1113,18 +1087,15 @@ rc_t tpcc_worker::txn_stock_level() {
 #endif
   ermia::scoped_str_arena s_arena(arena);
 
+  uint64_t order_line_schema_version = 0;
+  ermia::schema_record *order_line_schema_ptr = nullptr;
+
+#ifdef DDL
   // Read schema tables first
-  ermia::varstr v1;
-  ermia::OID oid = ermia::INVALID_OID;
-
-  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, v1, &oid);
-
-  schema_kv::value schema_value_temp;
-  const schema_kv::value *order_line_schema_value =
-      Decode(v1, schema_value_temp);
-
   ermia::schema_record order_line_schema;
-  order_line_schema.value_to_record(order_line_schema_value);
+  order_line_schema_version = tpcc_read_schema(txn, order_line_table_index, order_line_key, order_line_schema);
+  order_line_schema_ptr = &order_line_schema;
+#endif
 
   // NB: since txn_stock_level() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
@@ -1148,7 +1119,7 @@ rc_t tpcc_worker::txn_stock_level() {
                               : v_d->d_next_o_id;
 
   // manual joins are fun!
-  order_line_scan_callback c(order_line_schema.v, threshold);
+  order_line_scan_callback c(order_line_schema_version, threshold);
   const int32_t lower = cur_next_o_id >= 20 ? (cur_next_o_id - 20) : 0;
   const order_line::key k_ol_0(warehouse_id, districtID, lower, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, cur_next_o_id, 0);
@@ -1160,14 +1131,14 @@ rc_t tpcc_worker::txn_stock_level() {
 
   TryCatch(order_line_table_index->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
                                         &Encode(str(Size(k_ol_1)), k_ol_1), c,
-                                        &order_line_schema));
+                                        order_line_schema_ptr));
 
-  if (order_line_schema.v != 0) {
+  if (order_line_schema_version != 0) {
     if (c.n == 0) {
       TryCatch({RC_ABORT_USER});
     }
   }
-  if (order_line_schema.v != 0 && ddl_example == 4) {
+  if (order_line_schema_version != 0 && ddl_example == 4) {
     goto exit;
   }
   {
@@ -1238,34 +1209,27 @@ rc_t tpcc_worker::txn_credit_check() {
       db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 
+  uint64_t order_line_schema_version = 0;
+  uint64_t oorder_schema_version = 0;
+  uint64_t customer_schema_version = 0;
+  ermia::schema_record *order_line_schema_ptr = nullptr;
+  ermia::schema_record *oorder_schema_ptr = nullptr;
+  ermia::schema_record *customer_schema_ptr = nullptr;
+
+#ifdef DDL
   // Read schema tables first
-  ermia::varstr v1, v2, v3;
-  ermia::OID oid = ermia::INVALID_OID;
-
-  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, v1, &oid);
-
-  oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, oorder_table_index, *oorder_key, v2, &oid);
-
-  oid = ermia::INVALID_OID;
-  ermia::catalog::read_schema(txn, schema_index, customer_table_index, *customer_key, v3, &oid);
-
-  schema_kv::value schema_value_temp_1, schema_value_temp_2,
-      schema_value_temp_3;
-  const schema_kv::value *order_line_schema_value =
-      Decode(v1, schema_value_temp_1);
-  const schema_kv::value *oorder_schema_value = Decode(v2, schema_value_temp_2);
-  const schema_kv::value *customer_schema_value =
-      Decode(v3, schema_value_temp_3);
-
   ermia::schema_record order_line_schema;
-  order_line_schema.value_to_record(order_line_schema_value);
+  order_line_schema_version = tpcc_read_schema(txn, order_line_table_index, order_line_key, order_line_schema);
+  order_line_schema_ptr = &order_line_schema;
 
   ermia::schema_record oorder_schema;
-  oorder_schema.value_to_record(oorder_schema_value);
+  oorder_schema_version = tpcc_read_schema(txn, oorder_table_index, oorder_key, oorder_schema);
+  oorder_schema_ptr = &oorder_schema;
 
   ermia::schema_record customer_schema;
-  customer_schema.value_to_record(customer_schema_value);
+  customer_schema_version = tpcc_read_schema(txn, customer_table_index, customer_key, customer_schema);
+  customer_schema_ptr = &customer_schema;
+#endif
 
 #ifdef COPYDDL
   ermia::ConcurrentMasstreeIndex *customer_table_index =
@@ -1285,7 +1249,7 @@ rc_t tpcc_worker::txn_credit_check() {
 
   rc_t rc = rc_t{RC_INVALID};
   customer_table_index->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr,
-                                  nullptr, &customer_schema);
+                                  nullptr, customer_schema_ptr);
   // TryVerifyRelaxed(rc);
   if (unlikely(rc._val == RC_FALSE)) {
     rc._val = RC_ABORT_USER;
@@ -1296,7 +1260,7 @@ rc_t tpcc_worker::txn_credit_check() {
   const customer::value *v_c = nullptr;
   customer_private::value v_c_private_temp;
   const customer_private::value *v_c_private = nullptr;
-  if (customer_schema.v == 0) {
+  if (customer_schema_version == 0) {
     v_c = Decode(valptr, v_c_temp);
   } else {
     v_c_private = Decode(valptr, v_c_private_temp);
@@ -1328,7 +1292,7 @@ rc_t tpcc_worker::txn_credit_check() {
       (ermia::ConcurrentMasstreeIndex *)oorder_schema.index;
 #endif
 
-  if (oorder_schema.v == 0) {
+  if (oorder_schema_version == 0) {
     for (auto &k : c_no.output) {
       new_order::key k_no_temp;
       const new_order::key *k_no = Decode(*k, k_no_temp);
@@ -1338,7 +1302,7 @@ rc_t tpcc_worker::txn_credit_check() {
       rc = rc_t{RC_INVALID};
       tbl_oorder(warehouse_id)
           ->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo), valptr, nullptr,
-                      &oorder_schema);
+                      oorder_schema_ptr);
       TryCatchCond(rc, continue);
       auto *vv = Decode(valptr, v);
 
@@ -1347,13 +1311,13 @@ rc_t tpcc_worker::txn_credit_check() {
       //		ol_w_id = :w_id
       //		ol_o_id = o_id
       //		ol_number = 1-15
-      credit_check_order_line_scan_callback c_ol(order_line_schema.v);
+      credit_check_order_line_scan_callback c_ol(order_line_schema_version);
       const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
       const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
 
       TryCatch(order_line_table_index->Scan(
           txn, Encode(str(Size(k_ol_0)), k_ol_0),
-          &Encode(str(Size(k_ol_1)), k_ol_1), c_ol, &order_line_schema));
+          &Encode(str(Size(k_ol_1)), k_ol_1), c_ol, order_line_schema_ptr));
 
       /* XXX(tzwang): moved to the callback to avoid storing keys
       ALWAYS_ASSERT(c_ol._v_ol.size());
@@ -1376,7 +1340,7 @@ rc_t tpcc_worker::txn_credit_check() {
       oorder_precompute_aggregate::value v;
       rc = rc_t{RC_INVALID};
       oorder_table_index->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo),
-                                    valptr, nullptr, &oorder_schema);
+                                    valptr, nullptr, oorder_schema_ptr);
       TryCatchCond(rc, continue);
       auto *vv = Decode(valptr, v);
       sum += vv->o_total_amount;
@@ -1384,7 +1348,7 @@ rc_t tpcc_worker::txn_credit_check() {
   }
 
   // c_credit update
-  if (customer_schema.v == 0) {
+  if (customer_schema_version == 0) {
 #ifndef NDEBUG
     checker::SanityCheckCustomer(&k_c, v_c);
 #endif
@@ -1395,7 +1359,7 @@ rc_t tpcc_worker::txn_credit_check() {
       v_c_new.c_credit.assign("GC");
     TryCatch(customer_table_index->UpdateRecord(
         txn, Encode(str(Size(k_c)), k_c), Encode(str(Size(v_c_new)), v_c_new),
-        &customer_schema));
+        customer_schema_ptr));
   } else {
     customer_private::value v_c_new(*v_c_private);
     if (v_c_new.c_balance + sum >= 5000)  // Threshold = 5K
@@ -1404,7 +1368,7 @@ rc_t tpcc_worker::txn_credit_check() {
       v_c_new.c_credit.assign("GC");
     TryCatch(customer_table_index->UpdateRecord(
         txn, Encode(str(Size(k_c)), k_c), Encode(str(Size(v_c_new)), v_c_new),
-        &customer_schema));
+        customer_schema_ptr));
   }
 
   TryCatch(db->Commit(txn));
@@ -1418,18 +1382,15 @@ rc_t tpcc_worker::txn_query2() {
       db->NewTransaction(ermia::transaction::TXN_FLAG_DML, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 
+  uint64_t order_line_schema_version = 0;
+  ermia::schema_record *order_line_schema_ptr = nullptr;
+
+#ifdef DDL
   // Read schema tables first
-  ermia::varstr v1;
-  ermia::OID oid = ermia::INVALID_OID;
-
-  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, v1, &oid);
-
-  schema_kv::value schema_value_temp;
-  const schema_kv::value *order_line_schema_value =
-      Decode(v1, schema_value_temp);
-
   ermia::schema_record order_line_schema;
-  order_line_schema.value_to_record(order_line_schema_value);
+  order_line_schema_version = tpcc_read_schema(txn, order_line_table_index, order_line_key, order_line_schema);
+  order_line_schema_ptr = &order_line_schema;
+#endif
 
   static thread_local tpcc_table_scanner r_scanner(arena);
   r_scanner.clear();

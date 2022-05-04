@@ -1525,6 +1525,20 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
     return static_cast<tpcc_worker *>(w)->txn_ddl(ddl_example);
   }
 
+#ifdef DDL
+  inline uint64_t tpcc_read_schema(ermia::transaction *txn, ermia::ConcurrentMasstreeIndex *table_index,
+                                   ermia::varstr *table_key, ermia::schema_record &out_schema) {
+    ermia::varstr v1;
+    ermia::OID oid = ermia::INVALID_OID;
+    ermia::catalog::read_schema(txn, schema_index, table_index, *table_key, v1, &oid);
+
+    schema_kv::value schema_value_temp;
+    const schema_kv::value *schema_value = Decode(v1, schema_value_temp);
+    out_schema.value_to_record(schema_value);
+    return out_schema.v;
+  }
+#endif
+
   // Specific DDL operations
   rc_t add_column(ermia::transaction *txn, ermia::ddl::ddl_executor *ddl_exe,
                   uint32_t ddl_example);
