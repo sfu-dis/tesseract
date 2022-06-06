@@ -400,8 +400,8 @@ retry:
       uint32_t count_per_tlog = 0;
       enqueue_flush_retry:
         if (!tlog->enqueue_flush() && count_per_tlog++ < 2) {
-	  goto enqueue_flush_retry;
-	}
+          goto enqueue_flush_retry;
+        }
       }
     }
 

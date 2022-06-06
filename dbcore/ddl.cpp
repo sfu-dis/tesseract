@@ -363,7 +363,7 @@ rc_t ddl_executor::changed_data_capture_impl(
     double_check:
     uint32_t count_per_tlog = 0;
     retry_last_flush:
-      if (!tlog->last_flush() && count_per_tlog++ < 5) {
+      if (!tlog->last_flush() && count_per_tlog++ < 2) {
         goto retry_last_flush;
       }
       std::vector<dlog::segment> *segments = tlog->get_segments();
@@ -430,7 +430,7 @@ rc_t ddl_executor::changed_data_capture_impl(
                       param->type == COPY_VERIFICATION) {
                     if (!constraints[param->constraint_idx](key, tuple_value,
                                                             arena, param->new_v,
-							    logrec->begin)) {
+							    logrec->csn)) {
                       return rc_t{RC_ABORT_INTERNAL};
                     }
                   }
@@ -464,7 +464,7 @@ rc_t ddl_executor::changed_data_capture_impl(
                       param->type == COPY_VERIFICATION) {
                     if (!constraints[param->constraint_idx](key, tuple_value,
                                                             arena, param->new_v,
-							    logrec->begin)) {
+							    logrec->csn)) {
                       return rc_t{RC_ABORT_INTERNAL};
                     }
                   }
