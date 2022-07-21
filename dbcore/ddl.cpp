@@ -430,7 +430,7 @@ rc_t ddl_executor::changed_data_capture_impl(
                       param->type == COPY_VERIFICATION) {
                     if (!constraints[param->constraint_idx](key, tuple_value,
                                                             arena, param->new_v,
-							    logrec->csn)) {
+                                                            logrec->csn)) {
                       return rc_t{RC_ABORT_INTERNAL};
                     }
                   }
@@ -464,7 +464,7 @@ rc_t ddl_executor::changed_data_capture_impl(
                       param->type == COPY_VERIFICATION) {
                     if (!constraints[param->constraint_idx](key, tuple_value,
                                                             arena, param->new_v,
-							    logrec->csn)) {
+                                                            logrec->csn)) {
                       return rc_t{RC_ABORT_INTERNAL};
                     }
                   }

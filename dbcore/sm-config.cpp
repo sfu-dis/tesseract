@@ -80,6 +80,7 @@ uint32_t latency_stat_interval_ms = 1000;
 bool enable_lazy_on_conflict_do_nothing = false;
 uint32_t late_background_start_ms = 1000;
 bool enable_large_ddl_begin_timestamp = false;
+bool commit_latency_only = true;
 bool always_load = false;
 bool kStateRunning = false;
 bool iouring_read_log = false;

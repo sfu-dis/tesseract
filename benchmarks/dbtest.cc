@@ -140,6 +140,7 @@ DEFINE_bool(enable_lazy_on_conflict_do_nothing, false,
 DEFINE_uint64(late_background_start_ms, 1000, "When start background migration");
 DEFINE_bool(enable_large_ddl_begin_timestamp, false,
             "Whether enable large ddl begin timestamp");
+DEFINE_bool(commit_latency_only, true, "Whether enable only commit latency");
 
 static std::vector<std::string> split_ws(const std::string &s) {
   std::vector<std::string> r;
@@ -191,6 +192,7 @@ int main(int argc, char **argv) {
   ermia::config::enable_lazy_on_conflict_do_nothing = FLAGS_enable_lazy_on_conflict_do_nothing;
   ermia::config::late_background_start_ms = FLAGS_late_background_start_ms;
   ermia::config::enable_large_ddl_begin_timestamp = FLAGS_enable_large_ddl_begin_timestamp;
+  ermia::config::commit_latency_only = FLAGS_commit_latency_only;
 
   if (ermia::config::physical_workers_only) {
 #ifdef DDL
@@ -400,6 +402,8 @@ int main(int argc, char **argv) {
             << ermia::config::late_background_start_ms << std::endl;
   std::cerr << "  enable_large_ddl_begin_timestamp      : "
             << ermia::config::enable_large_ddl_begin_timestamp << std::endl;
+  std::cerr << "  commit_latency_only                   : "
+            << ermia::config::commit_latency_only << std::endl;
 #endif
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");

@@ -183,6 +183,8 @@ class tls_log {
 
   inline uint32_t get_commits() { return tcommitter.get_commits(); }
 
+  inline uint64_t get_and_reset_max_latency() { return tcommitter.get_and_reset_max_latency(); }
+
   // reset this committer
   inline void reset_committer(bool set_zero) { tcommitter.reset(set_zero); }
 

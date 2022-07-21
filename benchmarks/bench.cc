@@ -73,6 +73,8 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx,
     std::get<0>(counts[workload_idx])++;
     if (!ermia::config::pcommit) {
       latency_numer_us += t.lap();
+    } else if (!ermia::config::commit_latency_only) {
+      tlog->get_committer()->reset_latest_start_time(t.get_start());
     }
     backoff_shifts >>= 1;
   } else {
@@ -373,15 +375,17 @@ void bench_runner::start_measurement() {
       usleep(sleep_time);
     retry:
       uint64_t sec_commits = 0, sec_latency_us = 0;
+      //uint64_t max_latency_us = 0;
       for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-#ifdef COPYDDL
+#ifdef DDL
         if (i == ddl_worker_id) {
           continue;
         }
 #endif
         if (ermia::config::pcommit) {
           sec_latency_us += workers[i]->get_log()->get_latency();
-        } else {
+          //max_latency_us = std::max(max_latency_us, workers[i]->get_log()->get_and_reset_max_latency());
+	} else {
           sec_latency_us += workers[i]->get_latency_numer_us();
         }
 
@@ -400,6 +404,7 @@ void bench_runner::start_measurement() {
         goto retry;
       }
       latency_stat_arr[total++] = avg_latency_ms;
+      //latency_stat_arr[total++] = max_latency_us;
       slept += sleep_time;
     }
   };

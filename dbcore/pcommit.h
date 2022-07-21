@@ -22,19 +22,22 @@ struct commit_queue {
   uint64_t total_latency_us;
   uint32_t length;
   uint32_t commits;
+  uint64_t max_latency;
   mcs_lock lock;
   commit_queue()
       : start(0),
         items(0),
         total_latency_us(0),
         length(config::pcommit_queue_length),
-        commits(0) {
+        commits(0),
+        max_latency(0) {
     queue = new Entry[length];
   }
   ~commit_queue() { delete[] queue; }
   void push_back(uint64_t csn, uint64_t start_time, bool *flush, bool *insert);
   inline uint32_t size() { return items; }
   void extend();
+  void reset_start_time(uint64_t start_time);
 };
 
 class tls_committer {
@@ -88,6 +91,15 @@ class tls_committer {
 
   // Extend commit queue
   inline void extend_queue() { _commit_queue->extend(); }
+
+  // Reset the start time of the latest added one,
+  // only needed when config::commit_latency_only is false
+  inline void reset_latest_start_time(uint64_t start_time) {
+    _commit_queue->reset_start_time(start_time);
+  }
+
+  // Get max latency and reset to 0
+  uint64_t get_and_reset_max_latency();
 };
 
 }  // namespace pcommit

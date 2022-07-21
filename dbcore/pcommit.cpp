@@ -44,6 +44,19 @@ void commit_queue::extend() {
   queue = new_queue;
 }
 
+void commit_queue::reset_start_time(uint64_t start_time) {
+  CRITICAL_SECTION(cs, lock);
+  uint32_t idx = (start + items - 1) % length;
+  volatile_write(queue[idx].start_time, start_time);
+}
+
+uint64_t tls_committer::get_and_reset_max_latency() {
+  CRITICAL_SECTION(cs, _commit_queue->lock);
+  uint64_t max_latency = _commit_queue->max_latency;
+  _commit_queue->max_latency = 0;
+  return max_latency;
+}
+
 void tls_committer::initialize(uint32_t id) {
   this->id = id;
   _commit_queue = new commit_queue();
@@ -91,19 +104,23 @@ void tls_committer::dequeue_committed_xcts() {
   uint32_t size = _commit_queue->size();
   uint32_t dequeue = 0;
   uint64_t total_latency = 0;
+  //uint64_t max_latency = 0;
   for (uint32_t j = 0; j < size; ++j) {
     uint32_t idx = (n + j) % _commit_queue->length;
     auto &entry = _commit_queue->queue[idx];
     if (volatile_read(entry.csn) > upto_csn) {
       break;
     }
-    total_latency += end_time - entry.start_time;
+    uint64_t latency = end_time - entry.start_time;
+    total_latency += latency;
+    //max_latency = std::max(max_latency, latency);
     dequeue++;
   }
   _commit_queue->items -= dequeue;
   _commit_queue->commits += dequeue;
   volatile_write(_commit_queue->start, (n + dequeue) % _commit_queue->length);
   _commit_queue->total_latency_us += total_latency;
+  //_commit_queue->max_latency = std::max(_commit_queue->max_latency, max_latency);
 }
 
 }  // namespace pcommit
