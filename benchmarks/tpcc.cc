@@ -221,7 +221,7 @@ rc_t tpcc_worker::txn_new_order() {
           txn, Encode(str(Size(k_ol)), k_ol), Encode(str(order_line_sz), v_ol),
           nullptr, order_line_schema_ptr));
     } else {
-      if (ddl_example == 0) {
+      if (ddl_example == 0 || ddl_example == 10) {
         const order_line_1::key k_ol_1(warehouse_id, districtID, k_no.no_o_id,
                                        ol_number);
 
@@ -718,7 +718,7 @@ rc_t tpcc_worker::txn_delivery() {
             txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new),
             order_line_schema_ptr));
       } else {
-        if (ddl_example == 0) {
+        if (ddl_example == 0 || ddl_example == 10) {
           order_line_1::value v_ol_temp;
           const order_line_1::value *v_ol =
               Decode(*c.values[i].second, v_ol_temp);
@@ -1646,6 +1646,8 @@ rc_t tpcc_worker::txn_ddl(uint32_t ddl_example) {
     case 9:
       TryCatch(add_constraint(txn, ddl_exe, ddl_example));
       break;
+    case 10:
+      TryCatch(add_column_and_constraint(txn, ddl_exe, ddl_example));
     default:
       break;
   }
@@ -1722,6 +1724,8 @@ static const std::string get_example_name(uint32_t ddl_example) {
       return "DDL_TABLE_JOIN_NO_COPY";
     case 9:
       return "DDL_ADD_CONSTRAINT";
+    case 10:
+      return "DDL_ADD_COLUMN_AND_CONSTRAINT";
     default:
       LOG(FATAL) << "Not supported";
   }

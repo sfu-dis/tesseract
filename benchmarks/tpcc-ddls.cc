@@ -29,6 +29,8 @@ static ermia::ddl::ddl_type get_example_ddl_type(uint32_t ddl_example) {
       return ermia::ddl::NO_COPY_VERIFICATION;
     case 9:
       return ermia::ddl::VERIFICATION_ONLY;
+    case 10:
+      return ermia::ddl::COPY_VERIFICATION;
     default:
       return ermia::ddl::COPY_ONLY;
   }
@@ -1221,3 +1223,126 @@ rc_t tpcc_worker::add_constraint(ermia::transaction *txn, ermia::ddl::ddl_execut
 #endif
   return rc_t{RC_TRUE};
 }
+
+rc_t tpcc_worker::add_column_and_constraint(ermia::transaction *txn, ermia::ddl::ddl_executor *ddl_exe, uint32_t ddl_example) {
+  ermia::TXN::xid_context *old_xc = txn->GetXIDContext();
+  auto column_verification = [=](ermia::varstr *key, ermia::varstr &value,
+                                 ermia::str_arena *arena, uint64_t schema_version,
+                                 uint64_t begin) {
+      order_line::value v_ol_temp;
+      const order_line::value *v_ol = Decode(value, v_ol_temp);
+
+      if (v_ol->ol_amount >= 0) {
+        return true;
+      }
+      return false;
+    };
+
+  ermia::varstr valptr;
+  ermia::OID oid = ermia::INVALID_OID;
+
+  ermia::catalog::read_schema(txn, schema_index, order_line_table_index, *order_line_key, valptr, &oid);
+
+  struct ermia::schema_record schema;
+  schema_kv::value schema_value_temp;
+  const schema_kv::value *old_schema_value = Decode(valptr, schema_value_temp);
+  schema.value_to_record(old_schema_value);
+  schema.ddl_type = get_example_ddl_type(ddl_example);
+
+  ddl_exe->set_ddl_type(schema.ddl_type);
+
+  schema.old_v = schema.v;
+  uint64_t schema_version = schema.old_v + 1;
+  DLOG(INFO) << "Change to a new schema, version: " << schema_version;
+  schema.v = schema_version;
+  schema.old_td = schema.td;
+  schema.show_index = true;
+  schema.constraint_idx = ermia::ddl::constraints.size();
+  ermia::ddl::constraints.push_back(column_verification);
+
+#ifdef COPYDDL
+  schema.state = ermia::ddl::schema_state_type::NOT_READY;
+
+  if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
+    char table_name[20];
+    snprintf(table_name, 20, "order_line_ddl_%lu", schema_version);
+
+    db->CreateTable(table_name, false);
+
+    schema.td = ermia::Catalog::GetTable(table_name);
+    schema.old_index = schema.index;
+#ifdef LAZYDDL
+    schema.old_tds[schema.old_v] = schema.old_td;
+    schema.old_tds_total = schema.v;
+#endif
+
+#if defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    db->CreateMasstreePrimaryIndex(table_name, std::string(table_name));
+#else
+    schema.td->SetPrimaryIndex(schema.old_index);
+#endif
+    schema.index = schema.td->GetPrimaryIndex();
+
+    ddl_exe->set_old_td(schema.old_td);
+    ddl_exe->add_new_td_map(schema.td);
+    ddl_exe->add_old_td_map(schema.old_td);
+  } else {
+    schema.reformats_total = schema.v;
+  }
+
+  schema_kv::value new_schema_value;
+  schema.record_to_value(new_schema_value);
+
+  auto rc = ermia::catalog::write_schema(txn, schema_index, *order_line_key,
+    Encode(str(Size(new_schema_value)), new_schema_value), &oid, ddl_exe);
+  if (rc._val != RC_TRUE) {
+    return rc;
+  }
+
+  ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
+                                  schema.reformat_idx, schema.constraint_idx,
+                                  schema.td, schema.old_td, schema.index,
+                                  schema.state);
+
+  if (schema.ddl_type != ermia::ddl::ddl_type::NO_COPY_VERIFICATION) {
+#ifndef LAZYDDL
+    rc = rc_t{RC_INVALID};
+    rc = ddl_exe->scan(arena);
+    if (rc._val != RC_TRUE) {
+      return rc;
+    }
+#elif defined(LAZYDDL) && !defined(OPTLAZYDDL)
+    if (!ermia::config::enable_lazy_on_conflict_do_nothing) {
+      auto *alloc = ermia::oidmgr->get_allocator(schema.td->GetTupleFid());
+      uint32_t himark = alloc->head.hiwater_mark;
+      himark += himark / 100;
+      uint64_t *bitmap_data = (uint64_t *)malloc(sizeof(uint64_t) * himark);
+      ermia::ddl::bitmaps.push_back(new ermia::ddl::bitmap(schema.td->GetTupleFid(), himark, bitmap_data));
+    }
+#endif
+  }
+#elif defined(BLOCKDDL)
+  schema_kv::value new_schema_value;
+  schema.record_to_value(new_schema_value);
+
+  auto rc = ermia::catalog::write_schema(
+      txn, schema_index, *order_line_key,
+      Encode(str(Size(new_schema_value)), new_schema_value), &oid, ddl_exe);
+
+  ddl_exe->add_ddl_executor_paras(schema.v, schema.old_v, schema.ddl_type,
+                                  schema.reformat_idx, schema.constraint_idx,
+                                  schema.td, schema.td, schema.index,
+                                  ermia::ddl::schema_state_type::READY);
+
+  ddl_exe->set_old_td(schema.td);
+  ddl_exe->add_old_td_map(schema.td);
+  ddl_exe->add_new_td_map(schema.td);
+
+  rc = ddl_exe->scan(arena);
+  if (rc._val != RC_TRUE) {
+    return rc;
+  }
+#endif
+  return rc_t{RC_TRUE};
+};
+
