@@ -637,9 +637,9 @@ void bench_runner::start_measurement() {
               << std::get<3>(c.second) / (double)elapsed_sec
               << " user aborts/s\n";
   }
+#endif
   std::vector<double> latency_stat_vec(latency_stat_arr, latency_stat_arr + latency_stat_arr_size);
   std::cout << "latency stat:\n" << latency_stat_vec << std::endl;
-#endif
   delete[] latency_stat_arr;
   std::cout.flush();
 }

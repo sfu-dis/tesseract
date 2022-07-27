@@ -1369,10 +1369,9 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
       } else if (ddl_example == 4) {
         order_line_stock::value v_ol_s_temp;
         const order_line_stock::value *v_ol_s = Decode(value, v_ol_s_temp);
-        const uint8_t *ptr = (const uint8_t *)value.data();
-        int16_t i16tmp;
-        ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
-        if (i16tmp < int(threshold)) {
+        // If one s_quantity fits, then all records in order_line_stock
+        // with the same ol_i_id fit.
+        if (v_ol_s->s_quantity < int(threshold)) {
           s_i_ids[v_ol_s->ol_i_id] = 1;
         }
       }

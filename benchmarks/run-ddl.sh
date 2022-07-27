@@ -21,6 +21,8 @@ scan_physical_workers_only=1
 client_load_per_core=4500
 latency_stat_interval_ms=100
 enable_lazy_on_conflict_do_nothing=1
+enable_large_ddl_begin_timestamp=0
+no_copy_verification_version_add=1
 ddl_start_time=2
 ddl_example=0
 benchmark_paras=""
@@ -30,6 +32,7 @@ oddlb_workload="D"
 if [ "$flag" == "00" ]; then
   output=ddl-logs/tpcc-add-column-tesseract-copy.log
   exe=./corobase_DDL_COPY
+  enable_large_ddl_begin_timestamp=1
 elif [ "$flag" == "01" ]; then
   output=ddl-logs/tpcc-add-column-tesseract-no-copy.log
   exe=./corobase_DDL_COPY
@@ -49,12 +52,20 @@ elif [ "$flag" == "05" ]; then
   exe=./corobase_DDL_COPY
   cdc_physical_workers_only=0
   scan_physical_workers_only=0
+elif [ "$flag" == "06" ]; then
+  output=ddl-logs/tpcc-add-column-lock-tesseract-copy.log
+  exe=./corobase_DDL_COPY
+  enable_cdc_schema_lock=1
+elif [ "$flag" == "07" ]; then
+  output=ddl-logs/tpcc-add-column-no-lock-tesseract-copy.log
+  exe=./corobase_DDL_COPY
 elif [ "$flag" == "10" ]; then
   output=ddl-logs/tpcc-table-split-tesseract-copy.log
   exe=./corobase_DDL_COPY
   ddl_example=1
   sf=200
   node_memory_gb=40
+  enable_large_ddl_begin_timestamp=1
 elif [ "$flag" == "11" ]; then
   output=ddl-logs/tpcc-table-split-tesseract-no-copy.log
   exe=./corobase_DDL_COPY
@@ -93,61 +104,66 @@ elif [ "$flag" == "20" ]; then
   exe=./corobase_DDL_COPY
   enable_ddl_keys=1
   ddl_example=2
-  cdc_threads=3
-  scan_threads=5
+  enable_large_ddl_begin_timestamp=1
 elif [ "$flag" == "21" ]; then
   output=ddl-logs/tpcc-preaggregation-tesseract-no-copy.log
   exe=./corobase_DDL_COPY
   enable_ddl_keys=1
   ddl_example=7
-  cdc_threads=3
-  scan_threads=5
 elif [ "$flag" == "22" ]; then
   output=ddl-logs/tpcc-preaggregation-tesseract-opt-lazy.log
   exe=./corobase_DDL_OPT_LAZY_COPY
   enable_ddl_keys=1
   ddl_example=2
-  cdc_threads=3
-  scan_threads=5
 elif [ "$flag" == "23" ]; then
   output=ddl-logs/tpcc-preaggregation-lazy.log
   exe=./corobase_DDL_LAZY_COPY
   enable_ddl_keys=1
   ddl_example=2
-  cdc_threads=3
-  scan_threads=5
 elif [ "$flag" == "24" ]; then
   output=ddl-logs/tpcc-preaggregation-block.log
   exe=./corobase_DDL_BLOCK
   enable_ddl_keys=1
   ddl_example=2
-  cdc_threads=3
-  scan_threads=5
 elif [ "$flag" == "30" ]; then
   output=ddl-logs/tpcc-table-join-tesseract-copy.log
   exe=./corobase_DDL_COPY
   enable_ddl_keys=1
   ddl_example=4
+  threads=25
+  cdc_threads=8
+  scan_threads=8
+  enable_large_ddl_begin_timestamp=1
 elif [ "$flag" == "31" ]; then
   output=ddl-logs/tpcc-table-join-tesseract-no-copy.log
   exe=./corobase_DDL_COPY
   enable_ddl_keys=1
   ddl_example=8
+  threads=25
 elif [ "$flag" == "32" ]; then
   output=ddl-logs/tpcc-table-join-tesseract-opt-lazy.log
   exe=./corobase_DDL_OPT_LAZY_COPY
   enable_ddl_keys=1
   ddl_example=4
+  threads=25
+  cdc_threads=8
+  scan_threads=8
 elif [ "$flag" == "33" ]; then
   output=ddl-logs/tpcc-table-join-lazy.log
   exe=./corobase_DDL_LAZY_COPY
   enable_ddl_keys=1
   ddl_example=4
+  threads=25
+  cdc_threads=8
+  scan_threads=8
 elif [ "$flag" == "34" ]; then
   output=ddl-logs/tpcc-table-join-block.log
   exe=./corobase_DDL_BLOCK
   enable_ddl_keys=1
   ddl_example=4
+  threads=25
+  cdc_threads=8
+  scan_threads=8
 elif [ "$flag" == "40" ]; then
   output=ddl-logs/tpcc-index-creation-tesseract-copy.log
   exe=./corobase_DDL_COPY
@@ -164,6 +180,7 @@ elif [ "$flag" == "50" ]; then
   benchmark="oddl"
   duration=20
   node_memory_gb=45
+  enable_large_ddl_begin_timestamp=1
 elif [ "$flag" == "51" ]; then
   output=ddl-logs/oddlb-add-column-tesseract-no-copy.log
   exe=./corobase_DDL_COPY
@@ -321,6 +338,92 @@ elif [ "$flag" == "111" ]; then
   exe=./corobase_DDL_BLOCK
   ddl_example=9
   enable_ddl_keys=1
+elif [ "$flag" == "120" ]; then
+  output=ddl-logs/oddlb-add-1-column-tesseract-no-copy.log
+  exe=./corobase_DDL_COPY
+  benchmark="oddl"
+  ddl_example=1
+  oddlb_workload="A"
+  no_copy_verification_version_add=1
+  client_load_per_core=50000
+  oddlb_table_size=500000
+elif [ "$flag" == "121" ]; then
+  output=ddl-logs/oddlb-add-2-column-tesseract-no-copy.log
+  exe=./corobase_DDL_COPY
+  benchmark="oddl"
+  ddl_example=1
+  oddlb_workload="A"
+  no_copy_verification_version_add=2
+  client_load_per_core=50000
+  oddlb_table_size=500000
+elif [ "$flag" == "122" ]; then
+  output=ddl-logs/oddlb-add-3-column-tesseract-no-copy.log
+  exe=./corobase_DDL_COPY
+  benchmark="oddl"
+  ddl_example=1
+  oddlb_workload="A"
+  no_copy_verification_version_add=3
+  client_load_per_core=50000
+  oddlb_table_size=500000
+elif [ "$flag" == "123" ]; then
+  output=ddl-logs/oddlb-add-4-column-tesseract-no-copy.log
+  exe=./corobase_DDL_COPY
+  benchmark="oddl"
+  ddl_example=1
+  oddlb_workload="A"
+  no_copy_verification_version_add=4
+  client_load_per_core=50000
+  oddlb_table_size=500000
+elif [ "$flag" == "124" ]; then
+  output=ddl-logs/oddlb-add-5-column-tesseract-no-copy.log
+  exe=./corobase_DDL_COPY
+  benchmark="oddl"
+  ddl_example=1
+  oddlb_workload="A"
+  no_copy_verification_version_add=5
+  client_load_per_core=50000
+  oddlb_table_size=500000
+elif [ "$flag" == "130" ]; then
+  output=ddl-logs/tpcc-add-constraint-tesseract-copy-3S.log
+  exe=./corobase_DDL_COPY
+  ddl_example=9
+  enable_ddl_keys=1
+  scan_threads=3
+elif [ "$flag" == "131" ]; then
+  output=ddl-logs/tpcc-add-constraint-tesseract-copy-4S.log
+  exe=./corobase_DDL_COPY
+  ddl_example=9
+  enable_ddl_keys=1
+  scan_threads=4
+elif [ "$flag" == "132" ]; then
+  output=ddl-logs/tpcc-add-constraint-tesseract-copy-5S.log
+  exe=./corobase_DDL_COPY
+  ddl_example=9
+  enable_ddl_keys=1
+  scan_threads=5
+elif [ "$flag" == "140" ]; then
+  output=ddl-logs/tpcc-no-ddl-31-threads.log
+  exe=./corobase_NO_DDL
+  ddl_total=0
+elif [ "$flag" == "141" ]; then
+  output=ddl-logs/tpcc-no-ddl-25-threads.log
+  exe=./corobase_NO_DDL
+  ddl_total=0
+  threads=25
+  cdc_threads=8
+  scan_threads=8
+elif [ "$flag" == "142" ]; then
+  output=ddl-logs/tpcc+-no-ddl-31-threads.log
+  exe=./corobase_NO_DDL
+  ddl_total=0
+  benchmark="tpcc+"
+elif [ "$flag" == "143" ]; then
+  output=ddl-logs/oddl-no-ddl-31-threads.log
+  exe=./corobase_NO_DDL
+  ddl_total=0
+  benchmark="oddl"
+  duration=20
+  node_memory_gb=45
 else
   exit;
 fi
@@ -329,7 +432,13 @@ if [[ "$benchmark" == "tpcc_org" || "$benchmark" == "tpcc+" ]]; then
   benchmark_paras="-d $ddl_start_time -e $ddl_example"
 elif [ "$benchmark" == "oddl" ]; then
   benchmark_paras="-d $ddl_start_time -e $ddl_example -s $oddlb_table_size -w $oddlb_workload"
-  client_load_per_core=8000
+  if [ "$client_load_per_core" == 4500 ]; then
+    client_load_per_core=8000
+  fi
+fi
+
+if [ "$ddl_total" == "0" ]; then
+  benchmark_paras=""
 fi
 
 rm -f $output
@@ -338,9 +447,9 @@ for((i = 0; i < 3; i++))
 do
   echo "round: $i" >> $output
   date >> $output
-  echo "./run.sh $exe $benchmark $sf $threads $duration \"-node_memory_gb=$node_memory_gb -cdc_threads=$cdc_threads -scan_threads=$scan_threads -enable_cdc_verification_test=0 -enable_cdc_schema_lock=$enable_cdc_schema_lock -enable_ddl_keys=$enable_ddl_keys -pcommit_queue_length=$pcommit_queue_length -enable_late_scan_join=$enable_late_scan_join -enable_lazy_background=1 -ddl_total=$ddl_total -enable_parallel_scan_cdc=$enable_parallel_scan_cdc -print_interval_ms=$print_interval_ms -no_copy_verification_version_add=1 -cdc_physical_workers_only=$cdc_physical_workers_only -scan_physical_workers_only=$scan_physical_workers_only -client_load_per_core=$client_load_per_core -latency_stat_interval_ms=$latency_stat_interval_ms -enable_lazy_on_conflict_do_nothing=$enable_lazy_on_conflict_do_nothing\" \"$benchmark_paras\"" | tee -a $output
+  echo "./run.sh $exe $benchmark $sf $threads $duration \"-node_memory_gb=$node_memory_gb -cdc_threads=$cdc_threads -scan_threads=$scan_threads -enable_cdc_verification_test=0 -enable_cdc_schema_lock=$enable_cdc_schema_lock -enable_ddl_keys=$enable_ddl_keys -pcommit_queue_length=$pcommit_queue_length -enable_late_scan_join=$enable_late_scan_join -enable_lazy_background=1 -ddl_total=$ddl_total -enable_parallel_scan_cdc=$enable_parallel_scan_cdc -print_interval_ms=$print_interval_ms -no_copy_verification_version_add=$no_copy_verification_version_add -cdc_physical_workers_only=$cdc_physical_workers_only -scan_physical_workers_only=$scan_physical_workers_only -client_load_per_core=$client_load_per_core -latency_stat_interval_ms=$latency_stat_interval_ms -enable_lazy_on_conflict_do_nothing=$enable_lazy_on_conflict_do_nothing -enable_large_ddl_begin_timestamp=$enable_large_ddl_begin_timestamp\" \"$benchmark_paras\"" | tee -a $output
 
-  hog-machine.sh ./run.sh $exe $benchmark $sf $threads $duration "-node_memory_gb=$node_memory_gb -cdc_threads=$cdc_threads -scan_threads=$scan_threads -enable_cdc_verification_test=0 -enable_cdc_schema_lock=$enable_cdc_schema_lock -enable_ddl_keys=$enable_ddl_keys -pcommit_queue_length=$pcommit_queue_length -enable_late_scan_join=$enable_late_scan_join -enable_lazy_background=1 -ddl_total=$ddl_total -enable_parallel_scan_cdc=$enable_parallel_scan_cdc -print_interval_ms=$print_interval_ms -no_copy_verification_version_add=1 -cdc_physical_workers_only=$cdc_physical_workers_only -scan_physical_workers_only=$scan_physical_workers_only -client_load_per_core=$client_load_per_core -latency_stat_interval_ms=$latency_stat_interval_ms -enable_lazy_on_conflict_do_nothing=$enable_lazy_on_conflict_do_nothing" "$benchmark_paras" 2>&1 | tee -a $output
+  hog-machine.sh ./run.sh $exe $benchmark $sf $threads $duration "-node_memory_gb=$node_memory_gb -cdc_threads=$cdc_threads -scan_threads=$scan_threads -enable_cdc_verification_test=0 -enable_cdc_schema_lock=$enable_cdc_schema_lock -enable_ddl_keys=$enable_ddl_keys -pcommit_queue_length=$pcommit_queue_length -enable_late_scan_join=$enable_late_scan_join -enable_lazy_background=1 -ddl_total=$ddl_total -enable_parallel_scan_cdc=$enable_parallel_scan_cdc -print_interval_ms=$print_interval_ms -no_copy_verification_version_add=$no_copy_verification_version_add -cdc_physical_workers_only=$cdc_physical_workers_only -scan_physical_workers_only=$scan_physical_workers_only -client_load_per_core=$client_load_per_core -latency_stat_interval_ms=$latency_stat_interval_ms -enable_lazy_on_conflict_do_nothing=$enable_lazy_on_conflict_do_nothing -enable_large_ddl_begin_timestamp=$enable_large_ddl_begin_timestamp" "$benchmark_paras" 2>&1 | tee -a $output
 
   echo >> $output
   echo >> $output
