@@ -1,10 +1,10 @@
-## CoroBase: Coroutine-Oriented Main-Memory Database Engine
+## Tesseract: Online Schema Evolution is (almost) Free for Snapshot Databases
 
-CoroBase is a research database engine that models transactions as C++20 stackless coroutine to hide CPU cache misses. See details in our VLDB 2021 paper:
+Tesseract is a research snapshot database engine that enables efficient online schema evolution.
 
-[1] Yongjun He, Jiacheng Lu and Tianzheng Wang. [CoroBase: Coroutine-Oriented Main-Memory Database Engine](http://www.vldb.org/pvldb/vol14/p431-he.pdf). VLDB 2021.
+Tesseract inherits the shared-everything architecture, synchronization and concurrency control protocol from ERMIA. See our VLDB'21 paper [1] for the use of Coroutine, SIGMOD'16 paper [2] for a description of ERMIA, our VLDBJ paper [3] for details in concurrency control, and our VLDB paper [4] for replication.
 
-CoroBase inherits the shared-everything architecture, synchronization and concurrency control protocol from ERMIA. See our SIGMOD'16 paper [2] for a description of ERMIA, our VLDBJ paper [3] for details in concurrency control, and our VLDB paper [4] for replication.
+\[1\] Yongjun He, Jiacheng Lu and Tianzheng Wang. [CoroBase: Coroutine-Oriented Main-Memory Database Engine](http://www.vldb.org/pvldb/vol14/p431-he.pdf). VLDB 2021.
 
 \[2\] Kangnyeon Kim, Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [ERMIA: Fast Memory-Optimized Database System for Heterogeneous Workloads](https://dl.acm.org/doi/10.1145/2882903.2882905). SIGMOD 2016.
 
@@ -24,14 +24,14 @@ CoroBase inherits the shared-everything architecture, synchronization and concur
 
 Ubuntu
 ```
-apt-get install -y cmake gcc-10 g++-10 clang-8 libc++-8-dev libc++abi-8-dev
+apt-get install -y cmake gcc-11 g++-11 clang-10 libc++-8-dev libc++abi-8-dev
 apt-get install -y libnuma-dev libibverbs-dev libgflags-dev libgoogle-glog-dev liburing-dev
 ```
 
 #### Environment configurations
 Make sure you have enough huge pages.
 
-* CoroBase uses `mmap` with `MAP_HUGETLB` (available after Linux 2.6.32) to allocate huge pages. Almost all memory allocations come from the space carved out here. Assuming the default huge page size is 2MB, the command below will allocate 2x MB of memory:
+* Tesseract uses `mmap` with `MAP_HUGETLB` (available after Linux 2.6.32) to allocate huge pages. Almost all memory allocations come from the space carved out here. Assuming the default huge page size is 2MB, the command below will allocate 2x MB of memory:
 ```
 sudo sh -c 'echo [x pages] > /proc/sys/vm/nr_hugepages'
 ```
@@ -55,17 +55,24 @@ $ cmake ../ -DCMAKE_BUILD_TYPE=[Debug/Release/RelWithDebInfo]
 $ make -jN
 ```
 
-Currently the code can compile under Clang 8.0+. E.g., to use Clang 8.0, issue the following `cmake` command instead:
+Currently the code can compile under Clang 10.0+. E.g., to use Clang 10.0, issue the following `cmake` command instead:
 ```
-$ CC=clang-8.0 CXX=clang++-8.0 cmake ../ -DCMAKE_BUILD_TYPE=[Debug/Release/RelWithDebInfo]
+$ CC=clang-10.0 CXX=clang++-10.0 cmake ../ -DCMAKE_BUILD_TYPE=[Debug/Release/RelWithDebInfo]
 ```
 
-After `make` there will be two executables under `build`: 
+After `make` there will be six executables under `build`: 
 
-`corobase_SI` that runs CoroBase (optimized 2-level coroutine-to-transaction design) and ERMIA with snapshot isolation (not serializable);
+`corobase_DDL_COPY` that runs DDLs with Tesseract approach;
 
-`corobase_adv_coro_SI` that runs CoroBase (fully-nested coroutine-to-transaction design) with snapshot isolation (not serializable);
+`corobase_DDL_LAZY_COPY` that runs DDLs with lazy approach;
 
+`corobase_DDL_OPT_LAZY_COPY` that runs DDLs with Tesseract-lazy approach;
+
+`corobase_DDL_BLOCK` that runs DDLs with blocking approach;
+
+`corobase_DDL_SI` that runs DDLs with naive SI approach;
+
+`corobase_NO_DDL` that runs with no DDLs;
 
 #### Run it
 ```
@@ -81,72 +88,58 @@ $run.sh \
 
 #### Run example
 ```
-Baseline (no DDL) with TPC-C (change ratio of StockLevel to 40000 in run.sh):
-$./run.sh ./corobase_SI tpcc_org 10 10 10 "-node_memory_gb=30"
+# Add column with Tesseract approach under TPC-CD:
+./run.sh ./corobase_DDL_COPY tpcc_org 50 31 10 "-node_memory_gb=30 -cdc_threads=5 -scan_threads=3 -enable_cdc_schema_lock=0 -enable_ddl_keys=0 -pcommit_queue_length=500000 -ddl_total=1 -enable_parallel_scan_cdc=1 -print_interval_ms=1000 -cdc_physical_workers_only=1 -scan_physical_workers_only=1 -client_load_per_core=4500 -latency_stat_interval_ms=25 -enable_large_ddl_begin_timestamp=1" "-d 2 -e 0 -s 1"
 
-Block DDL with TPC-C (change ratio of StockLevel to 39999 in run.sh):
-$./run.sh ./corobase_DDL_BLOCK tpcc_org 10 10 30 "-node_memory_gb=50"
+# Add column with Tesseract-lazy approach under TPC-CD:
+./run.sh ./corobase_DDL_LAZY_COPY tpcc_org 50 31 10 "-node_memory_gb=30 -cdc_threads=5 -scan_threads=3 -enable_cdc_schema_lock=0 -enable_ddl_keys=1 -pcommit_queue_length=500000 -enable_lazy_background=1 -ddl_total=1 -enable_parallel_scan_cdc=1 -print_interval_ms=1000 -cdc_physical_workers_only=1 -scan_physical_workers_only=1 -client_load_per_core=4500 -latency_stat_interval_ms=25 -enable_lazy_on_conflict_do_nothing=1 -late_background_start_ms=0" "-d 2 -e 0 -s 1"
 
-Block DDL with ODDLB:
-$./run.sh ./corobase_DDL_BLOCK_MICROBENCH oddl_org 10 10 30 "-node_memory_gb=50"
+# Add column with lazy approach under TPC-CD:
+./run.sh ./corobase_DDL_LAZY_COPY tpcc_org 50 31 10 "-node_memory_gb=30 -cdc_threads=5 -scan_threads=3 -enable_cdc_schema_lock=0 -enable_ddl_keys=1 -pcommit_queue_length=500000 -enable_lazy_background=1 -ddl_total=1 -enable_parallel_scan_cdc=1 -print_interval_ms=1000 -cdc_physical_workers_only=1 -scan_physical_workers_only=1 -client_load_per_core=4500 -latency_stat_interval_ms=25 -enable_lazy_on_conflict_do_nothing=1 -late_background_start_ms=0" "-d 2 -e 0 -s 1"
 
-SI DDL with TPC-C (not supported yet) (change ratio of StockLevel to 39999 in run.sh):
-$./run.sh ./corobase_DDL_SI tpcc_org 10 10 30 "-node_memory_gb=50"
-
-SI DDL with ODDLB:
-$./run.sh ./corobase_DDL_SI_MICROBENCH oddl_org 10 10 30 "-node_memory_gb=50"
-
-Copy DDL with TPC-C (bugs in CDC log replay) (change ratio of StockLevel to 39999 in run.sh):
-$./run.sh ./corobase_DDL_COPY tpcc_org 10 10 30 "-node_memory_gb=50"
-
-Copy DDL with ODDLB (bugs in CDC log replay):
-$./run.sh ./corobase_DDL_COPY_MICROBENCH oddl_org 10 10 30 "-node_memory_gb=50"
-
-Lazy copy DDL with TPC-C (change ratio of StockLevel to 39999 in run.sh):
-$./run.sh ./corobase_DDL_LAZY_COPY tpcc_org 10 10 30 "-node_memory_gb=50"
-
-Lazy copy DDL with ODDLB:
-$./run.sh ./corobase_DDL_LAZY_COPY_MICROBENCH oddl_org 10 10 30 "-node_memory_gb=50"
-
-Double copy DDL with TPC-C (change ratio of StockLevel to 39999 in run.sh):
-$./run.sh ./corobase_DDL_DOUBLE_COPY tpcc_org 10 10 30 "-node_memory_gb=50"
-
-Double copy DDL with ODDLB (not supported yet):
-$./run.sh ./corobase_DDL_DOUBLE_COPY_MICROBENCH oddl_org 10 10 30 "-node_memory_gb=50"
-
-No copy no verification DDL with TPC-C (not supported yet) (change ratio of StockLevel to 39999 in run.sh):
-$./run.sh ./corobase_DDL_NO_COPY_VERIFICATION_MICROBENCH tpcc_org 10 10 30 "-node_memory_gb=50"
-
-No copy no verification DDL with ODDLB:
-$./run.sh ./corobase_DDL_NO_COPY_VERIFICATION_MICROBENCH oddl_org 10 10 30 "-node_memory_gb=50"
+# Add column with Blocking approach under TPC-CD:
+./run.sh ./corobase_DDL_BLOCK tpcc_org 50 31 10 "-node_memory_gb=30 -cdc_threads=5 -scan_threads=3 -enable_cdc_schema_lock=0 -enable_ddl_keys=0 -pcommit_queue_length=500000 -ddl_total=1 -enable_parallel_scan_cdc=1 -print_interval_ms=1000 -cdc_physical_workers_only=1 -scan_physical_workers_only=1 -client_load_per_core=4500 -latency_stat_interval_ms=25" "-d 2 -e 0"
 ```
 
 #### System-wide runtime options
 
 `-node_memory_gb`: how many GBs of memory to allocate per socket.
 
-`-null_log_device`: flush log buffer to `/dev/null`. With more than 30 threads, log flush (even to tmpfs) can easily become a bottleneck because of a mutex in the kernel held during the flush. This option does *not* disable logging, but it voids the ability to recover.
+`-null_log_device`: Whether to flush log buffer.
 
 `-tmpfs_dir`: location of the log buffer's mmap file. Default: `/tmpfs/`.
 
-`-enable_gc`: turn on garbage collection. Currently there is only one GC thread.
+`cdc_threads`: number of CDC threads.
 
-`-enable_chkpt`: enable checkpointing.
+`scan_threads`: number of scan threads.
 
-`-phantom_prot`: enable phantom protection.
-
-`-warm-up`: strategy to load versions upon recovery. Candidates are:
-- `eager`: load all latest versions during recovery, so the database is fully in-memory when it starts to process new transactions;
-- `lazy`: start a thread to load versions in the background after recovery, so the database is partially in-memory when it starts to process new transactions.
-- `none`: load versions on-demand upon access.
+`enable_parallel_scan_cdc`: Whether enable parallel scan and CDC.
 
 #### Benchmark-specific runtime options
 
-`-w C`: YCSB-C read-only workload.
+`-d 2`: DDL transaction starts after 2 seconds
 
-`-s 1000000000`: number of records in the database table.
+`-e 0`: DDL workload, see below:
+```
+TPC-CD:
+    0: Add column
+    1: Table Split
+    2: Preaggregate
+    3: Create Index
+    4: Table join
+    9: Add constraint
+    10: Add column and constraint
+    
+ODDLB:
+    0: Add column
+    2: Add constraint
+    3: Add column and constraint
+```
 
-`-r 10`: 10 querys per transaction.
+`-w D`: ODDLB - write-heavy workload D.
 
-`-t sequential`: 'sequential' for ERMIA implementation, 'simple-coro' for the optimized 2-level coroutine-to-transaction implementation, and 'adv-coro' for the fully-nested coroutines implementation.
+`-s 1`: TPC-CD - pick a random home warehouse, 0 if not
 
+`-s 100000000`: ODDLB - number of records in the database table.
+
+`-r 10`: 10 queries per transaction.
