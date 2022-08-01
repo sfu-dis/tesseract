@@ -395,18 +395,21 @@ elif [ "$flag" == "130" ]; then
   ddl_example=9
   enable_ddl_keys=1
   scan_threads=3
+  enable_large_ddl_begin_timestamp=1
 elif [ "$flag" == "131" ]; then
   output=ddl-logs/tpcc-add-constraint-tesseract-copy-4S.log
   exe=./corobase_DDL_COPY
   ddl_example=9
   enable_ddl_keys=1
   scan_threads=4
+  enable_large_ddl_begin_timestamp=1
 elif [ "$flag" == "132" ]; then
   output=ddl-logs/tpcc-add-constraint-tesseract-copy-5S.log
   exe=./corobase_DDL_COPY
   ddl_example=9
   enable_ddl_keys=1
   scan_threads=5
+  enable_large_ddl_begin_timestamp=1
 elif [ "$flag" == "140" ]; then
   output=ddl-logs/tpcc-no-ddl-31-threads.log
   exe=./corobase_NO_DDL
@@ -445,7 +448,7 @@ else
 fi
 
 if [[ "$benchmark" == "tpcc_org" || "$benchmark" == "tpcc+" ]]; then
-  benchmark_paras="-d $ddl_start_time -e $ddl_example"
+  benchmark_paras="-d $ddl_start_time -e $ddl_example -s 1"
 elif [ "$benchmark" == "oddl" ]; then
   benchmark_paras="-d $ddl_start_time -e $ddl_example -s $oddlb_table_size -w $oddlb_workload"
   if [ "$client_load_per_core" == 4500 ]; then
@@ -454,7 +457,11 @@ elif [ "$benchmark" == "oddl" ]; then
 fi
 
 if [ "$ddl_total" == "0" ]; then
-  benchmark_paras=""
+  if [[ "$benchmark" == "tpcc_org" || "$benchmark" == "tpcc+" ]]; then
+    benchmark_paras="-s 1"
+  elif [ "$benchmark" == "oddl" ]; then
+    benchmark_paras="-s $oddlb_table_size -w $oddlb_workload"
+  fi
 fi
 
 rm -f $output
