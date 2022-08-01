@@ -179,11 +179,14 @@ class oddlb_sequential_worker : public oddlb_base_worker {
 #elif defined(SIDDL)
     rc = rc_t{RC_INVALID};
     rc = ddl_exe->scan(arena);
-    if (rc._val != RC_TRUE && running) {
+    if (ermia::config::ddl_retry && rc._val != RC_TRUE && running) {
       db->Abort(txn, ddl_exe);
       goto retry;
     }
-    TryCatch(rc);
+    if (rc._val != RC_TRUE) {
+      db->Abort(txn, ddl_exe);
+      return rc;
+    }
 #endif  // BLOCKDDL
 #endif  // COPYDDL
     TryCatch(db->Commit(txn, ddl_exe));

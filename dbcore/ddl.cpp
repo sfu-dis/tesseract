@@ -623,10 +623,16 @@ void ddl_executor::ddl_write_set_abort() {
 
         Object *obj = w.get_object();
         fat_ptr entry = *w.entry;
-        obj->SetCSN(NULL_PTR);
-        oidmgr->UnlinkTuple(w.entry);
-        ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
-        MM::deallocate(entry);
+#ifdef SIDDL
+	if (obj) {
+#endif
+          obj->SetCSN(NULL_PTR);
+          oidmgr->UnlinkTuple(w.entry);
+          ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
+          MM::deallocate(entry);
+#ifdef SIDDL
+	}
+#endif
       }
       cur = cur->next;
     }

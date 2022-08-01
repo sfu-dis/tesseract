@@ -90,6 +90,7 @@ extern bool enable_lazy_on_conflict_do_nothing;
 extern uint32_t late_background_start_ms;
 extern bool enable_large_ddl_begin_timestamp;
 extern bool commit_latency_only;
+extern bool ddl_retry;
 
 extern uint64_t print_interval_ms;
 
