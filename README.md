@@ -50,17 +50,17 @@ $ CC=clang-10.0 CXX=clang++-10.0 cmake ../ -DCMAKE_BUILD_TYPE=[Debug/Release/Rel
 
 After `make` there will be six executables under `build`: 
 
-`corobase_DDL_COPY` that runs DDLs with Tesseract approach;
+`tesseract_DDL_COPY` that runs DDLs with Tesseract approach;
 
-`corobase_DDL_LAZY_COPY` that runs DDLs with lazy approach;
+`tesseract_DDL_LAZY_COPY` that runs DDLs with lazy approach;
 
-`corobase_DDL_OPT_LAZY_COPY` that runs DDLs with Tesseract-lazy approach;
+`tesseract_DDL_OPT_LAZY_COPY` that runs DDLs with Tesseract-lazy approach;
 
-`corobase_DDL_BLOCK` that runs DDLs with blocking approach;
+`tesseract_DDL_BLOCK` that runs DDLs with blocking approach;
 
-`corobase_DDL_SI` that runs DDLs with naive SI approach;
+`tesseract_DDL_SI` that runs DDLs with naive SI approach;
 
-`corobase_NO_DDL` that runs with no DDLs;
+`tesseract_NO_DDL` that runs with no DDLs;
 
 #### Run it
 ```
@@ -77,16 +77,16 @@ $run.sh \
 #### Run example
 ```
 # Add column with Tesseract approach under TPC-CD:
-./run.sh ./corobase_DDL_COPY tpcc_org 50 31 10 "-node_memory_gb=30 -cdc_threads=5 -scan_threads=3 -enable_cdc_schema_lock=0 -enable_ddl_keys=0 -pcommit_queue_length=500000 -ddl_total=1 -enable_parallel_scan_cdc=1 -print_interval_ms=1000 -cdc_physical_workers_only=1 -scan_physical_workers_only=1 -client_load_per_core=4500 -latency_stat_interval_ms=25 -enable_large_ddl_begin_timestamp=1" "-d 2 -e 0 -s 1"
+./run.sh ./tesseract_DDL_COPY tpcc_org 50 31 10 "-node_memory_gb=30 -cdc_threads=5 -scan_threads=3 -enable_cdc_schema_lock=0 -enable_ddl_keys=0 -pcommit_queue_length=500000 -ddl_total=1 -enable_parallel_scan_cdc=1 -print_interval_ms=1000 -cdc_physical_workers_only=1 -scan_physical_workers_only=1 -client_load_per_core=4500 -latency_stat_interval_ms=25 -enable_large_ddl_begin_timestamp=1" "-d 2 -e 0 -s 1"
 
 # Add column with Tesseract-lazy approach under TPC-CD:
-./run.sh ./corobase_DDL_LAZY_COPY tpcc_org 50 31 10 "-node_memory_gb=30 -cdc_threads=5 -scan_threads=3 -enable_cdc_schema_lock=0 -enable_ddl_keys=1 -pcommit_queue_length=500000 -enable_lazy_background=1 -ddl_total=1 -enable_parallel_scan_cdc=1 -print_interval_ms=1000 -cdc_physical_workers_only=1 -scan_physical_workers_only=1 -client_load_per_core=4500 -latency_stat_interval_ms=25 -enable_lazy_on_conflict_do_nothing=1 -late_background_start_ms=0" "-d 2 -e 0 -s 1"
+./run.sh ./tesseract_DDL_LAZY_COPY tpcc_org 50 31 10 "-node_memory_gb=30 -cdc_threads=5 -scan_threads=3 -enable_cdc_schema_lock=0 -enable_ddl_keys=1 -pcommit_queue_length=500000 -enable_lazy_background=1 -ddl_total=1 -enable_parallel_scan_cdc=1 -print_interval_ms=1000 -cdc_physical_workers_only=1 -scan_physical_workers_only=1 -client_load_per_core=4500 -latency_stat_interval_ms=25 -enable_lazy_on_conflict_do_nothing=1 -late_background_start_ms=0" "-d 2 -e 0 -s 1"
 
 # Add column with lazy approach under TPC-CD:
-./run.sh ./corobase_DDL_LAZY_COPY tpcc_org 50 31 10 "-node_memory_gb=30 -cdc_threads=5 -scan_threads=3 -enable_cdc_schema_lock=0 -enable_ddl_keys=1 -pcommit_queue_length=500000 -enable_lazy_background=1 -ddl_total=1 -enable_parallel_scan_cdc=1 -print_interval_ms=1000 -cdc_physical_workers_only=1 -scan_physical_workers_only=1 -client_load_per_core=4500 -latency_stat_interval_ms=25 -enable_lazy_on_conflict_do_nothing=1 -late_background_start_ms=0" "-d 2 -e 0 -s 1"
+./run.sh ./tesseract_DDL_LAZY_COPY tpcc_org 50 31 10 "-node_memory_gb=30 -cdc_threads=5 -scan_threads=3 -enable_cdc_schema_lock=0 -enable_ddl_keys=1 -pcommit_queue_length=500000 -enable_lazy_background=1 -ddl_total=1 -enable_parallel_scan_cdc=1 -print_interval_ms=1000 -cdc_physical_workers_only=1 -scan_physical_workers_only=1 -client_load_per_core=4500 -latency_stat_interval_ms=25 -enable_lazy_on_conflict_do_nothing=1 -late_background_start_ms=0" "-d 2 -e 0 -s 1"
 
 # Add column with Blocking approach under TPC-CD:
-./run.sh ./corobase_DDL_BLOCK tpcc_org 50 31 10 "-node_memory_gb=30 -cdc_threads=5 -scan_threads=3 -enable_cdc_schema_lock=0 -enable_ddl_keys=0 -pcommit_queue_length=500000 -ddl_total=1 -enable_parallel_scan_cdc=1 -print_interval_ms=1000 -cdc_physical_workers_only=1 -scan_physical_workers_only=1 -client_load_per_core=4500 -latency_stat_interval_ms=25" "-d 2 -e 0"
+./run.sh ./tesseract_DDL_BLOCK tpcc_org 50 31 10 "-node_memory_gb=30 -cdc_threads=5 -scan_threads=3 -enable_cdc_schema_lock=0 -enable_ddl_keys=0 -pcommit_queue_length=500000 -ddl_total=1 -enable_parallel_scan_cdc=1 -print_interval_ms=1000 -cdc_physical_workers_only=1 -scan_physical_workers_only=1 -client_load_per_core=4500 -latency_stat_interval_ms=25" "-d 2 -e 0"
 ```
 
 #### System-wide runtime options

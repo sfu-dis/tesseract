@@ -82,60 +82,52 @@ get_property(THREAD_POOL_SRC GLOBAL PROPERTY THREAD_POOL_SRC)
 add_library(thread_pool SHARED ${THREAD_POOL_SRC})
 
 # Non blocking DDL - SI
-add_library(corobase_ddl_si SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_si PROPERTIES COMPILE_FLAGS "-DDDL -DSIDDL")
+add_library(tesseract_ddl_si SHARED ${LIB_SRC})
+set_target_properties(tesseract_ddl_si PROPERTIES COMPILE_FLAGS "-DDDL -DSIDDL")
 
-add_executable(corobase_DDL_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_SI PROPERTIES COMPILE_FLAGS "-DDDL -DSIDDL")
-target_link_libraries(corobase_DDL_SI corobase_ddl_si thread_pool)
-
-set(corobase_SI_LIB corobase_ddl_si)
+add_executable(tesseract_DDL_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(tesseract_DDL_SI PROPERTIES COMPILE_FLAGS "-DDDL -DSIDDL")
+target_link_libraries(tesseract_DDL_SI tesseract_ddl_si thread_pool)
 
 # Non blocking DDL - Copy
-add_library(corobase_ddl_copy SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_copy PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL")
+add_library(tesseract_ddl_copy SHARED ${LIB_SRC})
+set_target_properties(tesseract_ddl_copy PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL")
 
-add_executable(corobase_DDL_COPY ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_COPY PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL")
-target_link_libraries(corobase_DDL_COPY corobase_ddl_copy thread_pool)
-
-set(corobase_COPY_LIB corobase_ddl_copy)
+add_executable(tesseract_DDL_COPY ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(tesseract_DDL_COPY PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL")
+target_link_libraries(tesseract_DDL_COPY tesseract_ddl_copy thread_pool)
 
 # Non blocking DDL - Lazy copy
-add_library(corobase_ddl_lazy_copy SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_lazy_copy PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL")
+add_library(tesseract_ddl_lazy_copy SHARED ${LIB_SRC})
+set_target_properties(tesseract_ddl_lazy_copy PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL")
 
-add_executable(corobase_DDL_LAZY_COPY ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_LAZY_COPY PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL")
-target_link_libraries(corobase_DDL_LAZY_COPY corobase_ddl_lazy_copy thread_pool)
-
-set(corobase_COPY_LIB corobase_ddl_lazy_copy)
+add_executable(tesseract_DDL_LAZY_COPY ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(tesseract_DDL_LAZY_COPY PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL")
+target_link_libraries(tesseract_DDL_LAZY_COPY tesseract_ddl_lazy_copy thread_pool)
 
 # Non blocking DDL - Optimized lazy copy
-add_library(corobase_ddl_opt_lazy_copy SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_opt_lazy_copy PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL -DOPTLAZYDDL")
+add_library(tesseract_ddl_opt_lazy_copy SHARED ${LIB_SRC})
+set_target_properties(tesseract_ddl_opt_lazy_copy PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL -DOPTLAZYDDL")
 
-add_executable(corobase_DDL_OPT_LAZY_COPY ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_OPT_LAZY_COPY PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL -DOPTLAZYDDL")
-target_link_libraries(corobase_DDL_OPT_LAZY_COPY corobase_ddl_opt_lazy_copy thread_pool)
-
-set(corobase_COPY_LIB corobase_ddl_opt_lazy_copy)
+add_executable(tesseract_DDL_OPT_LAZY_COPY ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(tesseract_DDL_OPT_LAZY_COPY PROPERTIES COMPILE_FLAGS "-DDDL -DCOPYDDL -DLAZYDDL -DOPTLAZYDDL")
+target_link_libraries(tesseract_DDL_OPT_LAZY_COPY tesseract_ddl_opt_lazy_copy thread_pool)
 
 # Blocking DDL
-add_library(corobase_ddl_block SHARED ${LIB_SRC})
-set_target_properties(corobase_ddl_block PROPERTIES COMPILE_FLAGS "-DDDL -DBLOCKDDL")
+add_library(tesseract_ddl_block SHARED ${LIB_SRC})
+set_target_properties(tesseract_ddl_block PROPERTIES COMPILE_FLAGS "-DDDL -DBLOCKDDL")
 
-add_executable(corobase_DDL_BLOCK ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_DDL_BLOCK PROPERTIES COMPILE_FLAGS "-DDDL -DBLOCKDDL")
-target_link_libraries(corobase_DDL_BLOCK corobase_ddl_block thread_pool)
+add_executable(tesseract_DDL_BLOCK ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(tesseract_DDL_BLOCK PROPERTIES COMPILE_FLAGS "-DDDL -DBLOCKDDL")
+target_link_libraries(tesseract_DDL_BLOCK tesseract_ddl_block thread_pool)
 
 # Baseline without DDL 
-add_library(corobase_no_ddl SHARED ${LIB_SRC})
-set_target_properties(corobase_no_ddl PROPERTIES COMPILE_FLAGS "")
+add_library(tesseract_no_ddl SHARED ${LIB_SRC})
+set_target_properties(tesseract_no_ddl PROPERTIES COMPILE_FLAGS "")
 
-add_executable(corobase_NO_DDL ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(corobase_NO_DDL PROPERTIES COMPILE_FLAGS "")
-target_link_libraries(corobase_NO_DDL corobase_no_ddl thread_pool)
+add_executable(tesseract_NO_DDL ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(tesseract_NO_DDL PROPERTIES COMPILE_FLAGS "")
+target_link_libraries(tesseract_NO_DDL tesseract_no_ddl thread_pool)
 
 # SI
 #add_library(corobase_si SHARED ${LIB_SRC})
