@@ -1,17 +1,5 @@
 ## Tesseract: Online Schema Evolution is (almost) Free for Snapshot Databases
 
-Tesseract is a research snapshot database engine that enables efficient online schema evolution.
-
-Tesseract inherits the shared-everything architecture, synchronization and concurrency control protocol from ERMIA. See our VLDB'21 paper [1] for the use of Coroutine, SIGMOD'16 paper [2] for a description of ERMIA, our VLDBJ paper [3] for details in concurrency control, and our VLDB paper [4] for replication.
-
-\[1\] Yongjun He, Jiacheng Lu and Tianzheng Wang. [CoroBase: Coroutine-Oriented Main-Memory Database Engine](http://www.vldb.org/pvldb/vol14/p431-he.pdf). VLDB 2021.
-
-\[2\] Kangnyeon Kim, Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [ERMIA: Fast Memory-Optimized Database System for Heterogeneous Workloads](https://dl.acm.org/doi/10.1145/2882903.2882905). SIGMOD 2016.
-
-\[3\] Tianzheng Wang, Ryan Johnson, Alan Fekete and Ippokratis Pandis. [Efficiently making (almost) any concurrency control mechanism serializable](https://link.springer.com/article/10.1007/s00778-017-0463-8). The VLDB Journal, Volume 26, Issue 4. 2017.
-
-\[4\] Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [Query Fresh: Log Shipping on Steroids](http://www.vldb.org/pvldb/vol11/p406-wang.pdf). VLDB 2018.
-
 #### Software dependencies
 * cmake
 * python2
