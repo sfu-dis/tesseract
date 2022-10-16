@@ -5,7 +5,7 @@ This repository implements [Tesseract](https://arxiv.org/ftp/arxiv/papers/2210/2
 ```
 Online Schema Evolution is (Almost) Free for Snapshot Databases
 Tianxun Hu, Tianzheng Wang and Qingqing Zhou.
-PVLDB 16, No. 2 (VLDB 2023).
+PVLDB 16(2) (VLDB 2023).
 ```
 
 #### Software dependencies
