@@ -1,6 +1,6 @@
 ## Tesseract: Online Schema Evolution is (almost) Free for Snapshot Databases
 
-This repository implements [Tesseract](https://arxiv.org/ftp/arxiv/papers/2210/2210.03958.pdf). See details in our [VLDB 2023 paper](https://arxiv.org/ftp/arxiv/papers/2210/2210.03958.pdf) below. If you use our work, please cite:
+This repository implements [Tesseract](https://www.vldb.org/pvldb/vol16/p140-hu.pdf). See details in our [VLDB 2023 paper](https://www.vldb.org/pvldb/vol16/p140-hu.pdf) below. If you use our work, please cite:
 
 ```
 Online Schema Evolution is (Almost) Free for Snapshot Databases
